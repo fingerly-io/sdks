@@ -3,17 +3,35 @@
   "version": "0.0.0",
   "private": true,
   "description": "Vue bindings for the Badele SDK",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": ["dist"],
+  "sideEffects": false,
   "dependencies": {
     "@badele/web-js": "workspace:*"
   },
   "peerDependencies": {
-    "vue": ">=3"
+    "vue": ">=3.3"
   },
   "scripts": {
-    "build": "true",
-    "lint": "true",
-    "test": "true"
+    "build": "tsup",
+    "lint": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "happy-dom": "^15.11.7",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8",
+    "vue": "^3.5.42"
   }
 }
