@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Badele — signal report</title>
+    <style>
+      :root {
+        --bg: #0f1115;
+        --panel: #171a21;
+        --line: #262b36;
+        --text: #e6e8ee;
+        --dim: #8b93a7;
+        --ok: #4ade80;
+        --unsupported: #6b7280;
+        --blocked: #fbbf24;
+        --timeout: #f87171;
+        --error: #ef4444;
+        --accent: #7dd3fc;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: var(--bg);
+        color: var(--text);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      h1 { font-size: 16px; margin: 0 0 4px; }
+      .sub { color: var(--dim); margin-bottom: 20px; }
+      .row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; align-items: center; }
+      input, button {
+        font: inherit;
+        background: var(--panel);
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 6px 10px;
+      }
+      button { cursor: pointer; border-color: var(--accent); color: var(--accent); }
+      button:disabled { opacity: 0.5; cursor: default; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
+      .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+      .panel h2 { font-size: 12px; margin: 0 0 8px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.08em; }
+      table { width: 100%; border-collapse: collapse; }
+      td { padding: 2px 4px; vertical-align: top; word-break: break-word; }
+      td.k { color: var(--dim); width: 22%; }
+      td.st { width: 92px; white-space: nowrap; }
+      td.ms { color: var(--dim); text-align: right; width: 56px; white-space: nowrap; }
+      .tag { display: inline-block; padding: 0 6px; border-radius: 4px; font-size: 11px; }
+      .ok { color: var(--ok); } .unsupported { color: var(--unsupported); }
+      .blocked { color: var(--blocked); } .timeout { color: var(--timeout); } .error { color: var(--error); }
+      .verdict { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid var(--line); }
+      .verdict:last-child { border-bottom: 0; }
+      .true { color: var(--timeout); font-weight: bold; }
+      .false { color: var(--dim); }
+      .reasons { color: var(--dim); font-size: 11px; padding-left: 12px; }
+      pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 11px; color: var(--dim); max-height: 320px; overflow: auto; }
+      .stat { display: inline-block; margin-right: 16px; }
+      .stat b { color: var(--accent); }
+    </style>
+  </head>
+  <body>
+    <h1>Badele — signal report</h1>
+    <div class="sub">
+      Runs <code>@badele/web-js</code> against this browser. Collection is local;
+      nothing is submitted unless an endpoint and key are filled in.
+    </div>
+
+    <div class="row">
+      <input id="endpoint" placeholder="endpoint (e.g. http://localhost:8080)" size="34" />
+      <input id="apikey" placeholder="x-api-key" size="24" />
+      <button id="run">Collect</button>
+      <button id="submit">Collect + submit</button>
+    </div>
+
+    <div class="row" id="stats"></div>
+
+    <div class="grid">
+      <div class="panel">
+        <h2>Verdicts</h2>
+        <div id="verdicts"></div>
+      </div>
+      <div class="panel">
+        <h2>Integrity</h2>
+        <div id="integrity"></div>
+      </div>
+      <div class="panel" style="grid-column: 1 / -1">
+        <h2>Sources</h2>
+        <table id="sources"></table>
+      </div>
+      <div class="panel" style="grid-column: 1 / -1">
+        <h2>Submission body</h2>
+        <pre id="raw"></pre>
+      </div>
+    </div>
+
+    <script src="../dist/badele.global.js"></script>
+    <script>
+      const $ = (id) => document.getElementById(id)
+
+      function renderVerdicts(verdicts) {
+        $('verdicts').innerHTML = Object.entries(verdicts)
+          .map(
+            ([name, v]) => `
+              <div class="verdict">
+                <span>${name}</span>
+                <span class="${v.value}">${v.value} · ${v.confidence}</span>
+              </div>
+              ${v.reasons.length ? `<div class="reasons">${v.reasons.join('<br>')}</div>` : ''}`,
+          )
+          .join('')
+      }
+
+      function renderIntegrity(integrity) {
+        const engine = integrity.engine
+        $('integrity').innerHTML = `
+          <div class="verdict">
+            <span>engine claimed</span><span>${engine.claimed ?? '—'}</span>
+          </div>
+          <div class="verdict">
+            <span>engine observed</span><span>${engine.observed ?? '—'}</span>
+          </div>
+          <div class="verdict">
+            <span>agrees</span>
+            <span class="${engine.agrees === false}">${engine.agrees ?? '—'}</span>
+          </div>
+          <div class="verdict"><span>patched natives</span>
+            <span class="${integrity.patched_natives.length > 0}">${integrity.patched_natives.length}</span>
+          </div>
+          ${integrity.patched_natives.length ? `<div class="reasons">${integrity.patched_natives.join('<br>')}</div>` : ''}
+          <div class="verdict"><span>lies</span>
+            <span class="${integrity.lies.length > 0}">${integrity.lies.length}</span></div>
+          ${
+            integrity.lies.length
+              ? `<div class="reasons">${integrity.lies
+                  .map((l) => `${l.kind}: ${l.id}${l.detail ? ` (${l.detail})` : ''}`)
+                  .join('<br>')}</div>`
+              : ''
+          }`
+      }
+
+      function renderSources(sources) {
+        $('sources').innerHTML = Object.entries(sources)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([id, o]) => {
+            const value =
+              o.status === 'ok'
+                ? typeof o.value === 'object'
+                  ? JSON.stringify(o.value)
+                  : String(o.value)
+                : (o.reason ?? '')
+            return `<tr>
+              <td class="k">${id}</td>
+              <td class="st"><span class="tag ${o.status}">${o.status}</span></td>
+              <td class="ms">${o.ms}ms</td>
+              <td>${value.length > 200 ? value.slice(0, 200) + '…' : value}</td>
+            </tr>`
+          })
+          .join('')
+      }
+
+      function renderStats(report, requestId) {
+        const counts = {}
+        for (const o of Object.values(report.sources)) counts[o.status] = (counts[o.status] ?? 0) + 1
+        $('stats').innerHTML =
+          `<span class="stat">elapsed <b>${report.elapsed_ms}ms</b> / budget ${report.budget_ms}ms</span>` +
+          `<span class="stat">sources <b>${Object.keys(report.sources).length}</b></span>` +
+          Object.entries(counts)
+            .map(([k, n]) => `<span class="stat ${k}">${k} <b>${n}</b></span>`)
+            .join('') +
+          (requestId ? `<span class="stat">request_id <b>${requestId}</b></span>` : '')
+      }
+
+      async function run(submit) {
+        $('run').disabled = $('submit').disabled = true
+        try {
+          const options = { apiKey: $('apikey').value || 'demo' }
+          if ($('endpoint').value) options.endpoint = $('endpoint').value
+
+          const badele = await Badele.load(options)
+          const result = await badele.identify({ submit })
+
+          renderStats(result.report, result.requestId)
+          renderVerdicts(result.verdicts)
+          renderIntegrity(result.report.integrity)
+          renderSources(result.report.sources)
+          $('raw').textContent = JSON.stringify(
+            { sdk: { platform: 'web', version: '0.1.0' }, signals: result.report },
+            null,
+            2,
+          )
+          // Read back by the browser-automation check.
+          window.__badele = result
+          console.log('[badele] done', result)
+        } catch (error) {
+          $('raw').textContent = String(error && error.stack ? error.stack : error)
+          console.error('[badele] failed', error)
+        } finally {
+          $('run').disabled = $('submit').disabled = false
+        }
+      }
+
+      $('run').addEventListener('click', () => run(false))
+      $('submit').addEventListener('click', () => run(true))
+      run(false)
+    </script>
+  </body>
+</html>

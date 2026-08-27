@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // No rootDir/outDir: tsup builds this package, and `tsc` is only ever run
+    // as a typechecker (`noEmit`). Declaring a rootDir that the tests sit
+    // outside of makes tsc reject the very files it is being asked to check.
+    "noEmit": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"]
+  },
+  "include": ["src", "tests"]
+}
