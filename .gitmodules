@@ -1,0 +1,9 @@
+[submodule "mobile/ios"]
+	path = mobile/ios
+	url = git@github.com:badele-io/sdk-ios.git
+[submodule "mobile/android"]
+	path = mobile/android
+	url = git@github.com:badele-io/sdk-android.git
+[submodule "mobile/flutter"]
+	path = mobile/flutter
+	url = git@github.com:badele-io/sdk-flutter.git

@@ -1,0 +1,4 @@
+packages:
+  - "packages/*"
+  - "mobile/react-native"
+  - "contract"
