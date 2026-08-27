@@ -1,0 +1,19 @@
+{
+  "name": "@badele/nuxt",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Nuxt module wrapping @badele/vue and @badele/web-js",
+  "main": "dist/module.js",
+  "types": "dist/types.d.ts",
+  "dependencies": {
+    "@badele/vue": "workspace:*"
+  },
+  "peerDependencies": {
+    "nuxt": ">=3"
+  },
+  "scripts": {
+    "build": "true",
+    "lint": "true",
+    "test": "true"
+  }
+}

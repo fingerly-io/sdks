@@ -1,0 +1,19 @@
+{
+  "name": "@badele/next",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Next.js integration wrapping @badele/react and @badele/web-js",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "dependencies": {
+    "@badele/react": "workspace:*"
+  },
+  "peerDependencies": {
+    "next": ">=14"
+  },
+  "scripts": {
+    "build": "true",
+    "lint": "true",
+    "test": "true"
+  }
+}

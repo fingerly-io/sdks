@@ -1,0 +1,19 @@
+{
+  "name": "@badele/react",
+  "version": "0.0.0",
+  "private": true,
+  "description": "React bindings for the Badele SDK",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "dependencies": {
+    "@badele/web-js": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "scripts": {
+    "build": "true",
+    "lint": "true",
+    "test": "true"
+  }
+}
