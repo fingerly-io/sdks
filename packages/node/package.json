@@ -1,0 +1,16 @@
+{
+  "name": "@badele/node",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Server-side Node.js SDK",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "dependencies": {
+    "@badele/core": "workspace:*"
+  },
+  "scripts": {
+    "build": "true",
+    "lint": "true",
+    "test": "true"
+  }
+}

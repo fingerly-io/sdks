@@ -1,0 +1,13 @@
+{
+  "name": "@badele/core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Framework-agnostic device/event core shared by every Badele SDK",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "true",
+    "lint": "true",
+    "test": "true"
+  }
+}
