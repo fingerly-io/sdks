@@ -3,3 +3,8 @@ dist/
 .turbo/
 *.local
 .DS_Store
+
+# Demo bundles. Built on demand from the sources beside them; see each demo's
+# notes for the command. Leading **/ because a pattern containing a slash is
+# anchored to this file's directory, and these live under packages/*/demo/.
+**/demo/bundle.js
