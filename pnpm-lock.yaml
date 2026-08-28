@@ -22,6 +22,16 @@ importers:
       react-native:
         specifier: '>=0.73'
         version: 0.87.1(@babel/core@7.29.7)(@types/react@19.2.18)(react@19.2.8)
+    devDependencies:
+      tsup:
+        specifier: ^8.3.5
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(typescript@5.9.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@26.4.0)(happy-dom@15.11.7)(lightningcss@1.33.0)(terser@5.51.2)
 
   packages/angular:
     dependencies:
@@ -74,9 +84,6 @@ importers:
       '@badele/react':
         specifier: workspace:*
         version: link:../react
-      next:
-        specifier: '>=15'
-        version: 16.3.3(@types/node@26.4.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
     devDependencies:
       '@badele/web-js':
         specifier: workspace:*
@@ -90,6 +97,9 @@ importers:
       happy-dom:
         specifier: ^15.11.7
         version: 15.11.7
+      next:
+        specifier: ^16.3.3
+        version: 16.3.3(@types/node@26.4.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react:
         specifier: ^19.2.8
         version: 19.2.8
