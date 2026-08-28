@@ -36,7 +36,15 @@ createServer(async (request, response) => {
 
   try {
     const body = await readFile(file)
-    response.writeHead(200, { 'content-type': TYPES[extname(file)] ?? 'application/octet-stream' })
+    response.writeHead(200, {
+      'content-type': TYPES[extname(file)] ?? 'application/octet-stream',
+      // Never cached, and the reason is worth the header. The bundle this
+      // serves is rebuilt while the page is open, and a browser heuristically
+      // caching it means a rebuild that appears to have done nothing - the
+      // detector still answers with the logic you just replaced, and the time
+      // goes into debugging the change rather than the bug.
+      'cache-control': 'no-store, max-age=0',
+    })
     response.end(body)
   } catch {
     response.writeHead(404).end('not found')

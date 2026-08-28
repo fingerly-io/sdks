@@ -16,18 +16,27 @@ import type { SignalReport, Verdict } from '../types.js'
 import { unknown, weigh, type Evidence } from './verdict.js'
 
 /**
- * Chromium's quota tell.
+ * Chromium's quota tells, and why there are two of them.
  *
- * A normal profile is offered a quota derived from free disk space, which is
- * measured in gigabytes. An incognito profile is capped - historically at
- * ~120MB, and on newer builds at a fraction of device memory. The absolute
- * number has moved several times, so the test is an order-of-magnitude one:
- * anything under a gigabyte on a desktop-class device is not a normal profile.
+ * A normal profile is offered a quota derived from free *disk*; an incognito
+ * one is derived from physical *memory*. That difference is the tell, and the
+ * shape it takes has moved twice.
  *
- * Kept as a threshold rather than an equality for exactly that reason. Every
- * implementation that hard-coded 120MB broke when Chrome changed it.
+ * Historically incognito was capped at ~120MB, so "under a gigabyte" caught it.
+ * That is no longer true and has not been for some time: measured on Chrome 151
+ * with 16GB reported, an incognito window is offered 3GiB against the same
+ * profile's ordinary 10GiB. The absolute test misses it by three gigabytes.
+ *
+ * What still separates them cleanly is the ratio to device memory - 0.1875
+ * incognito against 0.625 ordinary, on the same machine minutes apart. The
+ * ceiling below sits between the two with room on both sides rather than on
+ * either observation, because the next change will move them again.
+ *
+ * The absolute test is kept for older builds, where it is the one that fires.
+ * A profile that trips both is a profile two independent readings agree about.
  */
 const CHROMIUM_INCOGNITO_QUOTA_CEILING = 1_073_741_824 // 1 GiB
+const CHROMIUM_INCOGNITO_QUOTA_RATIO_CEILING = 0.3
 
 export function detectIncognito(report: SignalReport): Verdict {
   const storage = valueOf<StorageSignal>(report, SOURCE.storage)
@@ -55,15 +64,19 @@ export function detectIncognito(report: SignalReport): Verdict {
   }
 
   // --- Chromium -----------------------------------------------------------
-  if (observed === 'chromium' && typeof storage.quota === 'number') {
-    if (storage.quota < CHROMIUM_INCOGNITO_QUOTA_CEILING) {
+  if (observed === 'chromium') {
+    if (typeof storage.quota === 'number' && storage.quota < CHROMIUM_INCOGNITO_QUOTA_CEILING) {
       evidence.push({ reason: 'chromium-storage-quota-capped', weight: 1.3 })
     }
-    // The ratio is the sharper form of the same test on newer builds, where the
-    // incognito cap is derived from device memory rather than fixed. Added on
-    // top rather than instead, so the two agreeing reads as stronger evidence.
-    if (typeof storage.quota_ratio === 'number' && storage.quota_ratio < 0.1) {
-      evidence.push({ reason: 'chromium-storage-quota-ratio-low', weight: 0.5 })
+    // Enough to fire on its own, because on a current build it is the only one
+    // that fires at all. A threefold gap between the two windows on one machine
+    // is not weak evidence, and weighting it as though it were is how this
+    // detector came to report "no" from inside an incognito window.
+    if (
+      typeof storage.quota_ratio === 'number' &&
+      storage.quota_ratio < CHROMIUM_INCOGNITO_QUOTA_RATIO_CEILING
+    ) {
+      evidence.push({ reason: 'chromium-storage-quota-ratio-capped', weight: 1.3 })
     }
   }
 
