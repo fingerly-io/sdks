@@ -239,15 +239,13 @@ the client.
 verdict, all sharing one identification.
 
 ```
-pnpm --filter @badele/vue exec esbuild demo/main.ts \
-  --bundle --format=iife --platform=browser --target=es2020 \
-  --define:__VUE_OPTIONS_API__=true \
-  --define:__VUE_PROD_DEVTOOLS__=false \
-  --define:__VUE_PROD_HYDRATION_MISMATCH_DETAILS__=false \
-  --outfile=demo/bundle.js
-
-python3 -m http.server 4174 --directory packages/vue/demo
+pnpm --filter @badele/vue demo   # http://localhost:4174
 ```
 
-Serve it rather than opening the file: several sources need a secure context,
-and `file://` is not one. It uses `submit: false`, so it sends nothing.
+That bundles `demo/main.ts` — the binding, the SDK and Vue's runtime in one
+file, because `demo/index.html` is a plain `<script>` tag — and serves it.
+
+It is served rather than opened from disk because several sources need a
+secure context and `file://` is not one; the incognito verdict is the clearest
+case, since the probe it rests on is not exposed outside one. It uses
+`submit: false`, so it sends nothing.

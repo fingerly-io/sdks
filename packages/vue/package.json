@@ -25,7 +25,8 @@
   "scripts": {
     "build": "tsup",
     "lint": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "demo": "tsup --config tsup.demo.config.ts && node demo/serve.mjs"
   },
   "devDependencies": {
     "happy-dom": "^15.11.7",
