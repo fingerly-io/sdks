@@ -127,10 +127,11 @@ describe('BadeleProvider', () => {
       thrown = error
     }
 
+    // The route that always works comes first, because the other one has a
+    // condition on it that a reader cannot be expected to know.
+    expect((thrown as Error).message).toMatch(/apiKey=\{process\.env/)
     expect((thrown as Error).message).toMatch(/NEXT_PUBLIC_BADELE_API_KEY/)
-    // The mistake this catches is a key set without the prefix, which Next
-    // simply does not expose to the browser - so the message says why.
-    expect((thrown as Error).message).toMatch(/NEXT_PUBLIC_ prefix/)
+    expect((thrown as Error).message).toMatch(/transpilePackages/)
   })
 
   it('collects nothing on its own', () => {
@@ -144,6 +145,27 @@ describe('BadeleProvider', () => {
 
     expect(loadMock).not.toHaveBeenCalled()
     expect(identifyMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('the environment read', () => {
+  it('is a literal member expression, because Next replaces nothing else', async () => {
+    // The regression this pins was found by running the demo, not by a test:
+    // the first version read `const env = process.env` and then
+    // `env.NEXT_PUBLIC_BADELE_API_KEY`, which Next cannot replace while
+    // bundling. The server render found the key and hydration threw.
+    //
+    // Asserted against the source rather than the behaviour, because the
+    // behaviour is a bundler's and no unit test has one.
+    const { readFile } = await import('node:fs/promises')
+    // Relative to the package root, which is where vitest runs from.
+    const source = await readFile('src/provider.tsx', 'utf8')
+
+    expect(source).toContain('process.env.NEXT_PUBLIC_BADELE_API_KEY')
+    expect(source).toContain('process.env.NEXT_PUBLIC_BADELE_ENDPOINT')
+    // No hoisting: `= process.env` followed by a property read is the shape
+    // that survives the build and breaks in the browser.
+    expect(source).not.toMatch(/=\s*process\.env\s*[;\n]/)
   })
 })
 

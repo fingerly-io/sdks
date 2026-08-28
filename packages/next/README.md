@@ -14,16 +14,31 @@ pnpm add @badele/next
 
 ## Configure
 
-```
-# .env.local
-NEXT_PUBLIC_BADELE_API_KEY=pk_live_…
+Read the key in a Server Component and pass it down:
+
+```tsx
+// app/layout.tsx — a Server Component
+<BadeleProvider apiKey={process.env.BADELE_API_KEY}>{children}</BadeleProvider>
 ```
 
-`NEXT_PUBLIC_` is the right prefix and not a compromise. This is a **public**
-SDK key, scoped to the origins you list against it, and it is meant to be
-readable in the page — that scoping is what makes it safe. A **secret** key is
-refused by the API whenever a request carries an `Origin`, so the mistake this
-prefix invites cannot silently work.
+That is the arrangement that always works, and it is worth understanding why
+rather than copying. A server render reads `process.env` at runtime, so any
+variable name will do — no `NEXT_PUBLIC_` prefix needed — and the value reaches
+the browser through the RSC payload, which is where a public SDK key was
+always going to end up.
+
+The provider will also read `NEXT_PUBLIC_BADELE_API_KEY` and
+`NEXT_PUBLIC_BADELE_ENDPOINT` itself, but that path has a condition on it:
+Next inlines `NEXT_PUBLIC_` variables **while compiling**, and it does not
+compile your dependencies. In a published build the read survives as a
+`process.env` lookup, and in a browser there is no `process` — the server
+render finds the key, hydration does not, and the page throws. It works if
+your app lists `@badele/next` in `transpilePackages`; the prop above needs no
+such condition, which is why it is the documented route.
+
+Either way the key is a **public** SDK key, scoped to the origins you list
+against it. A **secret** key is refused by the API whenever a request carries
+an `Origin`, so the mistake either route invites cannot silently work.
 
 ## Add the provider
 
@@ -35,7 +50,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html>
       <body>
-        <BadeleProvider>{children}</BadeleProvider>
+        <BadeleProvider apiKey={process.env.BADELE_API_KEY}>{children}</BadeleProvider>
       </body>
     </html>
   )
@@ -130,6 +145,25 @@ Both halves agree on the field name through one exported constant,
 A Server Action that imported `readRequestId` from the main entry would get a
 client reference rather than a function: the import succeeds and the call fails
 at runtime, which is the worst way to learn about a boundary. Hence the split.
+
+## Running the demo
+
+`demo/` is a real Next application — a Server Component layout, a client page,
+and a Server Action reading the field back:
+
+```
+pnpm --filter @badele/next demo   # http://localhost:4178
+```
+
+It collects and scores locally and submits nothing until you give it somewhere
+to submit: put `BADELE_API_KEY`, `BADELE_ENDPOINT` and `BADELE_SUBMIT=true` in
+`demo/.env.local` (gitignored), with a key whose allowed origins include the
+port you are running it on. Then the identification produces a real
+`requestId`, the hidden field carries it, and the action prints the one it
+read.
+
+Open it twice — an ordinary window and a private one — and watch the incognito
+card change.
 
 ## What this deliberately does not do
 

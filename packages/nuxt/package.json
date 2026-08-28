@@ -24,7 +24,8 @@
     "build": "tsup",
     "lint": "tsc --noEmit",
     "test": "vitest run",
-    "playground": "nuxi dev playground"
+    "playground": "nuxi dev playground",
+    "demo": "nuxi dev playground"
   },
   "devDependencies": {
     "@badele/web-js": "workspace:*",

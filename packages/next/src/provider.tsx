@@ -14,7 +14,7 @@ import type { ReactNode } from 'react'
  * Node's global types into it to read two strings would put `Buffer` and
  * `setImmediate` in scope for code that must not use them.
  */
-declare const process: { env?: Record<string, string | undefined> } | undefined
+declare const process: { env: Record<string, string | undefined> } | undefined
 
 export interface BadeleNextProviderProps {
   /** Overrides `NEXT_PUBLIC_BADELE_API_KEY`. */
@@ -36,16 +36,23 @@ export interface BadeleNextProviderProps {
  * empty in production the moment hydration takes over.
  */
 function fromEnvironment(): { apiKey?: string; endpoint?: string } {
-  const environment = typeof process === 'undefined' ? undefined : process?.env
-  if (!environment) return {}
+  // Written out in full, twice, and not hoisted into a variable. Next replaces
+  // the *exact* member expression `process.env.NEXT_PUBLIC_…` while bundling;
+  // `const env = process.env` followed by `env.NEXT_PUBLIC_…` is a dynamic
+  // property access it cannot see, which survives the build and reads
+  // undefined in a browser where there is no `process` at all.
+  //
+  // That is not hypothetical - it is what the first version of this file did.
+  // The server render found the key (a real `process.env` lives there) and
+  // hydration threw "No Badele key", so the page rendered and then died.
+  const apiKey =
+    typeof process === 'undefined' ? undefined : process.env.NEXT_PUBLIC_BADELE_API_KEY
+  const endpoint =
+    typeof process === 'undefined' ? undefined : process.env.NEXT_PUBLIC_BADELE_ENDPOINT
 
   return {
-    ...(environment.NEXT_PUBLIC_BADELE_API_KEY === undefined
-      ? {}
-      : { apiKey: environment.NEXT_PUBLIC_BADELE_API_KEY }),
-    ...(environment.NEXT_PUBLIC_BADELE_ENDPOINT === undefined
-      ? {}
-      : { endpoint: environment.NEXT_PUBLIC_BADELE_ENDPOINT }),
+    ...(apiKey === undefined || apiKey === '' ? {} : { apiKey }),
+    ...(endpoint === undefined || endpoint === '' ? {} : { endpoint }),
   }
 }
 
@@ -79,10 +86,14 @@ export function BadeleProvider(props: BadeleNextProviderProps): ReactNode {
 
   if (!apiKey) {
     throw new Error(
-      'No Badele key. Set NEXT_PUBLIC_BADELE_API_KEY in .env.local, or pass one:\n\n' +
-        "  <BadeleProvider apiKey='pk_live_…'>\n\n" +
-        'It must carry the NEXT_PUBLIC_ prefix - Next only exposes those to the browser, ' +
-        'and this key is read there.',
+      'No Badele key. Pass one from a Server Component, which is the arrangement that ' +
+        'always works:\n\n' +
+        '  // app/layout.tsx\n' +
+        '  <BadeleProvider apiKey={process.env.BADELE_API_KEY}>\n\n' +
+        'Reading it here instead works only where this package is compiled by your app - ' +
+        "an app that lists it in `transpilePackages` and sets NEXT_PUBLIC_BADELE_API_KEY. A published " +
+        'build cannot rely on that: Next inlines NEXT_PUBLIC_ variables while compiling, and ' +
+        'a dependency it does not compile keeps a `process.env` lookup that is undefined in a browser.',
     )
   }
 

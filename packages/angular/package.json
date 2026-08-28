@@ -24,7 +24,8 @@
     "build": "tsc -p tsconfig.build.json",
     "lint": "tsc --noEmit",
     "test": "vitest run",
-    "playground": "vite --config playground/vite.config.ts"
+    "playground": "vite --config playground/vite.config.ts",
+    "demo": "vite --config playground/vite.config.ts"
   },
   "devDependencies": {
     "@angular/common": "^22.1.4",
