@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // No rootDir/outDir here: this config is the typechecker (`noEmit`), and
+    // tsconfig.build.json is the one that emits.
+    "noEmit": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    // Svelte declares the runes - $state, $derived, $effect - as globals.
+    // Without this they are undefined names in every .svelte.ts file here.
+    "types": ["svelte"]
+  },
+  "include": ["src", "tests"]
+}

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Badele — Svelte binding</title>
+    <style>
+      :root {
+        --bg: #0f1115; --panel: #171a21; --line: #262b36;
+        --text: #e6e8ee; --dim: #8b93a7; --accent: #7dd3fc; --hit: #f87171;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; padding: 24px; background: var(--bg); color: var(--text); font-size: 13px; }
+      h1 { font-size: 16px; margin: 0 0 16px; }
+      h3 { font-size: 11px; margin: 0 0 8px; color: var(--dim);
+           text-transform: uppercase; letter-spacing: 0.08em; }
+      .bar { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; }
+      button { font: inherit; background: var(--panel); color: var(--accent);
+               border: 1px solid var(--accent); border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+      .status { color: var(--dim); }
+      .card { background: var(--panel); border: 1px solid var(--line);
+              border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+      .row { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; }
+      .row .k { color: var(--dim); }
+      .row .v.hit { color: var(--hit); font-weight: bold; }
+      .reasons { margin: 6px 0 0; padding-left: 16px; color: var(--dim); font-size: 11px; }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

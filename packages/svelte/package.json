@@ -2,18 +2,36 @@
   "name": "@badele/svelte",
   "version": "0.0.0",
   "private": true,
-  "description": "Svelte bindings for the Badele SDK",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "description": "Svelte 5 bindings for the Badele SDK",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "svelte": "./dist/index.js",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "sideEffects": false,
   "dependencies": {
     "@badele/web-js": "workspace:*"
   },
   "peerDependencies": {
-    "svelte": ">=4"
+    "svelte": ">=5"
   },
   "scripts": {
-    "build": "true",
-    "lint": "true",
-    "test": "true"
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "playground": "vite --config playground/vite.config.ts"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^4.0.4",
+    "svelte": "^5.56.10",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.21",
+    "vitest": "^2.1.8"
   }
 }

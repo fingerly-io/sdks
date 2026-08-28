@@ -1,0 +1,232 @@
+/**
+ * The binding, mounted as real components.
+ *
+ * `@badele/web-js`'s `load()` is mocked, because what is under test is the
+ * Svelte layer - context, sharing, reactivity, the confidence floor - and not
+ * whether a canvas hashes. The browser SDK has its own tests for that.
+ *
+ * Components rather than direct calls to the exported functions: `$effect`
+ * only runs inside a component, and context only exists inside one, so a test
+ * that called `useIdentify()` on its own would be testing neither.
+ */
+
+import { flushSync, mount, unmount } from 'svelte'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+const identifyMock = vi.fn()
+const loadMock = vi.fn()
+
+vi.mock('@badele/web-js', () => ({
+  load: (...args: unknown[]) => loadMock(...args),
+  TransportError: class TransportError extends Error {},
+}))
+
+const Page = (await import('./fixtures/Page.svelte')).default
+const Orphan = (await import('./fixtures/Orphan.svelte')).default
+
+const verdict = (value: boolean, confidence: 'low' | 'medium' | 'high', reasons: string[] = []) => ({
+  value,
+  confidence,
+  reasons,
+})
+
+const RESULT = {
+  requestId: 'req_1',
+  verdicts: {
+    incognito: verdict(true, 'medium', ['firefox-private-origin-filesystem-refused']),
+    tor: verdict(false, 'low'),
+    emulator: verdict(false, 'low'),
+    automation: verdict(true, 'high', ['patched-natives-3']),
+    farm: verdict(false, 'low'),
+  },
+  report: { schema: 1, sources: {}, elapsed_ms: 31 },
+}
+
+interface Mounted {
+  target: HTMLElement
+  text: () => string
+  state: { identify: (options?: { tag?: string; force?: boolean }) => Promise<unknown> }
+  destroy: () => void
+}
+
+function render(props: Record<string, unknown>): Mounted {
+  const target = document.createElement('div')
+  document.body.appendChild(target)
+
+  const component = mount(Page, { target, props }) as unknown as Mounted['state'] & {
+    state: Mounted['state']
+  }
+  flushSync()
+
+  return {
+    target,
+    text: () => target.textContent?.replace(/\s+/g, ' ').trim() ?? '',
+    state: component.state,
+    destroy: () => void unmount(component),
+  }
+}
+
+/**
+ * Let the mocked promises settle, then let Svelte apply what changed.
+ *
+ * A macrotask rather than a couple of `await Promise.resolve()`: identifying
+ * runs through the client promise, the identify promise and a `finally`, and
+ * counting the microtasks between them is a test that breaks whenever that
+ * chain gains a link.
+ */
+async function settle(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  flushSync()
+}
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  document.body.innerHTML = ''
+  identifyMock.mockResolvedValue(RESULT)
+  loadMock.mockResolvedValue({ identify: identifyMock })
+})
+
+describe('setupBadele', () => {
+  it('collects nothing on mount', () => {
+    render({ options: { apiKey: 'pk_test' } })
+
+    // Setting up makes the client reachable and no more. A setup that
+    // fingerprinted would run during every server render as well.
+    expect(loadMock).not.toHaveBeenCalled()
+    expect(identifyMock).not.toHaveBeenCalled()
+  })
+
+  it('passes the endpoint through, and omits it when unset', async () => {
+    const page = render({ options: { apiKey: 'pk_test', endpoint: 'http://localhost:8099' } })
+    await page.state.identify()
+
+    expect(loadMock).toHaveBeenCalledWith({ apiKey: 'pk_test', endpoint: 'http://localhost:8099' })
+  })
+})
+
+describe('useBadele', () => {
+  it('explains itself when nothing was set up', () => {
+    const target = document.createElement('div')
+
+    expect(() => mount(Orphan, { target })).toThrow(/No Badele context/)
+    expect(() => mount(Orphan, { target })).toThrow(/setupBadele/)
+  })
+})
+
+describe('useIdentify', () => {
+  it('collects on mount when immediate is set, and the template follows', async () => {
+    const page = render({ options: { apiKey: 'pk_test' }, immediate: true })
+
+    expect(page.text()).toContain('ready:false')
+
+    await settle()
+
+    // No store, no subscription, no $ prefix: the template read a property and
+    // Svelte re-rendered it.
+    expect(page.text()).toContain('ready:true')
+    expect(page.text()).toContain('request:req_1')
+    expect(page.text()).toContain('suspicious:true')
+    expect(page.text()).toContain('loading:false')
+  })
+
+  it('shares one identification across every component that asks', async () => {
+    const page = render({ options: { apiKey: 'pk_test' }, immediate: true, children: 3 })
+    await settle()
+
+    expect(identifyMock).toHaveBeenCalledTimes(1)
+
+    const children = [...page.target.querySelectorAll('.child')].map((node) => node.textContent)
+    expect(children).toEqual(['req_1', 'req_1', 'req_1'])
+  })
+
+  it('reuses a finished identification rather than repeating it', async () => {
+    const page = render({ options: { apiKey: 'pk_test' } })
+
+    await page.state.identify()
+    await page.state.identify()
+
+    expect(identifyMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('starts a fresh one when forced', async () => {
+    const page = render({ options: { apiKey: 'pk_test' } })
+
+    await page.state.identify()
+    await page.state.identify({ force: true })
+
+    expect(identifyMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('reads a getter tag at submission time', async () => {
+    let orderId = 'order_1'
+    const page = render({ options: { apiKey: 'pk_test' }, tag: () => orderId })
+
+    orderId = 'order_2'
+    await page.state.identify()
+
+    expect(identifyMock).toHaveBeenCalledWith({ tag: 'order_2' })
+  })
+
+  it('records a failure without leaving an unhandled rejection', async () => {
+    identifyMock.mockRejectedValue(new Error('collector exploded'))
+    const page = render({ options: { apiKey: 'pk_test' }, immediate: true })
+
+    await settle()
+
+    expect(page.text()).toContain('error:collector exploded')
+    expect(page.text()).toContain('ready:true')
+  })
+
+  it('retries after a failure rather than serving the rejection forever', async () => {
+    identifyMock.mockRejectedValueOnce(new Error('collector exploded'))
+    const page = render({ options: { apiKey: 'pk_test' } })
+
+    await page.state.identify().catch(() => undefined)
+    await page.state.identify()
+
+    expect(identifyMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('leaves requestId null when submit is off, and still shares the run', async () => {
+    identifyMock.mockResolvedValue({ ...RESULT, requestId: '' })
+    const page = render({
+      options: { apiKey: 'pk_test', submit: false },
+      immediate: true,
+      children: 2,
+    })
+
+    await settle()
+
+    expect(identifyMock).toHaveBeenCalledTimes(1)
+    expect(identifyMock).toHaveBeenCalledWith({ submit: false })
+    expect(page.text()).toContain('request:-')
+  })
+})
+
+describe('useVerdict', () => {
+  it('reports one verdict and its reasons', async () => {
+    const page = render({ options: { apiKey: 'pk_test' }, immediate: true })
+    await settle()
+
+    expect(page.text()).toContain('incognito:true')
+    expect(page.text()).toContain('confidence:medium')
+    expect(page.text()).toContain('reasons:firefox-private-origin-filesystem-refused')
+  })
+
+  it('honours a confidence floor', async () => {
+    const page = render({ options: { apiKey: 'pk_test' }, immediate: true, min: 'high' })
+    await settle()
+
+    // Fired, but at medium - not enough to act on when high was asked for.
+    expect(page.text()).toContain('incognito:false')
+    expect(page.text()).toContain('confidence:medium')
+  })
+
+  it('reports nothing rather than guessing before identification', () => {
+    const page = render({ options: { apiKey: 'pk_test' } })
+
+    expect(page.text()).toContain('incognito:false')
+    expect(page.text()).toContain('confidence:-')
+    expect(page.text()).toContain('reasons:-')
+  })
+})

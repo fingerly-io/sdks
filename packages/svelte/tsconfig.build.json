@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "rootDir": "src",
+    "outDir": "dist",
+    // Emitted, not bundled, and that is the requirement rather than a
+    // preference: the runes in `*.svelte.ts` are compiled by the *app's*
+    // Svelte plugin, which decides what to compile by the file name. Bundling
+    // them into an `index.js` would hand the app a file full of `$state(...)`
+    // that nothing compiles, and `$state is not defined` at runtime.
+    "target": "ES2022"
+  },
+  "include": ["src"]
+}
