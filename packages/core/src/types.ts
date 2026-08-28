@@ -7,7 +7,22 @@
  */
 
 /** Which SDK collected a report. Mirrors `schemas.SDKInfo` on the server. */
-export type SdkPlatform = 'web' | 'android' | 'ios' | 'react-native' | 'flutter'
+/**
+ * The cross-platform values name the host as well as the toolkit, because the
+ * server maps an SDK platform onto one of three scoring profiles by looking for
+ * `ios` or `android` in the string — see `models.RiskPlatformFor`. A React
+ * Native app reporting only `react-native` falls through to the browser
+ * profile, where `jailbreak` is not a signal at all and everything the native
+ * SDK went to the trouble of collecting is worth nothing.
+ */
+export type SdkPlatform =
+  | 'web'
+  | 'android'
+  | 'ios'
+  | 'react-native-ios'
+  | 'react-native-android'
+  | 'flutter-ios'
+  | 'flutter-android'
 
 /**
  * How a source finished.
@@ -152,6 +167,89 @@ export interface Verdicts {
    * a device that looks mass-provisioned or reset-fresh.
    */
   farm: Verdict
+}
+
+/**
+ * The verdicts a native application can reach, on either platform.
+ *
+ * Separate from [[Verdicts]] rather than an extension of it, because the two
+ * sets barely overlap. A page approximates `emulator` from a software renderer
+ * and a suspicious pixel ratio; an app reads `SIMULATOR_ROOT` out of its own
+ * environment and knows. A browser cannot look for an injected library at all.
+ * Folding them into one interface would mean every field optional, which would
+ * make "this platform cannot answer that" and "that answer was false" the same
+ * value — the distinction the whole `SignalStatus` design exists to preserve.
+ */
+export interface NativeVerdicts {
+  /** Frida, Substrate, Substitute, ElleKit — anything rewriting the process. */
+  instrumentation: Verdict
+  /** Something intercepting the app's own TLS. */
+  mitm: Verdict
+  /** A debugger or a UI-test runner driving the process. */
+  automation: Verdict
+  /** Hooked functions, injected images, a signature that is not the app's. */
+  tampering: Verdict
+  /**
+   * A device that looks mass-provisioned or reset-fresh.
+   *
+   * The half one device can see about itself: no passcode, no biometry
+   * enrolled, every setting at its factory default, an empty disk. The
+   * conclusive half — N identical devices behind one address — is the server's.
+   */
+  farm: Verdict
+}
+
+/** What an iOS device can be asked. */
+export interface IosVerdicts extends NativeVerdicts {
+  jailbreak: Verdict
+  simulator: Verdict
+}
+
+/** What an Android device can be asked. */
+export interface AndroidVerdicts extends NativeVerdicts {
+  root: Verdict
+  emulator: Verdict
+  /** An app running under a cloning framework — one device, a hundred accounts. */
+  appCloner: Verdict
+}
+
+/**
+ * Both platforms' verdicts in one shape, as the cross-platform SDKs return them.
+ *
+ * Not `IosVerdicts | AndroidVerdicts`. The union is more honest about the
+ * difference and it makes every call site narrow on the platform before it can
+ * read a field — which is the wrong trade for a binding whose entire purpose is
+ * writing the check once. `if (verdicts.jailbreak.value)` in code that runs on
+ * both platforms is the normal case, not the exception.
+ *
+ * The distinction is not lost, only moved. A member the platform cannot answer
+ * comes back as `{ value: false, confidence: 'low', reasons: [] }` — an empty
+ * `reasons` beside a false is what "this could not be asked" looks like, and it
+ * is the same convention `unknown()` uses in every detector in this codebase. A
+ * caller that needs to tell "we looked and found nothing" from "there was
+ * nothing to look at" reads `reasons.length`.
+ *
+ * The narrow types above remain, for a caller that has already established
+ * which platform it is on and wants the compiler to know.
+ */
+export interface MobileVerdicts extends NativeVerdicts {
+  /** iOS. Unknown on Android. */
+  jailbreak: Verdict
+  /** iOS. Unknown on Android. */
+  simulator: Verdict
+  /** Android. Unknown on iOS. */
+  root: Verdict
+  /** Android. Unknown on iOS. */
+  emulator: Verdict
+  /** Android. Unknown on iOS. */
+  appCloner: Verdict
+}
+
+/** What a native `identify()` resolves with. See [[IdentifyResult]]. */
+export interface NativeIdentifyResult {
+  requestId: string
+  verdicts: MobileVerdicts
+  report: SignalReport
 }
 
 /** A submission, as the body of `POST /api/v1/identify`. */
