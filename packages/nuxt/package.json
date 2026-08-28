@@ -2,18 +2,38 @@
   "name": "@badele/nuxt",
   "version": "0.0.0",
   "private": true,
-  "description": "Nuxt module wrapping @badele/vue and @badele/web-js",
-  "main": "dist/module.js",
-  "types": "dist/types.d.ts",
+  "description": "Nuxt module wrapping @badele/vue",
+  "type": "module",
+  "main": "./dist/module.js",
+  "types": "./dist/module.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/module.d.ts",
+      "import": "./dist/module.js"
+    }
+  },
+  "files": ["dist"],
   "dependencies": {
-    "@badele/vue": "workspace:*"
+    "@badele/vue": "workspace:*",
+    "@nuxt/kit": "^4.5.2"
   },
   "peerDependencies": {
     "nuxt": ">=3"
   },
   "scripts": {
-    "build": "true",
-    "lint": "true",
-    "test": "true"
+    "build": "tsup",
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "playground": "nuxi dev playground"
+  },
+  "devDependencies": {
+    "@badele/web-js": "workspace:*",
+    "@nuxt/schema": "^4.5.2",
+    "happy-dom": "^15.11.7",
+    "nuxt": "^4.5.2",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8",
+    "vue": "^3.5.42"
   }
 }

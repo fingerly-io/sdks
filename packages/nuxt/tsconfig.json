@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // No rootDir/outDir: tsup builds this package, and `tsc` is only ever run
+    // as a typechecker (`noEmit`).
+    "noEmit": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "paths": {
+      // Nuxt's virtual module. It exists only inside a Nuxt build, so the
+      // typechecker and the tests are pointed at the same stub - which is also
+      // what lets the tests exercise the plugin file that actually ships.
+      "#app": ["./tests/stubs/nuxt-app.ts"]
+    }
+  },
+  "include": ["src", "tests"]
+}
