@@ -25,12 +25,37 @@ importers:
 
   packages/angular:
     dependencies:
-      '@angular/core':
-        specifier: '>=17'
-        version: 22.1.4(rxjs@7.8.2)
       '@badele/web-js':
         specifier: workspace:*
         version: link:../web-js
+    devDependencies:
+      '@angular/common':
+        specifier: ^22.1.4
+        version: 22.1.4(@angular/core@22.1.4(@angular/compiler@22.1.4)(rxjs@7.8.2))(rxjs@7.8.2)
+      '@angular/compiler':
+        specifier: ^22.1.4
+        version: 22.1.4
+      '@angular/core':
+        specifier: ^22.1.4
+        version: 22.1.4(@angular/compiler@22.1.4)(rxjs@7.8.2)
+      '@angular/platform-browser':
+        specifier: ^22.1.4
+        version: 22.1.4(@angular/common@22.1.4(@angular/core@22.1.4(@angular/compiler@22.1.4)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.4(@angular/compiler@22.1.4)(rxjs@7.8.2))
+      happy-dom:
+        specifier: ^15.11.7
+        version: 15.11.7
+      rxjs:
+        specifier: ^7.8.2
+        version: 7.8.2
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vite:
+        specifier: ^5.4.21
+        version: 5.4.21(@types/node@26.4.0)(lightningcss@1.33.0)(terser@5.51.2)
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@26.4.0)(happy-dom@15.11.7)(lightningcss@1.33.0)(terser@5.51.2)
 
   packages/core:
     devDependencies:
@@ -217,6 +242,17 @@ importers:
 
 packages:
 
+  '@angular/common@22.1.4':
+    resolution: {integrity: sha512-UtWCloA/d0I5twV9Lu/Fcc7T6uQb40f/k0Hj5HLohIsiLTyvXVxWINBfa7LWWLtcq/0UOIY/yCs9Zq9Sj4dWqA==}
+    engines: {node: ^22.22.3 || ^24.15.0 || >=26.0.0}
+    peerDependencies:
+      '@angular/core': 22.1.4
+      rxjs: ^6.5.3 || ^7.4.0
+
+  '@angular/compiler@22.1.4':
+    resolution: {integrity: sha512-o+W0shjR5KmPPWchFmqN9bLINYAy14zIW//g9T5WqKDMOqjt4IbeY6AKOoE1db/dXffprLEH9nyPOmi19iKNxg==}
+    engines: {node: ^22.22.3 || ^24.15.0 || >=26.0.0}
+
   '@angular/core@22.1.4':
     resolution: {integrity: sha512-0dW+lw8nHo6RGBUOXtjs02vjHIPJ8rEbw4fd0NH3Dii4p+gIB4ZaTw+o7Se3Nf4m1oZ8+2qAYmWVHXlfhKcCDg==}
     engines: {node: ^22.22.3 || ^24.15.0 || >=26.0.0}
@@ -228,6 +264,17 @@ packages:
       '@angular/compiler':
         optional: true
       zone.js:
+        optional: true
+
+  '@angular/platform-browser@22.1.4':
+    resolution: {integrity: sha512-zhEWnRShG6GjnEvCVROD68XfnrV6+HJ9bPjwZx4LsAz7spX823Nhiml8Uqpvijsa1w7UdWLU7nK/magr9IEMOQ==}
+    engines: {node: ^22.22.3 || ^24.15.0 || >=26.0.0}
+    peerDependencies:
+      '@angular/animations': 22.1.4
+      '@angular/common': 22.1.4
+      '@angular/core': 22.1.4
+    peerDependenciesMeta:
+      '@angular/animations':
         optional: true
 
   '@babel/code-frame@7.29.7':
@@ -4749,9 +4796,27 @@ packages:
 
 snapshots:
 
-  '@angular/core@22.1.4(rxjs@7.8.2)':
+  '@angular/common@22.1.4(@angular/core@22.1.4(@angular/compiler@22.1.4)(rxjs@7.8.2))(rxjs@7.8.2)':
+    dependencies:
+      '@angular/core': 22.1.4(@angular/compiler@22.1.4)(rxjs@7.8.2)
+      rxjs: 7.8.2
+      tslib: 2.8.1
+
+  '@angular/compiler@22.1.4':
+    dependencies:
+      tslib: 2.8.1
+
+  '@angular/core@22.1.4(@angular/compiler@22.1.4)(rxjs@7.8.2)':
     dependencies:
       rxjs: 7.8.2
+      tslib: 2.8.1
+    optionalDependencies:
+      '@angular/compiler': 22.1.4
+
+  '@angular/platform-browser@22.1.4(@angular/common@22.1.4(@angular/core@22.1.4(@angular/compiler@22.1.4)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.1.4(@angular/compiler@22.1.4)(rxjs@7.8.2))':
+    dependencies:
+      '@angular/common': 22.1.4(@angular/core@22.1.4(@angular/compiler@22.1.4)(rxjs@7.8.2))(rxjs@7.8.2)
+      '@angular/core': 22.1.4(@angular/compiler@22.1.4)(rxjs@7.8.2)
       tslib: 2.8.1
 
   '@babel/code-frame@7.29.7':

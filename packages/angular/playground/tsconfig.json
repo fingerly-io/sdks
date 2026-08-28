@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // Angular's decorators are the legacy kind, and its fields must not be
+    // defined with [[Define]] semantics - both are what the Angular CLI sets
+    // for an application, and the playground is an application.
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false
+  },
+  "include": ["."]
+}
