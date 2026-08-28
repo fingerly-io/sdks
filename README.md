@@ -23,7 +23,10 @@ repo relates to `server` and `panels`.
   [README](mobile/ios/README.md). Ships an SPM package and a podspec, because
   React Native and Flutter integrate native code through CocoaPods and neither
   can consume a Swift package from a plugin.
-- `mobile/android` — the native Android SDK. Not written yet.
+- `mobile/android` — the native Android SDK (Kotlin). Implemented; see its
+  [README](mobile/android/README.md). One dependency (coroutines), no JNI, and
+  two install-time permissions that prompt nobody. Publishes an AAR as
+  `io.badele:badele`, which is what the two bridges depend on.
 - `mobile/react-native`, `mobile/flutter` — bridges to the native SDKs, not
   second implementations. Both are thin on purpose: almost every signal worth
   having on a phone is unreachable from JavaScript or Dart, so a cross-platform
@@ -65,31 +68,42 @@ written out there.
 
 ## Status
 
-`core`, `web-js`, the framework bindings and `mobile/ios` are implemented. The
-Node SDK and the Android SDK are not. See [`todo.md`](todo.md) for what is done,
+`core`, `web-js`, the framework bindings, `mobile/ios` and `mobile/android` are
+implemented. The Node SDK is not. See [`todo.md`](todo.md) for what is done,
 what was measured, and what is left, and
 [`docs/another library-teardown.md`](docs/another library-teardown.md) for the
 another library teardown the design argues against.
 
 ## One envelope, three platforms
 
-A browser and an iPhone submit the same `SignalReport`: a schema version, a
-budget, the tiers that ran, a map of sources each carrying a status and a
-duration, and the tamper layer's findings. What differs is which sources are in
-the map.
+A browser, an iPhone and an Android phone submit the same `SignalReport`: a
+schema version, a budget, the tiers that ran, a map of sources each carrying a
+status and a duration, and the tamper layer's findings. What differs is which
+sources are in the map.
 
 That is what lets the server have one reader (`server/domain/risk/report.go`)
 and one set of rules, and it is why `packages/core`'s `types.ts` is the only
 place the shape is written down — `mobile/ios/Sources/Badele/Core/Types.swift`
-is a literal port of it, field for field, because both ends were already
-written.
+and `mobile/android/.../core/Types.kt` are literal ports of it, field for field,
+because both ends were already written.
 
 Native SDKs additionally emit a `device` source, which is the one thing the
-server reads *by name*: `jailbreak`, `simulator`, `frida`, `mitm_attack`,
-`developer_tools`, `tampering`, `device_farm`, `vpn_mobile`, and the
-`timezone`/`locale` pair the geo-mismatch rule needs. Those are assertions
-rather than observations — only the process can answer them — so the SDK states
-them and the server records them.
+server reads *by name*. Four flags are shared — `frida`, `mitm_attack`,
+`developer_tools`, `device_farm` — and each platform adds its own: `jailbreak`
+and `simulator` on iOS, `root_apps`, `emulator` and `cloned_app` on Android.
+Both also carry `tampering`, `vpn_mobile` and the `timezone`/`locale` pair the
+geo-mismatch rule needs.
+
+Three of the Android keys are spelled differently from the verdict that produces
+them — `root_apps` from `root`, `cloned_app` from `appCloner`,
+`developer_tools` from `automation` — because `risk.androidFlags` is the
+authority on the wire names and the SDK's are named for what they are. A typo in
+either direction fails silently at every layer: the submission succeeds, the
+event is stored, and a signal the customer is paying for never fires. Both ends
+have a contract test pinning the same list for exactly that reason.
+
+Those flags are assertions rather than observations — only the process can
+answer them — so the SDK states them and the server records them.
 
 ## Using it
 
