@@ -1,0 +1,870 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Badele — Signal Playground</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+              mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+            },
+            colors: {
+              ink: {
+                950: '#07080b',
+                900: '#0b0d12',
+                850: '#0f1218',
+                800: '#141821',
+                700: '#1c212d',
+                600: '#252b3a',
+              },
+              haze: { DEFAULT: '#8590a8', bright: '#aab3c5' },
+            },
+          },
+        },
+      }
+    </script>
+
+    <style>
+      /*
+        Everything Tailwind cannot say: the grain, the scrollbars, the score
+        arc's transition, and the one keyframe. Kept small on purpose - the
+        layout is all utility classes, so a change to the design is a change to
+        the markup rather than to a stylesheet nobody reads.
+      */
+      :root {
+        color-scheme: dark;
+      }
+      body {
+        /* A very faint radial wash, so the page has a light source rather than
+           being a flat rectangle of grey. */
+        background-image:
+          radial-gradient(60rem 40rem at 12% -10%, rgba(124, 92, 255, 0.09), transparent 60%),
+          radial-gradient(50rem 34rem at 92% 0%, rgba(34, 211, 238, 0.06), transparent 55%);
+        background-attachment: fixed;
+      }
+      ::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #252b3a;
+        border-radius: 999px;
+        border: 3px solid transparent;
+        background-clip: content-box;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #333b4f;
+        background-clip: content-box;
+      }
+      .arc {
+        transition: stroke-dashoffset 900ms cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      @keyframes sweep {
+        0% {
+          transform: translateX(-100%);
+        }
+        100% {
+          transform: translateX(320%);
+        }
+      }
+      .sweep::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        width: 32%;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.07), transparent);
+        animation: sweep 1.4s ease-in-out infinite;
+      }
+      /* The hairline that separates rows without drawing a full table. */
+      .hair > * + * {
+        border-top: 1px solid #1c212d;
+      }
+    </style>
+  </head>
+
+  <body class="min-h-screen bg-ink-950 font-sans text-[15px] text-slate-200 antialiased selection:bg-violet-500/30">
+    <!-- ───────────────────────── top bar ───────────────────────── -->
+    <header class="sticky top-0 z-30 border-b border-ink-700/70 bg-ink-950/80 backdrop-blur-xl">
+      <div class="mx-auto flex max-w-[1400px] items-center gap-4 px-5 py-3.5 sm:px-8">
+        <div class="flex items-center gap-2.5">
+          <div class="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-violet-500 to-cyan-400 shadow-lg shadow-violet-500/20">
+            <svg viewBox="0 0 24 24" class="h-4.5 w-4.5" fill="none" stroke="#07080b" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px">
+              <path d="M12 3 4.5 6.2v5.4c0 4.4 3.1 8.5 7.5 9.8 4.4-1.3 7.5-5.4 7.5-9.8V6.2Z" />
+            </svg>
+          </div>
+          <div class="leading-tight">
+            <div class="text-[15px] font-semibold tracking-tight text-white">Badele</div>
+            <div class="font-mono text-[10px] uppercase tracking-[0.16em] text-haze">Signal Playground</div>
+          </div>
+        </div>
+
+        <div class="ml-auto flex items-center gap-2">
+          <button
+            id="settings-toggle"
+            class="hidden items-center gap-2 rounded-lg border border-ink-700 bg-ink-850 px-3 py-2 font-mono text-xs text-haze-bright transition hover:border-ink-600 hover:text-white sm:flex"
+          >
+            <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M12 2v2m0 16v2M4.2 4.2l1.4 1.4m12.8 12.8 1.4 1.4M2 12h2m16 0h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4" />
+            </svg>
+            <span id="conn-label">endpoint</span>
+          </button>
+
+          <button
+            id="run"
+            class="group relative inline-flex items-center gap-2 overflow-hidden rounded-lg bg-white px-4 py-2 text-[13px] font-semibold text-ink-950 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <svg id="run-icon" viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 12a9 9 0 1 1-3.2-6.9" />
+              <path d="M21 3v5h-5" />
+            </svg>
+            <span id="run-label">Analyze my browser again</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- connection settings, collapsed by default -->
+      <div id="settings" class="hidden border-t border-ink-700/70 bg-ink-900/60">
+        <div class="mx-auto grid max-w-[1400px] gap-3 px-5 py-4 sm:grid-cols-[1fr_1fr_auto] sm:px-8">
+          <label class="block">
+            <span class="mb-1.5 block font-mono text-[10px] uppercase tracking-[0.14em] text-haze">API endpoint</span>
+            <input
+              id="endpoint"
+              placeholder="http://localhost:9000"
+              spellcheck="false"
+              class="w-full rounded-lg border border-ink-700 bg-ink-850 px-3 py-2 font-mono text-[13px] text-white outline-none transition placeholder:text-haze/50 focus:border-violet-500/60 focus:ring-2 focus:ring-violet-500/20"
+            />
+          </label>
+          <label class="block">
+            <span class="mb-1.5 block font-mono text-[10px] uppercase tracking-[0.14em] text-haze">Public SDK key <span class="normal-case tracking-normal text-haze/70">— x-api-key</span></span>
+            <input
+              id="apikey"
+              placeholder="bd_pk_test_…"
+              spellcheck="false"
+              class="w-full rounded-lg border border-ink-700 bg-ink-850 px-3 py-2 font-mono text-[13px] text-white outline-none transition placeholder:text-haze/50 focus:border-violet-500/60 focus:ring-2 focus:ring-violet-500/20"
+            />
+          </label>
+          <div class="flex items-end">
+            <button id="save" class="h-[38px] rounded-lg border border-ink-600 bg-ink-800 px-4 font-mono text-xs text-white transition hover:border-violet-500/60 hover:bg-ink-700">
+              Save &amp; analyze
+            </button>
+          </div>
+          <p class="font-mono text-[11px] leading-relaxed text-haze sm:col-span-3">
+            Kept in this browser's localStorage and sent nowhere else. Without a key the page still collects and scores
+            locally — only the server half is skipped. Mint one with
+            <code class="rounded bg-ink-800 px-1.5 py-0.5 text-cyan-300">go run ./cmd/cli keys issue -org &lt;slug&gt; -origins http://localhost:4173</code>
+          </p>
+        </div>
+      </div>
+    </header>
+
+    <main class="mx-auto max-w-[1400px] px-5 pb-24 pt-8 sm:px-8">
+      <!-- ───────────────────────── hero ───────────────────────── -->
+      <section class="mb-8">
+        <h1 class="text-balance text-3xl font-bold tracking-tight text-white sm:text-[40px] sm:leading-[1.1]">
+          Analyze your browser with Badele<br class="hidden sm:block" />
+          and see every signal it produces.
+        </h1>
+        <p class="mt-3 max-w-2xl text-[15px] leading-relaxed text-haze">
+          The collectors run in this page, the report is submitted to the API, and the score comes back weighted by
+          <span class="text-haze-bright">your organisation's own configuration</span> — not ours.
+        </p>
+      </section>
+
+      <!-- score + identification -->
+      <section class="mb-6 grid gap-4 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]">
+        <!-- suspect score -->
+        <div class="relative flex flex-col overflow-hidden rounded-2xl border border-ink-700 bg-ink-900/70 p-6">
+          <div class="pointer-events-none absolute -right-16 -top-16 h-52 w-52 rounded-full bg-violet-500/10 blur-3xl"></div>
+          <div class="relative flex items-start justify-between">
+            <div>
+              <div class="font-mono text-[10px] uppercase tracking-[0.16em] text-haze">Suspect score</div>
+              <div class="mt-0.5 text-[13px] text-haze-bright">Weighted sum of what fired</div>
+            </div>
+            <span id="level-pill" class="rounded-full border border-ink-600 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-haze">—</span>
+          </div>
+
+          <div class="relative mt-5 flex items-center gap-6">
+            <div class="relative h-[132px] w-[132px] shrink-0">
+              <svg viewBox="0 0 120 120" class="h-full w-full -rotate-90">
+                <circle cx="60" cy="60" r="52" fill="none" stroke="#1c212d" stroke-width="10" />
+                <circle
+                  id="score-arc"
+                  cx="60" cy="60" r="52" fill="none"
+                  stroke="url(#scoreGradient)" stroke-width="10" stroke-linecap="round"
+                  class="arc" stroke-dasharray="326.7" stroke-dashoffset="326.7"
+                />
+                <defs>
+                  <linearGradient id="scoreGradient" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stop-color="#22d3ee" />
+                    <stop offset="100%" stop-color="#8b5cf6" />
+                  </linearGradient>
+                </defs>
+              </svg>
+              <div class="absolute inset-0 grid place-items-center">
+                <div class="text-center">
+                  <div id="score-value" class="font-mono text-[34px] font-semibold leading-none text-white tabular-nums">—</div>
+                  <div id="score-threshold" class="mt-1 font-mono text-[10px] text-haze">of 30</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="min-w-0 flex-1 space-y-3">
+              <div>
+                <div class="font-mono text-[10px] uppercase tracking-[0.14em] text-haze">Profile</div>
+                <div id="score-source" class="truncate font-mono text-[13px] text-haze-bright">—</div>
+              </div>
+              <div>
+                <div class="font-mono text-[10px] uppercase tracking-[0.14em] text-haze">Request ID</div>
+                <div id="request-id" class="truncate font-mono text-[12px] text-cyan-300">—</div>
+              </div>
+              <div>
+                <div class="font-mono text-[10px] uppercase tracking-[0.14em] text-haze">Event state</div>
+                <div id="event-state" class="font-mono text-[13px] text-haze-bright">—</div>
+              </div>
+            </div>
+          </div>
+
+          <p class="relative mt-auto pt-6 font-mono text-[11px] leading-relaxed text-haze/70">
+            Not a percentage and not capped. It is only meaningful against the threshold, which is a number you set —
+            half of it is where <span class="text-amber-300/80">medium</span> begins.
+          </p>
+        </div>
+
+        <!-- identification -->
+        <div class="rounded-2xl border border-ink-700 bg-ink-900/70">
+          <div class="flex items-center gap-2 border-b border-ink-700 px-5 py-3.5">
+            <h2 class="font-mono text-[10px] uppercase tracking-[0.16em] text-haze">Identification</h2>
+          </div>
+          <div id="identification" class="hair px-5"></div>
+        </div>
+      </section>
+
+      <!-- score breakdown -->
+      <section class="mb-6 rounded-2xl border border-ink-700 bg-ink-900/70">
+        <div class="flex flex-wrap items-center gap-3 border-b border-ink-700 px-5 py-3.5">
+          <h2 class="font-mono text-[10px] uppercase tracking-[0.16em] text-haze">Score breakdown</h2>
+          <span class="font-mono text-[11px] text-haze/70">what fired, and what each was worth under your weights</span>
+        </div>
+        <div id="breakdown" class="p-5"></div>
+      </section>
+
+      <!-- ───────────────────────── smart signals ───────────────────────── -->
+      <section class="mb-6">
+        <div class="mb-3 flex items-baseline gap-3">
+          <h2 class="text-lg font-semibold tracking-tight text-white">Smart signals</h2>
+          <span class="font-mono text-[11px] text-haze">server-scored, with the client's own verdict beside it</span>
+        </div>
+        <div id="signal-groups" class="grid gap-4 xl:grid-cols-2"></div>
+      </section>
+
+      <!-- ───────────────────────── native-only ───────────────────────── -->
+      <section class="mb-6 rounded-2xl border border-ink-700 bg-ink-900/40">
+        <div class="flex flex-wrap items-center gap-3 border-b border-ink-700 px-5 py-3.5">
+          <h2 class="font-mono text-[10px] uppercase tracking-[0.16em] text-haze">Mobile smart signals</h2>
+          <span class="font-mono text-[11px] text-haze/70">a browser cannot be asked these — reporting "no" would be a claim nobody made</span>
+        </div>
+        <div id="native" class="grid gap-x-8 gap-y-0 px-5 sm:grid-cols-2 lg:grid-cols-3"></div>
+      </section>
+
+      <!-- ───────────────────────── raw ───────────────────────── -->
+      <section class="grid gap-4 xl:grid-cols-2">
+        <div class="rounded-2xl border border-ink-700 bg-ink-900/70">
+          <div class="flex items-center justify-between border-b border-ink-700 px-5 py-3.5">
+            <h2 class="font-mono text-[10px] uppercase tracking-[0.16em] text-haze">Raw device attributes</h2>
+            <span id="source-stats" class="font-mono text-[11px] text-haze"></span>
+          </div>
+          <div class="max-h-[520px] overflow-auto">
+            <table class="w-full border-collapse font-mono text-[12px]">
+              <tbody id="sources"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="rounded-2xl border border-ink-700 bg-ink-900/70">
+          <div class="flex items-center gap-1 border-b border-ink-700 px-3 py-2.5">
+            <button data-tab="event" class="tab rounded-md px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] transition">Event JSON</button>
+            <button data-tab="submission" class="tab rounded-md px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] transition">Submission</button>
+            <button id="copy" class="ml-auto rounded-md border border-ink-700 px-2.5 py-1.5 font-mono text-[11px] text-haze transition hover:border-ink-600 hover:text-white">Copy</button>
+          </div>
+          <pre id="raw" class="max-h-[520px] overflow-auto p-5 font-mono text-[12px] leading-relaxed text-haze-bright"></pre>
+        </div>
+      </section>
+
+      <footer class="mt-10 border-t border-ink-700/60 pt-5 font-mono text-[11px] leading-relaxed text-haze/70">
+        Collected by <span class="text-haze">@badele/web-js</span> in this page. Nothing is stored here; the submission
+        goes to the endpoint above and the score comes back from it.
+      </footer>
+    </main>
+
+    <script src="../dist/badele.global.js"></script>
+    <script>
+      // ───────────────────────────────────────────────────────────────────
+      // The signals this page renders, and where each one's answer comes from.
+      //
+      // Declared as data rather than markup so that a signal added to the
+      // catalogue is one line here. `server` is the name it is scored under in
+      // domain/risk; `client` is the verdict the SDK reached in this page,
+      // which is advisory - the server's is the answer.
+      // ───────────────────────────────────────────────────────────────────
+      const GROUPS = [
+        {
+          title: 'Device & browser',
+          signals: [
+            { server: 'incognito', client: 'incognito', label: 'Incognito Mode' },
+            { server: 'tampering', label: 'Browser Tampering' },
+            { server: 'antidetect_browser', label: 'Anti-detect Browser' },
+            { server: 'automation', client: 'automation', label: 'Automation' },
+            { server: 'bad_bot', label: 'Bot' },
+            { server: 'virtual_machine', label: 'Virtual Machine' },
+            { server: 'privacy_settings', label: 'Privacy Settings' },
+            { server: 'developer_tools', label: 'Developer Tools' },
+            { server: 'remote_control', label: 'Remote Control' },
+            { server: 'device_farm', client: 'farm', label: 'Device Farm' },
+            { server: 'high_activity', label: 'High-Activity Device' },
+          ],
+        },
+        {
+          title: 'Network & address',
+          signals: [
+            { server: 'tor', client: 'tor', label: 'Tor Exit Node' },
+            { server: 'vpn', label: 'VPN', group: ['vpn_public', 'vpn_timezone', 'vpn_relay', 'vpn_os_mismatch'] },
+            { server: 'proxy', label: 'Datacenter Proxy' },
+            { server: 'residential_proxy', label: 'Residential Proxy' },
+            { server: 'ip_blocklist', label: 'IP Blocklist', group: ['ip_blocklist_email_spam', 'ip_blocklist_attack_source'] },
+            { server: 'ip_abuser', label: 'IP Abuse History' },
+            { server: 'datacenter_ip', label: 'Datacenter Address' },
+            { server: 'geo_mismatch', label: 'Geo Mismatch' },
+            { server: 'bogon_ip', label: 'Unroutable Address' },
+            { server: 'anycast_ip', label: 'Anycast Address' },
+          ],
+        },
+      ]
+
+      // Signals with no detector yet. Rendered as "Not collected" rather than
+      // "Not detected", because a question nobody asked has not been answered.
+      const UNCOLLECTED = new Set([
+        'high_activity',
+        'device_farm',
+        'remote_control',
+        'developer_tools',
+        'vpn_os_mismatch',
+        'ip_blocklist_email_spam',
+        'ip_blocklist_attack_source',
+      ])
+
+      const NATIVE = [
+        ['Frida instrumentation', 'iOS + Android SDK'],
+        ['Man-in-the-middle attack', 'iOS + Android SDK'],
+        ['VPN (mobile carrier)', 'iOS + Android SDK'],
+        ['Factory reset timestamp', 'iOS + Android SDK'],
+        ['Location spoofing', 'iOS + Android SDK'],
+        ['Tampered request', 'iOS + Android SDK'],
+        ['Cloned app', 'Android SDK'],
+        ['Emulator', 'Android SDK'],
+        ['Rooted device', 'Android SDK'],
+        ['Jailbroken device', 'iOS SDK'],
+        ['iOS simulator', 'iOS SDK'],
+        ['Developer tools attached', 'iOS + Android SDK'],
+      ]
+
+      const $ = (id) => document.getElementById(id)
+      const esc = (value) =>
+        String(value ?? '').replace(
+          /[&<>"']/g,
+          (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
+        )
+
+      const state = { report: null, verdicts: null, requestId: '', event: null, error: null, tab: 'event' }
+
+      // ─────────────────────────── settings ───────────────────────────
+
+      const STORE = 'badele.playground'
+      const settings = (() => {
+        const defaults = { endpoint: 'http://localhost:9000', apiKey: '' }
+
+        let stored = {}
+        try {
+          stored = JSON.parse(localStorage.getItem(STORE) ?? '{}')
+        } catch {
+          /* a private window with storage refused; the defaults still apply */
+        }
+
+        // The query string wins, which is what makes an incognito window one
+        // URL rather than a re-paste: a private window has its own localStorage
+        // and starts empty. Only a *public* key belongs here - it is designed
+        // to be readable by anyone who opens devtools on a page carrying it,
+        // and it is refused from any origin the key does not list.
+        const query = new URLSearchParams(location.search)
+        const fromQuery = {}
+        if (query.get('key')) fromQuery.apiKey = query.get('key').trim()
+        if (query.get('endpoint')) fromQuery.endpoint = query.get('endpoint').trim().replace(/\/+$/, '')
+
+        return { ...defaults, ...stored, ...fromQuery }
+      })()
+
+      function saveSettings() {
+        settings.endpoint = $('endpoint').value.trim().replace(/\/+$/, '')
+        settings.apiKey = $('apikey').value.trim()
+        try {
+          localStorage.setItem(STORE, JSON.stringify(settings))
+        } catch {
+          /* a private window refuses; the values still apply to this run */
+        }
+        paintConnection()
+      }
+
+      function paintConnection() {
+        const host = settings.endpoint ? settings.endpoint.replace(/^https?:\/\//, '') : 'not set'
+        $('conn-label').textContent = settings.apiKey ? host : `${host} · no key`
+      }
+
+      // ─────────────────────────── rendering ───────────────────────────
+
+      /** One label/value row, as used by the identification card. */
+      function row(label, value, tone = 'text-white') {
+        return `<div class="flex items-baseline justify-between gap-6 py-2.5">
+          <span class="shrink-0 text-[13px] text-haze">${esc(label)}</span>
+          <span class="truncate text-right font-mono text-[13px] ${tone}">${value}</span>
+        </div>`
+      }
+
+      const STATUS = {
+        detected: ['text-rose-300', 'bg-rose-500/10 border-rose-500/25', 'Detected'],
+        // Fired, and worth nothing, because the customer has it disabled. Its
+        // own colour on purpose: "we saw this and you chose not to count it" is
+        // a different answer from either of the two either side of it.
+        off: ['text-amber-300', 'bg-amber-500/10 border-amber-500/25', 'Detected · off'],
+        clear: ['text-emerald-300', 'bg-emerald-500/[0.07] border-emerald-500/20', 'Not detected'],
+        uncollected: ['text-haze', 'bg-ink-800/60 border-ink-600', 'Not collected'],
+        unknown: ['text-haze', 'bg-ink-800/60 border-ink-600', 'Unknown'],
+      }
+
+      function pill(kind, text) {
+        const [fg, bg, fallback] = STATUS[kind]
+        return `<span class="shrink-0 rounded-md border px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] ${fg} ${bg}">${esc(text ?? fallback)}</span>`
+      }
+
+      /** Everything the server said fired, keyed by signal name. */
+      function triggerMap() {
+        const map = new Map()
+        for (const trigger of state.event?.risk?.triggers ?? []) map.set(trigger.signal, trigger)
+        return map
+      }
+
+      function renderIdentification() {
+        const nav = state.report?.sources?.navigator?.value ?? {}
+        const event = state.event
+        const ip = event?.ip_info
+        const geo = ip?.geolocation
+
+        const place = geo
+          ? [geo.city, geo.subdivision, geo.country].filter(Boolean).join(', ')
+          : ''
+
+        $('identification').innerHTML = [
+          row(
+            'Visitor ID',
+            event?.visitor_id
+              ? esc(event.visitor_id)
+              : `<span class="text-haze">Not derived yet</span>`,
+          ),
+          row('Browser', esc(describeBrowser(nav.user_agent)) || '—'),
+          row('Operating system', esc(describeOS(nav.user_agent, nav.platform)) || '—'),
+          row('IP address', event?.ip_address ? esc(event.ip_address) : '—', 'text-cyan-300'),
+          row('Geolocation', place ? esc(place) : `<span class="text-haze">${event ? 'Not placed' : '—'}</span>`),
+          row('Network', ip?.network?.asn ? `${esc(ip.network.asn)} · ${esc(ip.network.name ?? '')}` : '—'),
+          row('Environment', event?.environment ? esc(event.environment) : '—'),
+          row('Received at', event?.received_at ? esc(new Date(event.received_at).toLocaleString()) : '—'),
+        ].join('')
+      }
+
+      function renderScore() {
+        const risk = state.event?.risk
+        const arc = $('score-arc')
+        const CIRCUMFERENCE = 326.7
+
+        if (!risk) {
+          $('score-value').textContent = state.event ? 'n/a' : '—'
+          $('score-threshold').textContent = state.event ? 'not scored' : 'of 30'
+          $('level-pill').className =
+            'rounded-full border border-ink-600 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-haze'
+          $('level-pill').textContent = state.event ? 'unscored' : '—'
+          $('score-source').textContent = '—'
+          arc.setAttribute('stroke-dashoffset', CIRCUMFERENCE)
+          return
+        }
+
+        const ratio = Math.max(0, Math.min(1, risk.score / Math.max(1, risk.threshold)))
+        arc.setAttribute('stroke-dashoffset', CIRCUMFERENCE * (1 - ratio))
+
+        $('score-value').textContent = risk.score
+        $('score-threshold').textContent = `of ${risk.threshold}`
+
+        const tone =
+          risk.level === 'high'
+            ? 'border-rose-500/30 bg-rose-500/10 text-rose-300'
+            : risk.level === 'medium'
+              ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+              : 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300'
+        $('level-pill').className = `rounded-full border px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] ${tone}`
+        $('level-pill').textContent = risk.level
+
+        const source = { key: 'this SDK key', organization: "the organisation's", default: 'shipped defaults' }[risk.source]
+        $('score-source').textContent = `${source ?? risk.source} · rev ${risk.revision || 0} · ${risk.platform}`
+      }
+
+      function renderBreakdown() {
+        const risk = state.event?.risk
+        const target = $('breakdown')
+
+        if (!risk) {
+          target.innerHTML = `<p class="font-mono text-[12px] text-haze">${
+            state.event
+              ? 'This submission was not scored. ' + esc(state.event.reason || 'Enrichment did not finish.')
+              : 'Waiting for the server. Configure an endpoint and a key to see the score.'
+          }</p>`
+          return
+        }
+        if (risk.triggers.length === 0) {
+          target.innerHTML = `<p class="font-mono text-[12px] text-emerald-300/80">Nothing fired. An ordinary visitor scores zero.</p>`
+          return
+        }
+
+        const heaviest = Math.max(...risk.triggers.map((t) => t.weight), 1)
+        target.innerHTML = `<div class="space-y-2.5">${risk.triggers
+          .map((trigger) => {
+            const width = Math.max(2, (trigger.weight / heaviest) * 100)
+            const off = trigger.weight === 0
+            return `<div class="grid grid-cols-[minmax(0,190px)_1fr_auto] items-center gap-4">
+              <div class="min-w-0">
+                <div class="truncate font-mono text-[12px] ${off ? 'text-haze' : 'text-white'}">${esc(trigger.signal)}</div>
+                <div class="truncate font-mono text-[10px] text-haze/80">${esc(trigger.reason || trigger.confidence)}</div>
+              </div>
+              <div class="h-1.5 overflow-hidden rounded-full bg-ink-800">
+                <div class="h-full rounded-full ${off ? 'bg-ink-600' : 'bg-gradient-to-r from-cyan-400 to-violet-500'}" style="width:${width}%"></div>
+              </div>
+              <div class="w-16 text-right font-mono text-[13px] tabular-nums ${off ? 'text-haze' : 'text-white'}">
+                ${off ? 'off' : '+' + trigger.weight}
+              </div>
+            </div>`
+          })
+          .join('')}</div>
+          <div class="mt-4 flex items-center justify-between border-t border-ink-700 pt-3 font-mono text-[12px]">
+            <span class="text-haze">${risk.triggers.length} signal${risk.triggers.length === 1 ? '' : 's'} fired</span>
+            <span class="text-white">total <span class="tabular-nums">${risk.score}</span></span>
+          </div>`
+      }
+
+      function renderSignals() {
+        const triggers = triggerMap()
+        const scored = Boolean(state.event?.risk)
+
+        $('signal-groups').innerHTML = GROUPS.map(
+          (group) => `
+          <div class="rounded-2xl border border-ink-700 bg-ink-900/70">
+            <div class="border-b border-ink-700 px-5 py-3.5">
+              <h3 class="font-mono text-[10px] uppercase tracking-[0.16em] text-haze">${esc(group.title)}</h3>
+            </div>
+            <div class="hair px-5">
+              ${group.signals.map((signal) => signalRow(signal, triggers, scored)).join('')}
+            </div>
+          </div>`,
+        ).join('')
+      }
+
+      function signalRow(signal, triggers, scored) {
+        const names = signal.group ?? [signal.server]
+        const fired = names.map((name) => triggers.get(name)).filter(Boolean)
+        const uncollected = names.every((name) => UNCOLLECTED.has(name))
+
+        let kind = 'unknown'
+        let text = null
+        let detail = ''
+
+        if (fired.length > 0) {
+          const weight = fired.reduce((sum, trigger) => sum + trigger.weight, 0)
+          kind = weight > 0 ? 'detected' : 'off'
+          text = weight > 0 ? `+${weight}` : null
+          detail = fired.map((trigger) => `${trigger.signal} · ${trigger.reason || trigger.confidence}`).join(' · ')
+        } else if (!scored) {
+          kind = 'unknown'
+          text = 'Awaiting'
+        } else if (uncollected) {
+          kind = 'uncollected'
+          detail = 'no detector yet — the weight is configurable now so the signal arriving later is a wire-up'
+        } else {
+          kind = 'clear'
+        }
+
+        // The client's own verdict, where it reached one. Advisory, and shown
+        // as such: the server's answer is the one that scored.
+        const verdict = signal.client ? state.verdicts?.[signal.client] : null
+        const local = verdict
+          ? `<span class="shrink-0 font-mono text-[10px] ${verdict.value ? 'text-amber-300' : 'text-haze/60'}">
+               client: ${verdict.value ? verdict.confidence : 'no'}
+             </span>`
+          : ''
+
+        return `<div class="py-3">
+          <div class="flex items-center gap-3">
+            <span class="min-w-0 flex-1 truncate text-[13.5px] text-slate-100">${esc(signal.label)}</span>
+            ${local}
+            ${pill(kind, text)}
+          </div>
+          ${detail ? `<div class="mt-1 truncate font-mono text-[10.5px] text-haze/70">${esc(detail)}</div>` : ''}
+        </div>`
+      }
+
+      function renderNative() {
+        $('native').innerHTML = NATIVE.map(
+          ([label, where]) => `
+          <div class="flex items-center gap-3 border-b border-ink-700/60 py-2.5 last:border-0">
+            <span class="min-w-0 flex-1 truncate text-[13px] text-haze-bright">${esc(label)}</span>
+            <span class="shrink-0 font-mono text-[10px] uppercase tracking-[0.1em] text-haze/60">${esc(where)}</span>
+          </div>`,
+        ).join('')
+      }
+
+      function renderSources() {
+        const sources = state.report?.sources ?? {}
+        const entries = Object.entries(sources).sort(([a], [b]) => a.localeCompare(b))
+
+        const counts = {}
+        for (const outcome of Object.values(sources)) counts[outcome.status] = (counts[outcome.status] ?? 0) + 1
+        $('source-stats').textContent = state.report
+          ? `${entries.length} sources · ${state.report.elapsed_ms}ms of ${state.report.budget_ms}ms · ` +
+            Object.entries(counts)
+              .map(([status, n]) => `${n} ${status}`)
+              .join(', ')
+          : ''
+
+        const tone = {
+          ok: 'text-emerald-300',
+          unsupported: 'text-haze',
+          blocked: 'text-amber-300',
+          timeout: 'text-orange-300',
+          error: 'text-rose-300',
+        }
+
+        $('sources').innerHTML = entries
+          .map(([id, outcome]) => {
+            const value =
+              outcome.status === 'ok'
+                ? typeof outcome.value === 'object'
+                  ? JSON.stringify(outcome.value)
+                  : String(outcome.value)
+                : (outcome.reason ?? '')
+            return `<tr class="border-b border-ink-700/50 align-top last:border-0">
+              <td class="w-40 py-2 pl-5 pr-3 text-cyan-300/90">${esc(id)}</td>
+              <td class="w-24 py-2 pr-3 ${tone[outcome.status] ?? 'text-haze'}">${esc(outcome.status)}</td>
+              <td class="w-14 py-2 pr-3 text-right tabular-nums text-haze/70">${esc(outcome.ms)}ms</td>
+              <td class="py-2 pr-5 text-haze-bright">
+                <div class="max-h-16 overflow-hidden text-ellipsis break-all">${esc(
+                  value.length > 260 ? value.slice(0, 260) + '…' : value,
+                )}</div>
+              </td>
+            </tr>`
+          })
+          .join('')
+      }
+
+      function renderRaw() {
+        for (const button of document.querySelectorAll('.tab')) {
+          const active = button.dataset.tab === state.tab
+          button.className = `tab rounded-md px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] transition ${
+            active ? 'bg-ink-800 text-white' : 'text-haze hover:text-haze-bright'
+          }`
+        }
+
+        const body =
+          state.tab === 'event'
+            ? (state.event ?? { note: 'No event yet. Configure an endpoint and a public SDK key.' })
+            : { sdk: { platform: 'web', version: '0.1.0' }, signals: state.report, tag: 'playground' }
+
+        $('raw').textContent = JSON.stringify(body, null, 2)
+      }
+
+      function render() {
+        renderScore()
+        renderIdentification()
+        renderBreakdown()
+        renderSignals()
+        renderSources()
+        renderRaw()
+      }
+
+      // ─────────────────────────── user agent ───────────────────────────
+      //
+      // A claim, not a fact, and used only where the page is reporting what the
+      // browser says about itself. Everything that matters is observed
+      // elsewhere and scored on the server.
+
+      function describeBrowser(ua) {
+        if (!ua) return ''
+        // Order matters and is the whole of it: Edge and Opera both claim to be
+        // Chrome, and Chrome claims to be Safari. The most specific claim first.
+        const patterns = [
+          [/Firefox\/([\d.]+)/, 'Firefox'],
+          [/Edg\/([\d.]+)/, 'Edge'],
+          [/OPR\/([\d.]+)/, 'Opera'],
+          [/Chrome\/([\d.]+)/, 'Chrome'],
+          [/Version\/([\d.]+).*Safari/, 'Safari'],
+        ]
+        for (const [pattern, name] of patterns) {
+          const match = pattern.exec(ua)
+          if (match) return `${name} ${match[1]}`
+        }
+        return ua.slice(0, 48)
+      }
+
+      function describeOS(ua, platform) {
+        if (!ua) return platform ?? ''
+        const table = [
+          [/Windows NT 10/, 'Windows 10 or 11'],
+          [/Windows NT ([\d.]+)/, 'Windows'],
+          [/Mac OS X ([\d_]+)/, (m) => `macOS ${m[1].replace(/_/g, '.')}`],
+          [/Android ([\d.]+)/, (m) => `Android ${m[1]}`],
+          [/(iPhone|iPad).*OS ([\d_]+)/, (m) => `iOS ${m[2].replace(/_/g, '.')}`],
+          [/CrOS/, 'ChromeOS'],
+          [/Linux/, 'Linux'],
+        ]
+        for (const [pattern, label] of table) {
+          const match = pattern.exec(ua)
+          if (match) return typeof label === 'function' ? label(match) : label
+        }
+        return platform ?? ''
+      }
+
+      // ─────────────────────────── the run ───────────────────────────
+
+      function busy(on) {
+        $('run').disabled = on
+        $('run-label').textContent = on ? 'Analyzing…' : 'Analyze my browser again'
+        $('run-icon').style.animation = on ? 'spin 900ms linear infinite' : ''
+      }
+
+      /**
+       * Read the finished event back, as an SDK does.
+       *
+       * Identification is two-phase: the submission is answered before the
+       * address has been looked up, so this polls until the event settles.
+       * A pending event is a 200 with state "pending" and an instruction to
+       * ask again; "unavailable" is an instruction to stop.
+       */
+      async function awaitEvent(requestId) {
+        const deadline = Date.now() + 8000
+        while (Date.now() < deadline) {
+          const response = await fetch(`${settings.endpoint}/api/v1/events/${requestId}`, {
+            headers: { 'x-api-key': settings.apiKey },
+          })
+          if (!response.ok) throw new Error(`the event could not be read (${response.status})`)
+
+          const event = await response.json()
+          if (event.state !== 'pending') return event
+
+          state.event = event
+          render()
+          await new Promise((resolve) => setTimeout(resolve, 220))
+        }
+        throw new Error('the event never settled')
+      }
+
+      async function analyze() {
+        busy(true)
+        state.error = null
+        state.event = null
+
+        try {
+          const submit = Boolean(settings.apiKey && settings.endpoint)
+          const client = await Badele.load({
+            apiKey: settings.apiKey || 'unset',
+            ...(settings.endpoint ? { endpoint: settings.endpoint } : {}),
+          })
+
+          const result = await client.identify({ submit, tag: 'playground' })
+          state.report = result.report
+          state.verdicts = result.verdicts
+          state.requestId = result.requestId
+          $('request-id').textContent = result.requestId || 'not submitted'
+          $('event-state').textContent = submit ? 'submitted, enriching…' : 'not submitted'
+          render()
+
+          if (submit) {
+            state.event = await awaitEvent(result.requestId)
+            $('event-state').textContent = state.event.state
+            render()
+          }
+
+          // Read back by the browser-automation check, as on the report page.
+          window.__badele = { result, event: state.event }
+        } catch (error) {
+          state.error = error
+          $('event-state').innerHTML = `<span class="text-rose-300">${esc(error.message ?? error)}</span>`
+          render()
+          console.error('[badele] failed', error)
+        } finally {
+          busy(false)
+        }
+      }
+
+      // ─────────────────────────── wiring ───────────────────────────
+
+      document.head.insertAdjacentHTML(
+        'beforeend',
+        '<style>@keyframes spin{to{transform:rotate(360deg)}}</style>',
+      )
+
+      $('endpoint').value = settings.endpoint
+      $('apikey').value = settings.apiKey
+      paintConnection()
+      renderNative()
+      render()
+
+      $('settings-toggle').addEventListener('click', () => $('settings').classList.toggle('hidden'))
+      $('save').addEventListener('click', () => {
+        saveSettings()
+        void analyze()
+      })
+      $('run').addEventListener('click', () => void analyze())
+      $('copy').addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText($('raw').textContent ?? '')
+          $('copy').textContent = 'Copied'
+          setTimeout(() => ($('copy').textContent = 'Copy'), 1200)
+        } catch {
+          $('copy').textContent = 'Blocked'
+          setTimeout(() => ($('copy').textContent = 'Copy'), 1200)
+        }
+      })
+      for (const button of document.querySelectorAll('.tab')) {
+        button.addEventListener('click', () => {
+          state.tab = button.dataset.tab
+          renderRaw()
+        })
+      }
+
+      // Open the settings drawer on the first visit, since nothing works
+      // without a key and a blank page explains itself badly.
+      if (!settings.apiKey) $('settings').classList.remove('hidden')
+
+      void analyze()
+    </script>
+  </body>
+</html>
