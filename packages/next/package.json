@@ -2,18 +2,46 @@
   "name": "@badele/next",
   "version": "0.0.0",
   "private": true,
-  "description": "Next.js integration wrapping @badele/react and @badele/web-js",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "description": "Next.js integration wrapping @badele/react",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js",
+      "require": "./dist/server.cjs"
+    }
+  },
+  "files": ["dist"],
+  "sideEffects": false,
   "dependencies": {
     "@badele/react": "workspace:*"
   },
   "peerDependencies": {
-    "next": ">=14"
+    "next": ">=15",
+    "react": ">=19"
   },
   "scripts": {
-    "build": "true",
-    "lint": "true",
-    "test": "true"
+    "build": "tsup",
+    "lint": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@badele/web-js": "workspace:*",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "happy-dom": "^15.11.7",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
   }
 }
