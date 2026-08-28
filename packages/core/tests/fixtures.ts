@@ -108,7 +108,14 @@ export const incognitoChromeMac = report({
   }),
 })
 
-/** Firefox in a private window. */
+/**
+ * Firefox in a private window, on a build that has closed the old tells.
+ *
+ * Web storage, IndexedDB and the service worker container are all present and
+ * identical to an ordinary window - which is the whole difficulty, and what a
+ * fixture written from the old assumption hid. The origin private file system
+ * is the one thing that still differs.
+ */
 export const privateFirefox = report({
   [SOURCE.engine]: ok({
     to_fixed_error_length: 25,
@@ -119,7 +126,7 @@ export const privateFirefox = report({
     agrees: true,
   }),
   [SOURCE.navigator]: ok({
-    user_agent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:133.0) Gecko/20100101 Firefox/133.0',
+    user_agent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:142.0) Gecko/20100101 Firefox/142.0',
     hardware_concurrency: 10,
     language: 'en-GB',
     languages: ['en-GB', 'en'],
@@ -128,10 +135,40 @@ export const privateFirefox = report({
     local_storage: true,
     session_storage: true,
     indexed_db: true,
-    service_worker: false,
+    origin_filesystem: 'refused',
+    service_worker: true,
   }),
   [SOURCE.timing]: ok({ now_resolution: 1, has_performance: true }),
   [SOURCE.intl]: ok({ timezone: 'Europe/London', timezone_offset: -60 }),
+})
+
+/**
+ * The same Firefox, in an ordinary window.
+ *
+ * Everything the private one reports, with the one field that separates them
+ * flipped - which is what makes it worth having: a detector that fires on both
+ * is caught here rather than by a visitor.
+ */
+export const ordinaryFirefox = report({
+  ...privateFirefox.sources,
+  [SOURCE.storage]: ok({
+    local_storage: true,
+    session_storage: true,
+    indexed_db: true,
+    origin_filesystem: 'ok',
+    service_worker: true,
+  }),
+})
+
+/** Firefox before 138, where the missing service worker was still the tell. */
+export const privateFirefoxLegacy = report({
+  ...privateFirefox.sources,
+  [SOURCE.storage]: ok({
+    local_storage: true,
+    session_storage: true,
+    indexed_db: true,
+    service_worker: false,
+  }),
 })
 
 /** Safari in a private window. */
@@ -148,7 +185,7 @@ export const privateSafari = report({
     local_storage: true,
     session_storage: true,
     indexed_db: true,
-    safari_private: true,
+    origin_filesystem: 'transient',
   }),
   [SOURCE.timing]: ok({ now_resolution: 1, has_performance: true }),
 })

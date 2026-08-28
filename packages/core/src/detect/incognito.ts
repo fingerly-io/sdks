@@ -50,15 +50,34 @@ export function detectIncognito(report: SignalReport): Verdict {
   // --- WebKit -------------------------------------------------------------
   // Safari's private windows reject `navigator.storage.getDirectory()` with a
   // message naming an "unknown transient reason". Decisive on its own: no
-  // ordinary Safari window does this.
-  if (storage.safari_private === true) {
+  // ordinary Safari window does this. `safari_private` is the same probe as
+  // reported by SDKs before the outcome was reported raw.
+  if (storage.origin_filesystem === 'transient' || storage.safari_private === true) {
     evidence.push({ reason: 'safari-private-origin-filesystem-refused', weight: 1.4 })
   }
 
   // --- Gecko --------------------------------------------------------------
-  // Firefox private windows expose no service worker registration. Gated on
-  // the engine because plenty of ordinary browsers lack one for other reasons -
-  // an insecure context, most obviously, which is why the gate matters.
+  // Firefox's remaining tell, and the reason there is only one.
+  //
+  // Every storage difference private browsing used to have has been closed:
+  // IndexedDB works there, and service workers have since Firefox 138 (bug
+  // 1320796) - which is what left this detector answering "no" from inside a
+  // private window. What has not been closed is the origin private file
+  // system: it is switched off in private browsing (bug 1785125) and turning
+  // it on is still an open bug (1975760), so `getDirectory()` rejects with a
+  // SecurityError there and resolves in an ordinary window.
+  //
+  // Gated on the engine, because a `SecurityError` from this call means
+  // something else everywhere else - a Chromium frame denied storage access,
+  // most obviously.
+  if (observed === 'gecko' && storage.origin_filesystem === 'refused') {
+    evidence.push({ reason: 'firefox-private-origin-filesystem-refused', weight: 1.3 })
+  }
+
+  // The tell above replaced this one, which still fires on Firefox before 138
+  // and on a profile set to never remember history. Kept at its old weight: on
+  // the builds where it fires it is as good as it ever was, and on the builds
+  // where it does not the value is `true` and this never runs.
   if (observed === 'gecko' && storage.service_worker === false) {
     evidence.push({ reason: 'firefox-no-service-worker-registration', weight: 1.2 })
   }

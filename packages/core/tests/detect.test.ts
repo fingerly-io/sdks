@@ -11,7 +11,9 @@ import {
   androidEmulator,
   incognitoChromeMac,
   ordinaryChromeMac,
+  ordinaryFirefox,
   privateFirefox,
+  privateFirefoxLegacy,
   privateSafari,
   realAndroidPhone,
   report,
@@ -46,16 +48,69 @@ describe('detectIncognito', () => {
     expect(detectIncognito(incognitoChromeMac).reasons).toContain('chromium-storage-quota-capped')
   })
 
-  it('detects a Firefox private window by its missing service worker', () => {
+  it('detects a Firefox private window by its refused origin filesystem', () => {
     const verdict = detectIncognito(privateFirefox)
     expect(verdict.value).toBe(true)
+    expect(verdict.reasons).toContain('firefox-private-origin-filesystem-refused')
+  })
+
+  it('leaves an ordinary Firefox window alone, one field away from the private one', () => {
+    // The pair that matters. Everything else about these two reports is
+    // identical, which is what a Firefox private window actually looks like
+    // now: the same storage, the same service worker, the same quota.
+    expect(detectIncognito(ordinaryFirefox).value).toBe(false)
+    expect(detectIncognito(privateFirefox).value).toBe(true)
+  })
+
+  it('still detects a pre-138 Firefox private window by its missing service worker', () => {
+    const verdict = detectIncognito(privateFirefoxLegacy)
+    expect(verdict.value).toBe(true)
     expect(verdict.reasons).toContain('firefox-no-service-worker-registration')
+  })
+
+  it('does not read a Firefox refusal on another engine as a private window', () => {
+    // A Chromium frame denied storage access refuses the same call the same
+    // way. The engine gate is the only thing between that and a false positive
+    // on every visitor it happens to.
+    const chromiumRefused = report({
+      ...ordinaryChromeMac.sources,
+      storage: {
+        status: 'ok',
+        ms: 1,
+        value: {
+          local_storage: true,
+          session_storage: true,
+          indexed_db: true,
+          quota: 300_000_000_000,
+          quota_ratio: 0.625,
+          origin_filesystem: 'refused',
+          service_worker: true,
+        },
+      },
+    })
+
+    expect(detectIncognito(chromiumRefused).value).toBe(false)
   })
 
   it('detects a Safari private window', () => {
     const verdict = detectIncognito(privateSafari)
     expect(verdict.value).toBe(true)
     expect(verdict.reasons).toContain('safari-private-origin-filesystem-refused')
+  })
+
+  it('reads the Safari tell reported by an older SDK', () => {
+    // Reports stored before the probe reported its outcome raw carry the
+    // boolean instead. They are re-scored by this same code.
+    const legacySafari = report({
+      ...privateSafari.sources,
+      storage: {
+        status: 'ok',
+        ms: 1,
+        value: { local_storage: true, session_storage: true, indexed_db: true, safari_private: true },
+      },
+    })
+
+    expect(detectIncognito(legacySafari).value).toBe(true)
   })
 
   it('does not apply the Firefox rule to other engines', () => {
