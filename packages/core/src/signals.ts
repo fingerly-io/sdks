@@ -255,6 +255,26 @@ export interface ErrorsSignal {
   observed?: string
 }
 
+/**
+ * Which content-blocker filter lists are active in this page.
+ *
+ * A blocker hides elements by matching selectors from public filter lists, so
+ * the way to see one is to put elements those lists match into the page and
+ * look at what happens to them. Which *lists* fired is worth more than whether
+ * any did: the regional ones - Germany, France, Korea - are chosen by people
+ * who read those languages, so the set is a stable trait rather than a yes/no.
+ *
+ * It cannot name the extension, and does not try. Two blockers running the
+ * same lists are indistinguishable from here, which is the honest limit of a
+ * measurement taken from inside the page.
+ */
+export interface DomBlockersSignal {
+  /** The filter lists whose selectors were hidden. Names, never selectors. */
+  blocked?: string[]
+  /** How many lists were probed, so `blocked.length` is a ratio and not a count. */
+  probed?: number
+}
+
 export interface ScreenSignal {
   width?: number
   height?: number

@@ -43,6 +43,7 @@ export {
   type AudioSignal,
   type AutomationSignal,
   type CanvasSignal,
+  type DomBlockersSignal,
   type EngineSignal,
   type ErrorsSignal,
   type FontsSignal,

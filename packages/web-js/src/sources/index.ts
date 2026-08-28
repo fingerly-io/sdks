@@ -19,6 +19,7 @@ import {
   touchSource,
 } from './device.js'
 import { mediaQueriesSource, screenSource } from './display.js'
+import { domBlockersSource } from './dom.js'
 import { engineSource, errorsSource, mathSource } from './engine.js'
 import { navigatorSource, userAgentDataSource } from './navigator.js'
 import { canvasSource, webglExtensionsSource, webglSource } from './render.js'
@@ -54,11 +55,13 @@ export const browserSources: readonly Source[] = [
   sensorsSource,
   mediaDevicesSource,
   userAgentDataSource,
+  domBlockersSource,
 ]
 
 export * from './audio.js'
 export * from './device.js'
 export * from './display.js'
+export * from './dom.js'
 export * from './engine.js'
 export * from './navigator.js'
 export * from './render.js'
