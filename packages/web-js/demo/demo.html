@@ -327,20 +327,7 @@
         {
           title: 'Device & browser',
           signals: [
-            {
-              server: 'incognito',
-              client: 'incognito',
-              label: 'Incognito Mode',
-              // Firefox has closed the tells this relied on - a private window
-              // now reports the same fixed quota, the same service worker
-              // container and the same storage APIs as an ordinary one. Saying
-              // "not detected" there would be a claim we cannot support: it
-              // means we looked and found nothing, and the truth is that there
-              // is nothing collected to look at.
-              uncollectedOn: (report) => engineOf(report) === 'gecko',
-              uncollectedNote:
-                'Firefox reports an identical quota, service worker and storage set in both windows — nothing collected separates them',
-            },
+            { server: 'incognito', client: 'incognito', label: 'Incognito Mode' },
             { server: 'tampering', label: 'Browser Tampering' },
             { server: 'antidetect_browser', label: 'Anti-detect Browser' },
             { server: 'automation', client: 'automation', label: 'Automation' },
@@ -602,19 +589,12 @@
         ).join('')
       }
 
-      /** The engine the probes decided on, rather than the one claimed. */
-      function engineOf(report) {
-        return report?.sources?.engine?.value?.observed ?? ''
-      }
-
       function signalRow(signal, triggers, scored) {
         const names = signal.group ?? [signal.server]
         const fired = names.map((name) => triggers.get(name)).filter(Boolean)
-        // Either the signal has no detector anywhere, or it has none on the
-        // engine this visitor is using. Both are "we did not ask", and both are
-        // a different answer from "we asked and the answer was no".
-        const engineBlind = signal.uncollectedOn?.(state.report) ?? false
-        const uncollected = names.every((name) => UNCOLLECTED.has(name)) || engineBlind
+        // No detector for this one yet. "We did not ask" is a different answer
+        // from "we asked and the answer was no", and the row says which.
+        const uncollected = names.every((name) => UNCOLLECTED.has(name))
 
         let kind = 'unknown'
         let text = null
@@ -630,18 +610,14 @@
           text = 'Awaiting'
         } else if (uncollected) {
           kind = 'uncollected'
-          detail = engineBlind
-            ? (signal.uncollectedNote ?? 'no detector on this engine')
-            : 'no detector yet — the weight is configurable now so the signal arriving later is a wire-up'
+          detail = 'no detector yet — the weight is configurable now so the signal arriving later is a wire-up'
         } else {
           kind = 'clear'
         }
 
         // The client's own verdict, where it reached one. Advisory, and shown
-        // as such: the server's answer is the one that scored. Suppressed when
-        // the engine cannot be asked at all - a "client: no" beside "not
-        // collected" is the same unsupportable claim in smaller type.
-        const verdict = signal.client && !engineBlind ? state.verdicts?.[signal.client] : null
+        // as such: the server's answer is the one that scored.
+        const verdict = signal.client ? state.verdicts?.[signal.client] : null
         const local = verdict
           ? `<span class="shrink-0 font-mono text-[10px] ${verdict.value ? 'text-amber-300' : 'text-haze/60'}">
                client: ${verdict.value ? verdict.confidence : 'no'}
