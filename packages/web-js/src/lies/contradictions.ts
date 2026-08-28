@@ -17,7 +17,9 @@ import {
   SOURCE,
   valueOf,
   type EngineSignal,
+  type ErrorsSignal,
   type Lie,
+  type MathSignal,
   type NavigatorSignal,
   type ScreenSignal,
   type SignalOutcome,
@@ -72,6 +74,8 @@ export function findContradictions(sources: Record<string, SignalOutcome>): Lie[
 
   const nav = valueOf<NavigatorSignal>(report, SOURCE.navigator)
   const engine = valueOf<EngineSignal>(report, SOURCE.engine)
+  const errors = valueOf<ErrorsSignal>(report, SOURCE.errors)
+  const maths = valueOf<MathSignal>(report, SOURCE.math)
   const webgl = valueOf<WebGLSignal>(report, SOURCE.webgl)
   const touch = valueOf<TouchSignal>(report, SOURCE.touch)
   const screen = valueOf<ScreenSignal>(report, SOURCE.screen)
@@ -82,6 +86,43 @@ export function findContradictions(sources: Record<string, SignalOutcome>): Lie[
       id: 'user-agent-vs-engine',
       kind: 'contradiction',
       detail: `claimed-${engine.claimed}-observed-${engine.observed}`,
+    })
+  }
+
+  // Two independent readings of the same engine, taken from different
+  // builtins: `engine` reads a RangeError's length, `eval`'s source and the
+  // shape of a stack; `errors` reads which non-standard properties an Error
+  // carries. Nothing legitimate makes those disagree - a build cannot be V8
+  // and SpiderMonkey - so a disagreement is a spoof that got one of them and
+  // missed the other.
+  if (errors?.observed && engine?.observed && errors.observed !== engine.observed) {
+    lies.push({
+      id: 'engine-vs-error-shapes',
+      kind: 'contradiction',
+      detail: `engine-${engine.observed}-errors-${errors.observed}`,
+    })
+  }
+
+  // The user-agent against the error shapes, for the case where `engine` was
+  // the probe that got patched: the two readings then agree with each other
+  // and both disagree with the claim.
+  const claimed = engine?.claimed
+  if (errors?.observed && claimed && errors.observed !== claimed) {
+    lies.push({
+      id: 'user-agent-vs-error-shapes',
+      kind: 'contradiction',
+      detail: `claimed-${claimed}-errors-${errors.observed}`,
+    })
+  }
+
+  // Maths that misses identities exact by specification. Not an unusual CPU:
+  // something has replaced `Math`, which is what the extensions that add noise
+  // to fingerprintable APIs do.
+  if (maths?.identities_hold === false) {
+    lies.push({
+      id: 'math-identities',
+      kind: 'contradiction',
+      detail: 'math-builtins-do-not-hold-exact-identities',
     })
   }
 

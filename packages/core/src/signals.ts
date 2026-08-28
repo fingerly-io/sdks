@@ -138,6 +138,123 @@ export interface EngineSignal {
   agrees?: boolean
 }
 
+/**
+ * Transcendental maths, which is a fingerprint and a tamper check at once.
+ *
+ * `Math.sin` and its neighbours are not specified to the last bit. Each engine
+ * links its own libm, and the results differ between engines, between builds,
+ * and on some functions between CPU vendors - which is why the *ensemble* is a
+ * fingerprint component rather than any single value being one.
+ *
+ * A handful of results are kept individually, and only those measured to
+ * separate the three engines on real builds. The rest are hashed: eighteen
+ * doubles is four hundred bytes of report, and nobody downstream reads
+ * `atanh(0.5)` on its own.
+ */
+export interface MathSignal {
+  /** Hash of the whole vector, in a fixed order. The fingerprint component. */
+  hash?: string
+  /** How many of the probes returned a finite number, so the hash has a denominator. */
+  probed?: number
+  /**
+   * The two results measured to differ between engines on the same machine.
+   *
+   * Chrome 151 and Firefox 154 on one M1 Pro agree on seventeen of the
+   * nineteen probes to the last bit, and disagree on these two:
+   *
+   *   atanh(0.5)  0.5493061443340549 against 0.5493061443340548
+   *   expm1(1)    1.7182818284590453 against 1.718281828459045
+   *
+   * Kept as full doubles because that final digit is the entire signal, and
+   * kept individually because a hash cannot say *which* way a machine differs.
+   * The rest stay in the hash: the ensemble is the fingerprint, and eighteen
+   * doubles is four hundred bytes of report nobody reads field by field.
+   */
+  atanh_half?: number
+  expm1_1?: number
+  /**
+   * Whether the identities that must hold, hold.
+   *
+   * `Math.sin(0)` is zero and `Math.cos(0)` is one in every conforming engine,
+   * on every platform, by specification rather than by implementation. A
+   * visitor whose maths gets these wrong is not on an unusual CPU: something
+   * has replaced `Math`, which is what the extensions that add noise to
+   * fingerprintable APIs do.
+   */
+  identities_hold?: boolean
+}
+
+/**
+ * What the engine's errors look like.
+ *
+ * The strongest engine ground truth there is, because none of it is a value
+ * anyone thought to make configurable: the wording of a `TypeError`, whether
+ * `Error.captureStackTrace` exists, which non-standard properties an error
+ * carries. A build that rewrites its user agent has all of this to rewrite as
+ * well, and rewriting it means patching builtins, which `lies/` then finds.
+ *
+ * Message *lengths* rather than message text, for the same reason
+ * `engine.to_fixed_error_length` uses a length: a reworded message across
+ * versions still lands in the right bucket, and the report does not carry
+ * three English sentences a browser release can invalidate.
+ */
+export interface ErrorsSignal {
+  /**
+   * Message lengths, measured rather than assumed.
+   *
+   * Chrome 151 against Firefox 154, on one machine:
+   *
+   *   null.x                44 ("Cannot read properties of null (reading 'x')")
+   *                         33 ("can't access property \"x\" of null")
+   *   new Function('!')     20 / 28
+   *   JSON.parse('{')       69 / 89
+   *   [].length = -1        68 / 20
+   *   assignment to const   32 / 31
+   *
+   * Lengths rather than text, for the reason `engine.to_fixed_error_length`
+   * uses one: a reworded message across versions still lands in the right
+   * bucket, and the report does not carry six English sentences that a browser
+   * release can invalidate.
+   *
+   * Probes that measured *identical* on both engines are not collected -
+   * `undefined()`, `[].reduce()` and a missing method on a null-prototype
+   * object all produce the same length in both - because a probe that does not
+   * discriminate is report weight without signal.
+   */
+  null_property_length?: number
+  syntax_length?: number
+  json_parse_length?: number
+  invalid_array_length?: number
+  const_assign_length?: number
+  /**
+   * The own property names of a caught `Error`, sorted and joined.
+   *
+   * The strongest single tell here, and the one nobody thinks to spoof:
+   * `message,stack` on V8, `columnNumber,fileName,lineNumber,message` on
+   * SpiderMonkey, which puts `stack` on the prototype instead.
+   */
+  own_properties?: string
+  /**
+   * `Error.captureStackTrace` and `Error.stackTraceLimit`.
+   *
+   * Still collected, no longer decisive. Both were V8's alone for years and
+   * every fingerprinting library still treats them that way; Firefox 154
+   * reports both as present, which is exactly the sort of assumption that
+   * quietly turns into a false positive - it made this collector call an
+   * ordinary Firefox "chromium" until it was measured.
+   */
+  capture_stack_trace?: boolean
+  stack_trace_limit?: boolean
+  /**
+   * The engine these add up to, decided here and not by a detector.
+   *
+   * Its own reading, independent of `engine.observed`: two probes of the same
+   * thing that can disagree are worth more than one that cannot, and the
+   * disagreement is what a partial spoof looks like.
+   */
+  observed?: string
+}
+
 export interface ScreenSignal {
   width?: number
   height?: number

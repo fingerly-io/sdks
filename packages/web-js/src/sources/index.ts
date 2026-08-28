@@ -19,7 +19,7 @@ import {
   touchSource,
 } from './device.js'
 import { mediaQueriesSource, screenSource } from './display.js'
-import { engineSource } from './engine.js'
+import { engineSource, errorsSource, mathSource } from './engine.js'
 import { navigatorSource, userAgentDataSource } from './navigator.js'
 import { canvasSource, webglExtensionsSource, webglSource } from './render.js'
 import { automationSource, permissionsSource, timingSource } from './runtime.js'
@@ -29,6 +29,8 @@ import { fontsSource } from './text.js'
 export const browserSources: readonly Source[] = [
   // fast
   engineSource,
+  errorsSource,
+  mathSource,
   navigatorSource,
   screenSource,
   mediaQueriesSource,

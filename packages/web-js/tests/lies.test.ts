@@ -23,6 +23,15 @@ const CHROME_ON_MAC = {
     max_touch_points: 0,
   }),
   engine: ok({ observed: 'chromium', claimed: 'chromium', agrees: true }),
+  // Measured on Chrome 151, so the honest case is an honest browser's numbers
+  // rather than ones invented to pass.
+  errors: ok({
+    null_property_length: 44,
+    syntax_length: 20,
+    own_properties: 'message,stack',
+    observed: 'chromium',
+  }),
+  math: ok({ hash: '4f4301d51a2d4fe6', probed: 19, identities_hold: true }),
   webgl: ok({
     unmasked_renderer: 'ANGLE (Apple, ANGLE Metal Renderer: Apple M2 Pro, Unspecified Version)',
   }),
@@ -36,6 +45,49 @@ const idsOf = (sources: Record<string, SignalOutcome>) =>
 describe('findContradictions', () => {
   it('finds nothing on a consistent browser', () => {
     expect(findContradictions(CHROME_ON_MAC)).toEqual([])
+  })
+
+  it('catches two readings of the engine disagreeing with each other', () => {
+    // A build that patched the RangeError lengths and the stack shape to look
+    // like Chromium, and left `Error`'s own properties alone. Measured values
+    // from Firefox 154 on the errors side.
+    expect(
+      idsOf({
+        ...CHROME_ON_MAC,
+        errors: ok({
+          null_property_length: 33,
+          syntax_length: 28,
+          own_properties: 'columnNumber,fileName,lineNumber,message',
+          observed: 'gecko',
+        }),
+      }),
+    ).toContain('engine-vs-error-shapes')
+  })
+
+  it('catches error shapes that disagree with the user-agent', () => {
+    // The other half of the same spoof: the engine probes were the ones
+    // patched, so they agree with the claim and the error shapes agree with
+    // neither.
+    expect(
+      idsOf({
+        ...CHROME_ON_MAC,
+        errors: ok({ own_properties: 'columnNumber,fileName,lineNumber,message', observed: 'gecko' }),
+      }),
+    ).toContain('user-agent-vs-error-shapes')
+  })
+
+  it('catches maths that misses identities exact by specification', () => {
+    // What an extension that adds noise to fingerprintable APIs leaves behind.
+    expect(
+      idsOf({ ...CHROME_ON_MAC, math: ok({ hash: 'aaaa', probed: 19, identities_hold: false }) }),
+    ).toContain('math-identities')
+  })
+
+  it('says nothing when the error shapes could not be read', () => {
+    // Safari is not among the engines the error probes were measured against,
+    // so `observed` is undefined there - and undefined must not be read as
+    // disagreement.
+    expect(idsOf({ ...CHROME_ON_MAC, errors: ok({ null_property_length: 41 }) })).toEqual([])
   })
 
   it('catches a user-agent that disagrees with the engine underneath it', () => {
@@ -154,6 +206,15 @@ describe('findContradictions', () => {
           languages: ['en-GB', 'en'],
         }),
         engine: ok({ observed: 'chromium', claimed: 'chromium', agrees: true }),
+  // Measured on Chrome 151, so the honest case is an honest browser's numbers
+  // rather than ones invented to pass.
+  errors: ok({
+    null_property_length: 44,
+    syntax_length: 20,
+    own_properties: 'message,stack',
+    observed: 'chromium',
+  }),
+  math: ok({ hash: '4f4301d51a2d4fe6', probed: 19, identities_hold: true }),
         webgl: ok({ unmasked_renderer: 'Adreno (TM) 740' }),
         touch: ok({
           max_touch_points: 5,
