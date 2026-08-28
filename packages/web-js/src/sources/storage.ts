@@ -49,34 +49,73 @@ function indexedDbWorks(): boolean {
 }
 
 /**
- * Safari's private-window tell.
+ * The origin private file system, which is where both remaining desktop
+ * private-window tells now live.
  *
- * `navigator.storage.getDirectory()` rejects with a message naming an "unknown
- * transient reason" in a private window, and resolves in an ordinary one. The
- * message is matched rather than the error type because the type is the same
- * in both cases.
+ * One call, three interesting answers:
+ *
+ *   - Safari's private windows reject it with a message naming an "unknown
+ *     transient reason", where an ordinary Safari window resolves.
+ *   - Firefox's private windows reject it with a `SecurityError`. OPFS is
+ *     switched off in private browsing (Mozilla bug 1785125) and supporting it
+ *     is still an open bug (1975760), which makes this the tell that replaced
+ *     the ones Firefox has closed: IndexedDB works in private windows now, and
+ *     service workers have since Firefox 138.
+ *   - Anything else is a failure we can say nothing about.
+ *
+ * The outcome is reported raw and classified in the detector, because which
+ * refusal means "private" depends on the engine and the engine is decided by
+ * another source.
  */
-async function safariPrivate(): Promise<boolean | undefined> {
-  const storage = navigator.storage as StorageManager & {
-    getDirectory?: () => Promise<unknown>
-  }
-  if (typeof storage?.getDirectory !== 'function') return undefined
+function classifyFilesystemRefusal(error: unknown): 'transient' | 'refused' | 'failed' {
+  const name = error instanceof Error ? error.name : ''
+  const message = error instanceof Error ? error.message : String(error)
 
-  try {
-    await storage.getDirectory()
-    return false
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    return message.includes('unknown transient reason')
-  }
+  // WebKit names the reason in the message rather than in the type, and the
+  // type it uses is one an ordinary window can also produce.
+  if (message.includes('unknown transient reason')) return 'transient'
+  // Gecko uses the type. The wording is matched as well because it is stable
+  // ("Security error") and survives a rejection that lost its prototype.
+  if (name === 'SecurityError' || message.includes('Security error')) return 'refused'
+  return 'failed'
 }
 
 /**
- * Firefox's private-window tell: no service worker container.
+ * How long the probe is given before the rest of the source goes on without it.
  *
- * Reported raw. It is not conclusive on its own - an insecure context also has
- * none - which is exactly why the engine gate is applied in the detector rather
- * than here.
+ * Its own deadline rather than the source's: opening the file system for the
+ * first time on a cold profile can have to initialise the quota manager, and
+ * this source also carries the quota and the web-storage answers. A slow open
+ * should cost its own answer, not theirs. Both refusals are immediate, so the
+ * private-window case never reaches this.
+ */
+const FILESYSTEM_PROBE_MS = 200
+
+async function originFilesystem(): Promise<StorageSignal['origin_filesystem']> {
+  const storage = navigator.storage as StorageManager & {
+    getDirectory?: () => Promise<unknown>
+  }
+  // Absent in an insecure context, where `navigator.storage` is not exposed at
+  // all. Undefined rather than a guess: nothing was measured.
+  if (typeof storage?.getDirectory !== 'function') return undefined
+
+  return Promise.race([
+    storage.getDirectory().then(
+      () => 'ok' as const,
+      (error: unknown) => classifyFilesystemRefusal(error),
+    ),
+    new Promise<undefined>((resolve) => setTimeout(resolve, FILESYSTEM_PROBE_MS)),
+  ])
+}
+
+/**
+ * Whether a service worker container is exposed.
+ *
+ * Firefox's old private-window tell, kept for the builds it still fires on -
+ * Firefox 138 shipped service workers in private browsing and closed it there.
+ * Not conclusive on its own even before that: an insecure context has no
+ * container either, which is why that case reports nothing at all and why the
+ * engine gate is applied in the detector rather than here.
  */
 function serviceWorkerAvailable(): boolean | undefined {
   if (!window.isSecureContext) return undefined
@@ -112,7 +151,7 @@ export const storageSource: Source<StorageSignal> = {
         typeof quota === 'number' && typeof deviceMemory === 'number' && deviceMemory > 0
           ? quota / (deviceMemory * 1024 * 1024 * 1024)
           : undefined,
-      safari_private: await safariPrivate(),
+      origin_filesystem: await originFilesystem(),
       service_worker: serviceWorkerAvailable(),
     })
   },

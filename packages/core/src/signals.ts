@@ -227,11 +227,35 @@ export interface StorageSignal {
   /** `deviceMemory`-derived expectation, so the quota can be read as a ratio. */
   quota_ratio?: number
   /**
-   * Safari's tell: `navigator.storage.getDirectory()` rejects with a message
-   * containing "unknown transient reason" in a private window.
+   * What `navigator.storage.getDirectory()` did. One probe, and the two
+   * engines that refuse it refuse it differently:
+   *
+   * - `ok` - the origin private file system opened. An ordinary window.
+   * - `transient` - rejected naming an "unknown transient reason". Safari's
+   *   private windows, and nothing else.
+   * - `refused` - rejected with a `SecurityError`. Firefox private browsing,
+   *   where OPFS is switched off (Mozilla bug 1785125; supporting it is still
+   *   open as bug 1975760).
+   * - `failed` - rejected some other way, which is evidence of nothing.
+   *
+   * Reported as the raw outcome rather than as a boolean per browser because
+   * the engine gate belongs in the detector: `refused` in a Chromium iframe
+   * with storage blocked is not a private window, and only the engine says so.
+   */
+  origin_filesystem?: 'ok' | 'transient' | 'refused' | 'failed'
+  /**
+   * Legacy Safari tell, kept so a report stored by an older SDK still reads.
+   * Superseded by `origin_filesystem: 'transient'`, which is the same probe.
    */
   safari_private?: boolean
-  /** Firefox private windows do not expose a service worker registration. */
+  /**
+   * Whether a service worker container is exposed.
+   *
+   * This was Firefox's private-window tell until Firefox 138, which shipped
+   * service workers in private browsing (Mozilla bug 1320796) and closed it.
+   * Kept because it still fires on older builds and on permanent private
+   * browsing, and because "no container at all" is worth reporting anyway.
+   */
   service_worker?: boolean
 }
 
