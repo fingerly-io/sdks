@@ -1,9 +1,10 @@
 node_modules/
 dist/
 .turbo/
-# Nuxt's build and dev caches, under packages/nuxt/playground/.
+# Framework build and dev caches, under the demo apps.
 .nuxt/
 .output/
+.next/
 *.local
 .DS_Store
 
