@@ -19,12 +19,19 @@ repo relates to `server` and `panels`.
   One shared identification per app, readonly reactive state, SSR-safe.
 - `packages/{react,svelte,angular,nuxt,next}` — framework bindings, built on
   `web-js`/`vue`/`react`. Still stubs; `vue` is the template to follow.
-- `mobile/ios`, `mobile/android` — native SDKs, currently standalone local repos
-  (see their READMEs), destined to become git submodules once remotes exist
-- `mobile/react-native` — JS/TS package in the pnpm workspace (bridges native
-  modules)
-- `mobile/flutter` — Dart/pub package, standalone local repo, not part of the pnpm
-  workspace
+- `mobile/ios` — the native iOS SDK (Swift). Implemented; see its
+  [README](mobile/ios/README.md). Ships an SPM package and a podspec, because
+  React Native and Flutter integrate native code through CocoaPods and neither
+  can consume a Swift package from a plugin.
+- `mobile/android` — the native Android SDK. Not written yet.
+- `mobile/react-native`, `mobile/flutter` — bridges to the native SDKs, not
+  second implementations. Both are thin on purpose: almost every signal worth
+  having on a phone is unreachable from JavaScript or Dart, so a cross-platform
+  SDK that collected only what it could reach would report a jailbroken,
+  instrumented device as clean. `react-native` is in the pnpm workspace;
+  `flutter` is a Dart/pub package and is not.
+- Both are standalone local repos destined to become git submodules once the
+  remotes in `.gitmodules` exist.
 - `contract` — API contract synced from `server`'s OpenAPI spec; the sync point for
   the API shape across every SDK/panel consumer
 
@@ -39,6 +46,14 @@ pnpm lint
 pnpm --filter @badele/web-js demo   # http://localhost:4173
 ```
 
+The iOS SDK is a separate toolchain and is not driven by Turborepo:
+
+```
+cd mobile/ios
+xcodebuild test -scheme Badele -destination 'platform=iOS Simulator,name=iPhone 16e'
+./Example/run.sh                    # builds, installs and launches on a booted simulator
+```
+
 The demo page runs the browser SDK against whatever browser opens it and renders
 the whole report — every source with its status and duration, the tamper
 findings, and the verdicts. It submits nothing unless an endpoint and SDK key
@@ -50,10 +65,31 @@ written out there.
 
 ## Status
 
-`core`, `web-js` and `vue` are implemented; the other framework bindings and the
-Node SDK are still stubs. See [`todo.md`](todo.md) for what is done, what was
-measured, and what is left, and [`docs/another library-teardown.md`](docs/another library-teardown.md)
-for the another library teardown the design argues against.
+`core`, `web-js`, the framework bindings and `mobile/ios` are implemented. The
+Node SDK and the Android SDK are not. See [`todo.md`](todo.md) for what is done,
+what was measured, and what is left, and
+[`docs/another library-teardown.md`](docs/another library-teardown.md) for the
+another library teardown the design argues against.
+
+## One envelope, three platforms
+
+A browser and an iPhone submit the same `SignalReport`: a schema version, a
+budget, the tiers that ran, a map of sources each carrying a status and a
+duration, and the tamper layer's findings. What differs is which sources are in
+the map.
+
+That is what lets the server have one reader (`server/domain/risk/report.go`)
+and one set of rules, and it is why `packages/core`'s `types.ts` is the only
+place the shape is written down — `mobile/ios/Sources/Badele/Core/Types.swift`
+is a literal port of it, field for field, because both ends were already
+written.
+
+Native SDKs additionally emit a `device` source, which is the one thing the
+server reads *by name*: `jailbreak`, `simulator`, `frida`, `mitm_attack`,
+`developer_tools`, `tampering`, `device_farm`, `vpn_mobile`, and the
+`timezone`/`locale` pair the geo-mismatch rule needs. Those are assertions
+rather than observations — only the process can answer them — so the SDK states
+them and the server records them.
 
 ## Using it
 
