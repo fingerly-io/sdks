@@ -235,7 +235,7 @@
                 <div id="request-id" class="truncate font-mono text-[12px] text-cyan-300">—</div>
               </div>
               <div>
-                <div class="font-mono text-[10px] uppercase tracking-[0.14em] text-haze">Event state</div>
+                <div class="font-mono text-[10px] uppercase tracking-[0.14em] text-haze">State</div>
                 <div id="event-state" class="font-mono text-[13px] text-haze-bright">—</div>
               </div>
             </div>
@@ -243,7 +243,8 @@
 
           <p class="relative mt-auto pt-6 font-mono text-[11px] leading-relaxed text-haze/70">
             Not a percentage and not capped. It is only meaningful against the threshold, which is a number you set —
-            half of it is where <span class="text-amber-300/80">medium</span> begins.
+            half of it is where <span class="text-amber-300/80">medium</span> begins. The response sends the band rather
+            than the threshold, so read the pill; the gauge is drawn against the shipped default of 30.
           </p>
         </div>
 
@@ -299,7 +300,7 @@
 
         <div class="rounded-2xl border border-ink-700 bg-ink-900/70">
           <div class="flex items-center gap-1 border-b border-ink-700 px-3 py-2.5">
-            <button data-tab="event" class="tab rounded-md px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] transition">Event JSON</button>
+            <button data-tab="answer" class="tab rounded-md px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] transition">Response JSON</button>
             <button data-tab="submission" class="tab rounded-md px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] transition">Submission</button>
             <button id="copy" class="ml-auto rounded-md border border-ink-700 px-2.5 py-1.5 font-mono text-[11px] text-haze transition hover:border-ink-600 hover:text-white">Copy</button>
           </div>
@@ -391,7 +392,15 @@
           (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
         )
 
-      const state = { report: null, verdicts: null, requestId: '', event: null, error: null, tab: 'event' }
+      // `answer` is the /identify response itself. It used to be an event fetched
+      // back afterwards, which is why the panels below read one object: the
+      // response now carries what that fetch used to return.
+      const state = { report: null, verdicts: null, requestId: '', answer: null, error: null, tab: 'answer' }
+
+      // Not returned by /identify - the score is only meaningful against the
+      // threshold that banded it, and the response sends the band instead. The
+      // shipped default is public, so the gauge uses it and says so.
+      const DEFAULT_THRESHOLD = 30
 
       // ─────────────────────────── settings ───────────────────────────
 
@@ -464,91 +473,106 @@
       /** Everything the server said fired, keyed by signal name. */
       function triggerMap() {
         const map = new Map()
-        for (const trigger of state.event?.risk?.triggers ?? []) map.set(trigger.signal, trigger)
+        for (const trigger of state.answer?.triggers ?? []) map.set(trigger.signal, trigger)
         return map
       }
 
       function renderIdentification() {
         const nav = state.report?.sources?.navigator?.value ?? {}
-        const event = state.event
-        const ip = event?.ip_info
-        const geo = ip?.geolocation
+        const answer = state.answer
 
-        const place = geo
-          ? [geo.city, geo.subdivision, geo.country].filter(Boolean).join(', ')
-          : ''
-
+        // The address rows are gone with the fetch they came from: /identify
+        // answers with who the visitor is and what fired, not with where they
+        // are. The address is still enriched and still stored - it is just not
+        // in the response, so showing an empty row for it would be a bug
+        // report waiting to be filed rather than a feature.
         $('identification').innerHTML = [
           row(
             'Visitor ID',
-            event?.visitor_id
-              ? esc(event.visitor_id)
-              : `<span class="text-haze">Not derived yet</span>`,
+            answer?.visitorId
+              ? esc(answer.visitorId)
+              : `<span class="text-haze">${answer ? 'Not identified' : '—'}</span>`,
+            'text-cyan-300',
+          ),
+          row(
+            'Confidence',
+            answer?.visitorId ? `${answer.visitorConfidence}%` : '—',
+          ),
+          row(
+            'Seen before',
+            answer?.visitorId ? (answer.visitorIsNew ? 'No, first visit' : 'Yes') : '—',
           ),
           row('Browser', esc(describeBrowser(nav.user_agent)) || '—'),
           row('Operating system', esc(describeOS(nav.user_agent, nav.platform)) || '—'),
-          row('IP address', event?.ip_address ? esc(event.ip_address) : '—', 'text-cyan-300'),
-          row('Geolocation', place ? esc(place) : `<span class="text-haze">${event ? 'Not placed' : '—'}</span>`),
-          row('Network', ip?.network?.asn ? `${esc(ip.network.asn)} · ${esc(ip.network.name ?? '')}` : '—'),
-          row('Environment', event?.environment ? esc(event.environment) : '—'),
-          row('Received at', event?.received_at ? esc(new Date(event.received_at).toLocaleString()) : '—'),
+          row('Identifiable', answer ? (answer.identifiable ? 'Yes' : 'No, signals too thin') : '—'),
+          row('Answered before', answer ? (answer.duplicate ? 'Yes, replayed' : 'No') : '—'),
+          row('Request ID', answer?.requestId ? esc(answer.requestId) : '—'),
         ].join('')
       }
 
       function renderScore() {
-        const risk = state.event?.risk
+        const answer = state.answer
         const arc = $('score-arc')
         const CIRCUMFERENCE = 326.7
 
-        if (!risk) {
-          $('score-value').textContent = state.event ? 'n/a' : '—'
-          $('score-threshold').textContent = state.event ? 'not scored' : 'of 30'
+        // Null and zero are different answers here, which is why this tests for
+        // null rather than truthiness: zero means "scored, nothing fired" and
+        // deserves the emerald gauge, not the "unscored" dash.
+        const scored = answer != null && answer.suspectScore !== null
+
+        if (!scored) {
+          $('score-value').textContent = answer ? 'n/a' : '—'
+          $('score-threshold').textContent = answer ? 'not scored' : `of ${DEFAULT_THRESHOLD}`
           $('level-pill').className =
             'rounded-full border border-ink-600 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-haze'
-          $('level-pill').textContent = state.event ? 'unscored' : '—'
+          $('level-pill').textContent = answer ? 'unscored' : '—'
           $('score-source').textContent = '—'
           arc.setAttribute('stroke-dashoffset', CIRCUMFERENCE)
           return
         }
 
-        const ratio = Math.max(0, Math.min(1, risk.score / Math.max(1, risk.threshold)))
+        const ratio = Math.max(0, Math.min(1, answer.suspectScore / DEFAULT_THRESHOLD))
         arc.setAttribute('stroke-dashoffset', CIRCUMFERENCE * (1 - ratio))
 
-        $('score-value').textContent = risk.score
-        $('score-threshold').textContent = `of ${risk.threshold}`
+        $('score-value').textContent = answer.suspectScore
+        $('score-threshold').textContent = `of ${DEFAULT_THRESHOLD}`
 
         const tone =
-          risk.level === 'high'
+          answer.suspectLevel === 'high'
             ? 'border-rose-500/30 bg-rose-500/10 text-rose-300'
-            : risk.level === 'medium'
+            : answer.suspectLevel === 'medium'
               ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
               : 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300'
         $('level-pill').className = `rounded-full border px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] ${tone}`
-        $('level-pill').textContent = risk.level
+        $('level-pill').textContent = answer.suspectLevel || 'unbanded'
 
-        const source = { key: 'this SDK key', organization: "the organisation's", default: 'shipped defaults' }[risk.source]
-        $('score-source').textContent = `${source ?? risk.source} · rev ${risk.revision || 0} · ${risk.platform}`
+        // The band is the server's, and it used the threshold it was
+        // configured with. The gauge shows the shipped default because that is
+        // the only threshold the response lets a client know about - so the
+        // pill, not the arc, is the number to trust.
+        $('score-source').textContent = `banded by the server · gauge uses the default ${DEFAULT_THRESHOLD}`
       }
 
       function renderBreakdown() {
-        const risk = state.event?.risk
+        const answer = state.answer
         const target = $('breakdown')
+        const triggers = answer?.triggers ?? []
 
-        if (!risk) {
+        if (answer == null || answer.suspectScore === null) {
           target.innerHTML = `<p class="font-mono text-[12px] text-haze">${
-            state.event
-              ? 'This submission was not scored. ' + esc(state.event.reason || 'Enrichment did not finish.')
+            answer
+              ? 'This submission was not scored. ' + esc(answer.reason || 'The server did not say why.')
               : 'Waiting for the server. Configure an endpoint and a key to see the score.'
           }</p>`
           return
         }
-        if (risk.triggers.length === 0) {
+        if (triggers.length === 0) {
           target.innerHTML = `<p class="font-mono text-[12px] text-emerald-300/80">Nothing fired. An ordinary visitor scores zero.</p>`
           return
         }
 
-        const heaviest = Math.max(...risk.triggers.map((t) => t.weight), 1)
-        target.innerHTML = `<div class="space-y-2.5">${risk.triggers
+        const heaviest = Math.max(...triggers.map((t) => t.weight), 1)
+        target.innerHTML = `<div class="space-y-2.5">${triggers
           .map((trigger) => {
             const width = Math.max(2, (trigger.weight / heaviest) * 100)
             const off = trigger.weight === 0
@@ -567,14 +591,14 @@
           })
           .join('')}</div>
           <div class="mt-4 flex items-center justify-between border-t border-ink-700 pt-3 font-mono text-[12px]">
-            <span class="text-haze">${risk.triggers.length} signal${risk.triggers.length === 1 ? '' : 's'} fired</span>
-            <span class="text-white">total <span class="tabular-nums">${risk.score}</span></span>
+            <span class="text-haze">${triggers.length} signal${triggers.length === 1 ? '' : 's'} fired</span>
+            <span class="text-white">total <span class="tabular-nums">${answer.suspectScore}</span></span>
           </div>`
       }
 
       function renderSignals() {
         const triggers = triggerMap()
-        const scored = Boolean(state.event?.risk)
+        const scored = state.answer != null && state.answer.suspectScore !== null
 
         $('signal-groups').innerHTML = GROUPS.map(
           (group) => `
@@ -696,8 +720,8 @@
         }
 
         const body =
-          state.tab === 'event'
-            ? (state.event ?? { note: 'No event yet. Configure an endpoint and a public SDK key.' })
+          state.tab === 'answer'
+            ? (state.answer ?? { note: 'No answer yet. Configure an endpoint and a public SDK key.' })
             : { sdk: { platform: 'web', version: '0.1.0' }, signals: state.report, tag: 'playground' }
 
         $('raw').textContent = JSON.stringify(body, null, 2)
@@ -762,36 +786,10 @@
         $('run-icon').style.animation = on ? 'spin 900ms linear infinite' : ''
       }
 
-      /**
-       * Read the finished event back, as an SDK does.
-       *
-       * Identification is two-phase: the submission is answered before the
-       * address has been looked up, so this polls until the event settles.
-       * A pending event is a 200 with state "pending" and an instruction to
-       * ask again; "unavailable" is an instruction to stop.
-       */
-      async function awaitEvent(requestId) {
-        const deadline = Date.now() + 8000
-        while (Date.now() < deadline) {
-          const response = await fetch(`${settings.endpoint}/api/v1/events/${requestId}`, {
-            headers: { 'x-api-key': settings.apiKey },
-          })
-          if (!response.ok) throw new Error(`the event could not be read (${response.status})`)
-
-          const event = await response.json()
-          if (event.state !== 'pending') return event
-
-          state.event = event
-          render()
-          await new Promise((resolve) => setTimeout(resolve, 220))
-        }
-        throw new Error('the event never settled')
-      }
-
       async function analyze() {
         busy(true)
         state.error = null
-        state.event = null
+        state.answer = null
 
         try {
           const submit = Boolean(settings.apiKey && settings.endpoint)
@@ -800,22 +798,20 @@
             ...(settings.endpoint ? { endpoint: settings.endpoint } : {}),
           })
 
+          // One call, one answer. There is no second phase to wait for: the
+          // score comes back with the submission, which is the whole point of
+          // the response this page reads.
           const result = await client.identify({ submit, tag: 'playground' })
           state.report = result.report
           state.verdicts = result.verdicts
           state.requestId = result.requestId
+          state.answer = submit ? result : null
           $('request-id').textContent = result.requestId || 'not submitted'
-          $('event-state').textContent = submit ? 'submitted, enriching…' : 'not submitted'
+          $('event-state').textContent = submit ? result.state || 'answered' : 'not submitted'
           render()
 
-          if (submit) {
-            state.event = await awaitEvent(result.requestId)
-            $('event-state').textContent = state.event.state
-            render()
-          }
-
           // Read back by the browser-automation check, as on the report page.
-          window.__badele = { result, event: state.event }
+          window.__badele = { result }
         } catch (error) {
           state.error = error
           $('event-state').innerHTML = `<span class="text-rose-300">${esc(error.message ?? error)}</span>`
