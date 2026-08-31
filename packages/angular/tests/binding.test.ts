@@ -34,6 +34,16 @@ const verdict = (value: boolean, confidence: 'low' | 'medium' | 'high', reasons:
 
 const RESULT = {
   requestId: 'req_1',
+  visitorId: 'vis_1',
+  visitorIsNew: false,
+  visitorConfidence: 93,
+  identifiable: true,
+  duplicate: false,
+  state: 'scored',
+  reason: '',
+  suspectScore: 41,
+  suspectLevel: 'medium',
+  triggers: [{ signal: 'patched-natives', group: 'automation', weight: 22, confidence: 'high', reason: '' }],
   verdicts: {
     incognito: verdict(true, 'medium', ['firefox-private-origin-filesystem-refused']),
     tor: verdict(false, 'low'),
@@ -128,6 +138,51 @@ describe('injectIdentify', () => {
     expect(badele.isSuspicious()).toBe(true)
     expect(badele.isLoading()).toBe(false)
     expect(badele.error()).toBeNull()
+  })
+
+  it('surfaces everything the server decided', async () => {
+    application({ apiKey: 'pk_test' })
+    const badele = TestBed.runInInjectionContext(() => injectIdentify({ immediate: true }))
+
+    await render()
+
+    expect(badele.visitorId()).toBe('vis_1')
+    expect(badele.visitorIsNew()).toBe(false)
+    expect(badele.visitorConfidence()).toBe(93)
+    expect(badele.identifiable()).toBe(true)
+    expect(badele.duplicate()).toBe(false)
+    expect(badele.state()).toBe('scored')
+    expect(badele.suspectScore()).toBe(41)
+    expect(badele.suspectLevel()).toBe('medium')
+    expect(badele.triggers()).toHaveLength(1)
+    expect(badele.triggers()[0]?.signal).toBe('patched-natives')
+    // Empty on the wire means "nothing to say", and null is how this binding
+    // says that - so a template can write `reason() ?? fallback`.
+    expect(badele.reason()).toBeNull()
+  })
+
+  it('reports an unscored check as null, not zero', async () => {
+    // Null and zero are different answers. Zero is "we scored it and found
+    // nothing"; null is "nobody scored it". A binding that collapsed them
+    // would make an unsubmitted page look clean.
+    identifyMock.mockResolvedValueOnce({
+      ...RESULT,
+      requestId: '',
+      visitorId: '',
+      identifiable: false,
+      suspectScore: null,
+      suspectLevel: null,
+      triggers: [],
+    })
+    application({ apiKey: 'pk_test' })
+    const badele = TestBed.runInInjectionContext(() => injectIdentify({ immediate: true }))
+
+    await render()
+
+    expect(badele.suspectScore()).toBeNull()
+    expect(badele.suspectLevel()).toBeNull()
+    expect(badele.visitorId()).toBeNull()
+    expect(badele.identifiable()).toBe(false)
   })
 
   it('shares one identification across every component that asks', async () => {

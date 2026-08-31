@@ -18,6 +18,7 @@ import {
   load,
   type BadeleClient,
   type IdentifyResult,
+  type IdentifyTrigger,
   type SignalReport,
   type Verdicts,
 } from '@badele/web-js'
@@ -31,9 +32,11 @@ export interface BadeleOptions {
   /**
    * Collect and score without submitting anything.
    *
-   * For an app that wants the local verdicts and nothing else. `requestId`
-   * stays null, which is the honest answer: nothing was sent, so there is
-   * nothing to fetch later.
+   * For a app that wants the local verdicts and nothing else. Everything
+   * the server decides comes back empty: no `requestId`, no `visitorId` and
+   * no `suspectScore`. That is the honest answer rather than a gap - nothing
+   * was sent, so nobody scored it, and a zero here would read as "scored,
+   * found nothing".
    */
   submit?: boolean
 }
@@ -41,6 +44,35 @@ export interface BadeleOptions {
 /** What a component injects. Every field is a signal; none of them is writable. */
 export interface Badele {
   readonly requestId: Signal<string | null>
+  /**
+   * Who the server decided this is. Null under `submit: false`, and null
+   * before the first identification - never empty-string, so a template can
+   * ask `visitorId()` without also asking whether it is meaningful.
+   */
+  readonly visitorId: Signal<string | null>
+  /** True when the server had never seen this visitor before. */
+  readonly visitorIsNew: Signal<boolean>
+  /** How sure the server is of `visitorId`, 0-100. */
+  readonly visitorConfidence: Signal<number>
+  /** False when the signals were too thin to identify anybody. */
+  readonly identifiable: Signal<boolean>
+  /** True when this submission had already been answered. */
+  readonly duplicate: Signal<boolean>
+  /** The server's disposition of the check. */
+  readonly state: Signal<string | null>
+  /** Why, when `state` needs explaining. */
+  readonly reason: Signal<string | null>
+  /**
+   * The server's score, 0-100, or null when it did not score.
+   *
+   * Null and zero are different answers: null is "not scored", zero is
+   * "scored, nothing found". Do not collapse them with `?? 0`.
+   */
+  readonly suspectScore: Signal<number | null>
+  /** The score as a band - `low`, `medium`, `high`. Null when unscored. */
+  readonly suspectLevel: Signal<string | null>
+  /** What the server scored on. Empty when it found nothing. */
+  readonly triggers: Signal<readonly IdentifyTrigger[]>
   readonly verdicts: Signal<Verdicts | null>
   readonly report: Signal<SignalReport | null>
   readonly error: Signal<Error | null>
@@ -86,6 +118,16 @@ export class BadeleServerError extends Error {
  */
 export function createBadele(options: BadeleOptions): Badele {
   const requestId = signal<string | null>(null)
+  const visitorId = signal<string | null>(null)
+  const visitorIsNew = signal(false)
+  const visitorConfidence = signal(0)
+  const identifiable = signal(false)
+  const duplicate = signal(false)
+  const state = signal<string | null>(null)
+  const reason = signal<string | null>(null)
+  const suspectScore = signal<number | null>(null)
+  const suspectLevel = signal<string | null>(null)
+  const triggers = signal<readonly IdentifyTrigger[]>([])
   const verdicts = signal<Verdicts | null>(null)
   const report = signal<SignalReport | null>(null)
   const error = signal<Error | null>(null)
@@ -138,6 +180,16 @@ export function createBadele(options: BadeleOptions): Badele {
       )
       .then((result) => {
         requestId.set(result.requestId === '' ? null : result.requestId)
+        visitorId.set(result.visitorId === '' ? null : result.visitorId)
+        visitorIsNew.set(result.visitorIsNew)
+        visitorConfidence.set(result.visitorConfidence)
+        identifiable.set(result.identifiable)
+        duplicate.set(result.duplicate)
+        state.set(result.state === '' ? null : result.state)
+        reason.set(result.reason === '' ? null : result.reason)
+        suspectScore.set(result.suspectScore)
+        suspectLevel.set(result.suspectLevel)
+        triggers.set(result.triggers)
         verdicts.set(result.verdicts)
         report.set(result.report)
         return result
@@ -169,6 +221,16 @@ export function createBadele(options: BadeleOptions): Badele {
   // would be changing what every other component sees.
   return {
     requestId: requestId.asReadonly(),
+    visitorId: visitorId.asReadonly(),
+    visitorIsNew: visitorIsNew.asReadonly(),
+    visitorConfidence: visitorConfidence.asReadonly(),
+    identifiable: identifiable.asReadonly(),
+    duplicate: duplicate.asReadonly(),
+    state: state.asReadonly(),
+    reason: reason.asReadonly(),
+    suspectScore: suspectScore.asReadonly(),
+    suspectLevel: suspectLevel.asReadonly(),
+    triggers: triggers.asReadonly(),
     verdicts: verdicts.asReadonly(),
     report: report.asReadonly(),
     error: error.asReadonly(),

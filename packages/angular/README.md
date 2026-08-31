@@ -155,8 +155,10 @@ For an app that wants the local verdicts and nothing else:
 provideBadele({ apiKey: 'pk_live_…', submit: false })
 ```
 
-`requestId()` stays `null`, which is the honest answer — nothing was sent, so
-there is nothing to fetch later.
+Everything the server decides comes back empty: no `requestId`, no `visitorId`,
+and `suspectScore` is `null` rather than `0`. That is the honest answer rather
+than a gap — nothing was sent, so nobody scored it, and a `0` would read as
+"scored, found nothing".
 
 ## Where these can be called
 
@@ -171,10 +173,20 @@ use — the name is the rule.
 ```ts
 const badele = injectIdentify()
 
-badele.requestId()    // string | null       — correlates the enriched event
-badele.verdicts()     // Verdicts | null     — the five local verdicts
-badele.report()       // SignalReport | null — every source, with status and timing
-badele.error()        // Error | null
+badele.requestId()         // string | null       — identifies this submission
+badele.visitorId()         // string | null       — who the server decided this is
+badele.visitorIsNew()      // boolean             — never seen before
+badele.visitorConfidence() // number              — 0 to 100
+badele.identifiable()      // boolean             — false when the signals were too thin
+badele.duplicate()         // boolean             — answered before; this is the first answer
+badele.state()             // string | null       — the server's disposition
+badele.reason()            // string | null       — why, when state needs explaining
+badele.suspectScore()      // number | null       — null when nothing scored it
+badele.suspectLevel()      // string | null       — low, medium, high
+badele.triggers()          // IdentifyTrigger[]   — what the server scored on
+badele.verdicts()          // Verdicts | null     — the five local verdicts
+badele.report()            // SignalReport | null — every source, with status and timing
+badele.error()             // Error | null
 badele.isLoading()    // boolean
 badele.isReady()      // boolean             — finished, successfully or not
 badele.isSuspicious() // boolean             — any verdict at medium+
