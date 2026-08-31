@@ -10,10 +10,17 @@
  * import { load } from '@badele/web-js'
  *
  * const badele = await load({ apiKey: 'pk_live_...' })
- * const { requestId, verdicts } = await badele.identify()
+ * const { visitorId, visitorIsNew, suspectScore, verdicts } = await badele.identify()
  *
- * if (verdicts.automation.value && verdicts.automation.confidence === 'high') {
+ * // The server's answer, in the same round trip.
+ * if (suspectScore !== null && suspectScore >= 30) {
  *   // step up to a challenge
+ * }
+ *
+ * // The local verdicts are still there, and are still advisory: they are
+ * // computed in the page, by code the visitor controls.
+ * if (verdicts.automation.value && verdicts.automation.confidence === 'high') {
+ *   // ...
  * }
  * ```
  */
@@ -63,6 +70,7 @@ export type {
   Confidence,
   IdentifyOptions,
   IdentifyResult,
+  IdentifyTrigger,
   IntegrityReport,
   Lie,
   SignalOutcome,
