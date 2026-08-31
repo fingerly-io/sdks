@@ -15,9 +15,11 @@ export interface ModuleOptions {
   /**
    * Collect and score without submitting anything.
    *
-   * For an app that wants the local verdicts and nothing else. `requestId`
-   * stays null, which is the honest answer: nothing was sent, so there is
-   * nothing to fetch later.
+   * For a app that wants the local verdicts and nothing else. Everything
+   * the server decides comes back empty: no `requestId`, no `visitorId` and
+   * no `suspectScore`. That is the honest answer rather than a gap - nothing
+   * was sent, so nobody scored it, and a zero here would read as "scored,
+   * found nothing".
    */
   submit?: boolean
 }

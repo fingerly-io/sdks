@@ -175,5 +175,7 @@ datacenter and Tor checks are computed from. Doing it properly needs the API to
 trust a forwarded address from your origin specifically, which is a decision
 that belongs on the server rather than in a client package.
 
-**It does not fetch the enriched event.** Reading a finished event server-side
-is `@badele/node`'s job, and the route it would call does not exist yet.
+**It does not read events back.** It does not need to: `identify()` resolves
+with the server's verdict — `visitorId`, `suspectScore`, `suspectLevel` and the
+triggers behind them — so there is nothing to fetch afterwards. Reading stored
+events for reporting is `@badele/node`'s job.

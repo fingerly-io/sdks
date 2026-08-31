@@ -33,6 +33,7 @@ export type {
   BadeleStore,
   Confidence,
   IdentifyResult,
+  IdentifyTrigger,
   SignalReport,
   UseIdentifyOptions,
   UseIdentifyReturn,
