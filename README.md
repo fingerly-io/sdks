@@ -111,7 +111,7 @@ answer them — so the SDK states them and the server records them.
 import { load } from '@badele/web-js'
 
 const badele = await load({ apiKey: 'pk_live_…' })
-const { requestId, verdicts, report } = await badele.identify({ tag: 'checkout' })
+const { requestId, visitorId, suspectScore, verdicts } = await badele.identify({ tag: 'checkout' })
 
 if (verdicts.automation.value && verdicts.automation.confidence === 'high') {
   // step up to a challenge
@@ -119,10 +119,11 @@ if (verdicts.automation.value && verdicts.automation.confidence === 'high') {
 ```
 
 `identify()` collects, scores locally, and submits to `POST /api/v1/identify`,
-returning as soon as the server has a receipt — IP enrichment and the velocity
-windows are computed after the response, which is why this returns a
-`requestId` rather than a finished event. Pass `{ submit: false }` to collect
-and score without sending anything.
+resolving with the server's verdict: `visitorId`, `suspectScore`,
+`suspectLevel` and the triggers behind them come back with the submission, so
+there is no second call to make. Pass `{ submit: false }` to collect and score
+without sending anything — the server's fields are empty then, and
+`suspectScore` is `null` rather than `0`, because nobody scored it.
 
 The verdicts returned here are advisory. The same detectors run again
 server-side over the stored report, where the rules can improve without every
