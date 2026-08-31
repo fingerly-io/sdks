@@ -58,9 +58,11 @@ export interface IdentifyOptions {
    * Collect and score without sending anything.
    *
    * For a caller that wants the local verdicts and nothing else - a page
-   * deciding whether to show a challenge, with no interest in the enriched
-   * event. `requestId` comes back empty, which is the honest answer: nothing
-   * was submitted, so there is nothing to fetch later.
+   * deciding whether to show a challenge, with no interest in the server's
+   * opinion. Everything the server decides comes back empty: no `requestId`,
+   * no `visitorId`, and `suspectScore` is null rather than zero. That is the
+   * honest answer rather than a gap - nothing was submitted, so nobody scored
+   * it, and a zero would read as "scored, found nothing".
    */
   submit?: boolean
 }
@@ -92,18 +94,42 @@ export class BadeleClient {
   /**
    * Collect, score locally, and submit.
    *
-   * Returns as soon as the server has a receipt. It does not wait for the
-   * enriched event, because IP geolocation and the velocity windows take far
-   * longer than a page should block for - that is the two-phase design the
-   * server's `202` and `services.Identifier` are built around. Callers that
-   * need the finished event fetch it separately by `requestId`.
+   * Returns the server's answer: who this visitor is, how sure it is, and what
+   * the submission scored. One round trip.
+   *
+   * It used to return as soon as the server had a receipt, on the grounds that
+   * the address lookup and the identity match could not happen in the tens of
+   * milliseconds a page load can spare. They can, so they do, and a caller no
+   * longer has to come back for the verdict it asked for.
+   *
+   * The local verdicts in [[IdentifyResult.verdicts]] are still there and are
+   * still advisory - they are computed in the page, by code the visitor
+   * controls. Where the two disagree, the server is the one to believe.
    */
   async identify(options: IdentifyOptions = {}): Promise<IdentifyResult> {
     const report = await this.collect(options)
     const verdicts = detectAll(report)
 
     if (options.submit === false) {
-      return { requestId: '', verdicts, report }
+      // Nothing was submitted, so there is no server answer to report. Every
+      // field the server would have filled is empty rather than invented,
+      // because a made-up visitor here would be indistinguishable from a real
+      // one to everything downstream.
+      return {
+        requestId: '',
+        visitorId: '',
+        visitorIsNew: false,
+        visitorConfidence: 0,
+        identifiable: false,
+        duplicate: false,
+        state: '',
+        reason: 'not-submitted',
+        suspectScore: null,
+        suspectLevel: null,
+        triggers: [],
+        verdicts,
+        report,
+      }
     }
 
     const submission: IdentifySubmission = {
@@ -112,8 +138,31 @@ export class BadeleClient {
       ...(options.tag === undefined ? {} : { tag: options.tag }),
     }
 
-    const receipt = await this.transport.submit(submission, options.signal)
-    return { requestId: receipt.request_id, verdicts, report }
+    const answer = await this.transport.submit(submission, options.signal)
+    return {
+      requestId: answer.request_id,
+      visitorId: answer.visitor_id ?? '',
+      visitorIsNew: answer.visitor_is_new ?? false,
+      visitorConfidence: answer.visitor_confidence ?? 0,
+      identifiable: answer.identifiable ?? false,
+      duplicate: answer.duplicate ?? false,
+      state: answer.state ?? '',
+      reason: answer.reason ?? '',
+      // Null rather than zero when the server omitted it. The server omits an
+      // absent score and sends a real zero as zero, so the two survive the
+      // wire; collapsing them here would undo that.
+      suspectScore: answer.suspect_score ?? null,
+      suspectLevel: answer.suspect_level ?? null,
+      triggers: (answer.triggers ?? []).map((trigger) => ({
+        signal: trigger.signal,
+        group: trigger.group ?? '',
+        weight: trigger.weight,
+        confidence: trigger.confidence ?? '',
+        reason: trigger.reason ?? '',
+      })),
+      verdicts,
+      report,
+    }
   }
 
   /**

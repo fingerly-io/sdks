@@ -248,6 +248,24 @@ export interface MobileVerdicts extends NativeVerdicts {
 /** What a native `identify()` resolves with. See [[IdentifyResult]]. */
 export interface NativeIdentifyResult {
   requestId: string
+
+  /** Who this visitor is. See [[IdentifyResult.visitorId]]. */
+  visitorId: string
+  visitorIsNew: boolean
+  /** How sure the server is, 0 to 100. See [[IdentifyResult.visitorConfidence]]. */
+  visitorConfidence: number
+  identifiable: boolean
+  /** True when this submission was answered before; the fields above are empty. */
+  duplicate: boolean
+
+  state: string
+  reason: string
+
+  /** `null` when the submission was not scored, which is not the same as zero. */
+  suspectScore: number | null
+  suspectLevel: string | null
+  triggers: IdentifyTrigger[]
+
   verdicts: MobileVerdicts
   report: SignalReport
 }
@@ -260,29 +278,119 @@ export interface IdentifySubmission {
 }
 
 /**
- * The receipt. `202 Accepted` from the server; see `schemas.IdentifyOut`.
+ * The answer.
  *
- * Note what is absent: there is no visitor identifier here, because the client
- * does not compute one. another library hashes its components in the page, which
- * makes the identity forgeable by the visitor and freezes the matching
- * algorithm into whatever SDK version a customer deployed. Badele submits the
- * raw report and lets the server decide who this is.
+ * Note what is absent: there is no visitor identifier computed here, because
+ * the client does not compute one. another library hashes its components in the
+ * page, which makes the identity forgeable by the visitor and freezes the
+ * matching algorithm into whatever SDK version a customer deployed. Badele
+ * submits the raw report and lets the server decide who this is - and then
+ * tells you, in the same response.
  */
 export interface IdentifyResult {
   requestId: string
-  /** The local verdicts, available immediately. Advisory; see [[Verdicts]]. */
+
+  /**
+   * Who this visitor is, stable across their visits.
+   *
+   * Empty only when nothing was submitted (`submit: false`) or when the
+   * submission was a [[duplicate]]. Otherwise always present: a report too thin
+   * to match anyone still gets an identifier, minted rather than matched, so
+   * that every event has a key.
+   */
+  visitorId: string
+  /** Whether this is the first time the server has seen this visitor. */
+  visitorIsNew: boolean
+
+  /**
+   * How sure the server is about [[visitorId]], from 0 to 100.
+   *
+   * 100 when this exact device has been seen before, 85-99 when it drifted -
+   * a browser update, a new monitor - and was recognised by similarity, and 0
+   * when the identifier was minted because nothing matched.
+   *
+   * Read this rather than inferring trust from [[identifiable]], which only
+   * says whether the report was rich enough to attempt a match.
+   */
+  visitorConfidence: number
+
+  /**
+   * False when the report carried too little to identify anyone.
+   *
+   * A hardened browser produces this honestly; so does a client that would
+   * rather not be recognised. Either way the submission is still answered and
+   * still scored - more highly, because suppressing a fingerprint is itself
+   * evidence - and it is charged at a lower rate, because the address lookup
+   * happened and the identification did not.
+   */
+  identifiable: boolean
+
+  /**
+   * True when this submission was answered before under the same idempotency
+   * key.
+   *
+   * The verdict belongs to that first submission and is not repeated, so the
+   * fields above are empty. Keep the first response, or fetch the event by
+   * [[requestId]]. Without this flag an empty visitor would read as "nobody
+   * could be identified", which is the opposite of what happened.
+   */
+  duplicate: boolean
+
+  /** `enriched`, or `unavailable` when the address could not be looked up. */
+  state: string
+  /** Why enrichment did not happen, as a short stable token. Empty otherwise. */
+  reason: string
+
+  /**
+   * The weighted sum of the signals that fired, under the weights in force when
+   * this submission was scored.
+   *
+   * `null` when the submission was not scored, which is a different answer from
+   * zero: an ordinary visitor scores zero, and one whose enrichment never ran
+   * has no score at all. Anything computed as a share of your traffic divides
+   * by one of those two populations, so collapsing them makes the number
+   * plausible and wrong.
+   *
+   * Not a percentage and not capped. Normalising it to 0-100 would discard the
+   * difference between "over the line" and "far over the line".
+   */
+  suspectScore: number | null
+  /** `low`, `medium` or `high`. `null` exactly when [[suspectScore]] is. */
+  suspectLevel: string | null
+
+  /** What fired, and what each was worth. */
+  triggers: IdentifyTrigger[]
+
+  /** The local verdicts, available before the round trip. Advisory; see [[Verdicts]]. */
   verdicts: Verdicts
   /** The report that was sent, for debugging and for offline callers. */
   report: SignalReport
 }
 
+/** One signal that fired on the server, and what it contributed. */
+export interface IdentifyTrigger {
+  signal: string
+  /** The card this signal is reported under, such as `vpn` for `vpn_public`. */
+  group: string
+  /**
+   * The weight as it was applied, under the profile in force at the time. A
+   * customer who lowers a weight has not changed what last week scored.
+   */
+  weight: number
+  confidence: string
+  /** The tell that fired it, such as `known-tor-exit`. */
+  reason: string
+}
+
 // ---------------------------------------------------------------------------
-// The enriched event.
+// The stored event.
 //
-// Fetched by `requestId` after the server has done the work that cannot happen
-// in tens of milliseconds - IP geolocation, the velocity windows, the proxy
-// and VPN verdicts. None of this is produced client-side; the types live here
-// because every SDK has to name them.
+// The same submission as the server keeps it, fetched by `requestId` when
+// somebody wants it again later - a support question, a backend double-checking
+// what the browser was told. The verdict itself no longer waits for this: it
+// comes back with the submission.
+//
+// The types live here because every SDK has to name them.
 // ---------------------------------------------------------------------------
 
 export interface IdentificationConfidence {

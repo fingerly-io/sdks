@@ -2,9 +2,15 @@
  * Getting a submission to the server.
  *
  * The route is `POST /api/v1/identify`, authenticated by an SDK key in
- * `x-api-key` and answering `202 Accepted` with a request identifier. See
+ * `x-api-key` and answering `200 OK` with the verdict. See
  * `server/routers/sdk.go` for the registration and `server/app/app.go` for the
  * cross-origin policy that lets a browser read the answer.
+ *
+ * It used to answer `202 Accepted` with an identifier and nothing else, on the
+ * grounds that the server's work - the address lookup, the identity match -
+ * could not happen in the tens of milliseconds a page load can spare. It now
+ * does happen there, so the answer comes back with the submission rather than
+ * being fetched afterwards, and a caller needs one round trip instead of two.
  */
 
 import type { IdentifySubmission } from './types.js'
@@ -12,11 +18,77 @@ import type { IdentifySubmission } from './types.js'
 export const IDENTIFY_PATH = '/api/v1/identify'
 export const SDK_KEY_HEADER = 'x-api-key'
 
+/** One signal that fired, and what it was worth. */
+export interface SubmitTrigger {
+  signal: string
+  /** The card this signal is reported under, such as `vpn` for `vpn_public`. */
+  group?: string
+  /** The weight in force when this submission was scored, not the current one. */
+  weight: number
+  confidence?: string
+  /** The tell that fired it, such as `known-tor-exit`. */
+  reason?: string
+}
+
 /**
- * What the server sends back. Only an identifier - see `schemas.IdentifyOut`.
+ * What the server sends back - the wire shape of `schemas.IdentifyOut`.
+ *
+ * Everything past `request_id` is optional here because the server omits an
+ * empty value rather than sending a zero, and because a duplicate carries no
+ * verdict at all. `Client.identify` turns this into the friendlier
+ * [[IdentifyResult]]; this type exists so the raw answer is still reachable.
  */
 export interface SubmitResponse {
   request_id: string
+
+  /**
+   * True when this submission was answered before, under the same idempotency
+   * key.
+   *
+   * The verdict belongs to that first submission and is not repeated, so every
+   * field below is absent. Without this flag the absence would read as "nobody
+   * could be identified", which is a different answer entirely.
+   */
+  duplicate?: boolean
+
+  /** Who this visitor is. Always present unless `duplicate`. */
+  visitor_id?: string
+  visitor_is_new?: boolean
+
+  /**
+   * False when the report carried too little to identify anyone - a hardened
+   * browser, or a client that would rather not be recognised. The submission is
+   * still answered and still scored, more highly in fact, and `visitor_id` is
+   * minted rather than matched.
+   */
+  identifiable?: boolean
+
+  /**
+   * How sure the server is about `visitor_id`, from 0 to 100.
+   *
+   * 100 when this exact device has been seen before, 85-99 when it drifted and
+   * was recognised by similarity, 0 when the identifier was minted because
+   * nothing matched.
+   */
+  visitor_confidence?: number
+
+  /** `enriched` or `unavailable`. */
+  state?: string
+  /** Why enrichment did not happen, as a short stable token. */
+  reason?: string
+
+  /**
+   * The weighted sum of the signals that fired.
+   *
+   * Absent when the submission was not scored, which is a different answer from
+   * zero: an ordinary visitor scores zero, and one whose enrichment never ran
+   * has no score at all.
+   */
+  suspect_score?: number
+  /** `low`, `medium` or `high`. Absent exactly when `suspect_score` is. */
+  suspect_level?: string
+
+  triggers?: SubmitTrigger[]
 }
 
 export interface Transport {
@@ -182,7 +254,10 @@ export class HttpTransport implements Transport {
         throw new TransportError('The server accepted the submission but returned no request_id')
       }
 
-      return { request_id: body.request_id }
+      // Returned whole rather than picked apart. The fields this SDK does not
+      // know about yet are the ones a server deployed ahead of it would be
+      // adding, and dropping them here would mean an SDK upgrade for every one.
+      return body as SubmitResponse
     } finally {
       clearTimeout(timer)
       signal?.removeEventListener('abort', abort)
