@@ -31,6 +31,7 @@ export type {
   BadeleWebEvent,
   Confidence,
   IdentifyResult,
+  IdentifyTrigger,
   IntegrityReport,
   Lie,
   SignalOutcome,

@@ -37,6 +37,16 @@ const verdict = (value: boolean, confidence: 'low' | 'medium' | 'high', reasons:
 
 const RESULT = {
   requestId: 'req_1',
+  visitorId: 'vis_1',
+  visitorIsNew: false,
+  visitorConfidence: 93,
+  identifiable: true,
+  duplicate: false,
+  state: 'scored',
+  reason: '',
+  suspectScore: 41,
+  suspectLevel: 'medium',
+  triggers: [{ signal: 'patched-natives', group: 'automation', weight: 22, confidence: 'high', reason: '' }],
   verdicts: {
     incognito: verdict(true, 'medium', ['firefox-private-origin-filesystem-refused']),
     tor: verdict(false, 'low'),
@@ -203,6 +213,53 @@ describe('useIdentify', () => {
     expect(latest().requestId).toBe('req_1')
     expect(latest().verdicts?.automation.value).toBe(true)
     expect(latest().error).toBeNull()
+  })
+
+  it('surfaces everything the server decided', async () => {
+    const { latest, element } = probe(() => useIdentify({ immediate: true }))
+
+    await act(async () => {
+      render(<BadeleProvider apiKey="pk_test">{element}</BadeleProvider>)
+    })
+
+    expect(latest().visitorId).toBe('vis_1')
+    expect(latest().visitorIsNew).toBe(false)
+    expect(latest().visitorConfidence).toBe(93)
+    expect(latest().identifiable).toBe(true)
+    expect(latest().duplicate).toBe(false)
+    expect(latest().state).toBe('scored')
+    expect(latest().suspectScore).toBe(41)
+    expect(latest().suspectLevel).toBe('medium')
+    expect(latest().triggers).toHaveLength(1)
+    expect(latest().triggers[0]?.signal).toBe('patched-natives')
+    // Empty on the wire means "nothing to say", and null is how this binding
+    // says that - so a component can write `reason ?? fallback`.
+    expect(latest().reason).toBeNull()
+  })
+
+  it('reports an unscored check as null, not zero', async () => {
+    // Null and zero are different answers. Zero is "we scored it and found
+    // nothing"; null is "nobody scored it". A binding that collapsed them
+    // would make an unsubmitted page look clean.
+    identifyMock.mockResolvedValueOnce({
+      ...RESULT,
+      requestId: '',
+      visitorId: '',
+      identifiable: false,
+      suspectScore: null,
+      suspectLevel: null,
+      triggers: [],
+    })
+    const { latest, element } = probe(() => useIdentify({ immediate: true }))
+
+    await act(async () => {
+      render(<BadeleProvider apiKey="pk_test">{element}</BadeleProvider>)
+    })
+
+    expect(latest().suspectScore).toBeNull()
+    expect(latest().suspectLevel).toBeNull()
+    expect(latest().visitorId).toBeNull()
+    expect(latest().identifiable).toBe(false)
   })
 
   it('shares one identification across every component that asks', async () => {

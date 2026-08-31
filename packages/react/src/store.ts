@@ -15,6 +15,7 @@
  */
 
 import {
+  type IdentifyTrigger,
   load,
   type BadeleClient,
   type IdentifyResult,
@@ -31,9 +32,11 @@ export interface BadeleReactOptions {
   /**
    * Collect and score without submitting anything.
    *
-   * For a page that wants the local verdicts and nothing else. `requestId`
-   * stays null, which is the honest answer: nothing was sent, so there is
-   * nothing to fetch later.
+   * For a page that wants the local verdicts and nothing else. Everything
+   * the server decides comes back empty: no `requestId`, no `visitorId` and
+   * no `suspectScore`. That is the honest answer rather than a gap - nothing
+   * was sent, so nobody scored it, and a zero here would read as "scored,
+   * found nothing".
    */
   submit?: boolean
 }
@@ -41,6 +44,28 @@ export interface BadeleReactOptions {
 /** The result of the page's one identification, as components see it. */
 export interface BadeleState {
   requestId: string | null
+
+  /**
+   * The server's answer, in the same round trip as the submission.
+   *
+   * Null before an identification has completed, and null under `submit: false`
+   * where nothing was sent. `visitorId` is otherwise always a value: a report
+   * too thin to match anyone still gets an identifier, minted rather than
+   * matched.
+   */
+  visitorId: string | null
+  visitorIsNew: boolean
+  /** 100 exact, 85-99 recognised through drift, 0 minted. */
+  visitorConfidence: number
+  identifiable: boolean
+  /** This submission was answered before; the fields above are empty. */
+  duplicate: boolean
+  state: string | null
+  reason: string | null
+  /** Null when not scored, which is a different answer from zero. */
+  suspectScore: number | null
+  suspectLevel: string | null
+  triggers: IdentifyTrigger[]
   verdicts: Verdicts | null
   report: SignalReport | null
   error: Error | null
@@ -57,6 +82,18 @@ export interface BadeleState {
  */
 const INITIAL: BadeleState = Object.freeze({
   requestId: null,
+  visitorId: null,
+  visitorIsNew: false,
+  visitorConfidence: 0,
+  identifiable: false,
+  duplicate: false,
+  state: null,
+  reason: null,
+  suspectScore: null,
+  suspectLevel: null,
+  // Frozen and shared, like the rest of INITIAL: an empty array allocated per
+  // render would make every consumer re-render on every state read.
+  triggers: [],
   verdicts: null,
   report: null,
   error: null,
@@ -169,6 +206,16 @@ export function createBadeleStore(options: BadeleReactOptions): BadeleStore {
       .then((result) => {
         setState({
           requestId: result.requestId === '' ? null : result.requestId,
+          visitorId: result.visitorId === '' ? null : result.visitorId,
+          visitorIsNew: result.visitorIsNew,
+          visitorConfidence: result.visitorConfidence,
+          identifiable: result.identifiable,
+          duplicate: result.duplicate,
+          state: result.state === '' ? null : result.state,
+          reason: result.reason === '' ? null : result.reason,
+          suspectScore: result.suspectScore,
+          suspectLevel: result.suspectLevel,
+          triggers: result.triggers,
           verdicts: result.verdicts,
           report: result.report,
         })

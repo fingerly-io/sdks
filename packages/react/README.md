@@ -169,8 +169,10 @@ For a page that wants the local verdicts and nothing else:
 <BadeleProvider apiKey="pk_live_…" submit={false}>
 ```
 
-`requestId` stays `null`, which is the honest answer — nothing was sent, so
-there is nothing to fetch later.
+Everything the server decides comes back empty: no `requestId`, no `visitorId`,
+and `suspectScore` is `null` rather than `0`. That is the honest answer rather
+than a gap — nothing was sent, so nobody scored it, and a `0` would read as
+"scored, found nothing".
 
 ## Server rendering, and one store per request
 
@@ -193,10 +195,20 @@ reaches a hook.
 
 ```tsx
 const {
-  requestId,    // string | null       — correlates the enriched event
-  verdicts,     // Verdicts | null     — the five local verdicts
-  report,       // SignalReport | null — every source, with status and timing
-  error,        // Error | null
+  requestId,         // string | null       — identifies this submission
+  visitorId,         // string | null       — who the server decided this is
+  visitorIsNew,      // boolean             — never seen before
+  visitorConfidence, // number              — 0 to 100
+  identifiable,      // boolean             — false when the signals were too thin
+  duplicate,         // boolean             — answered before; this is the first answer
+  state,             // string | null       — the server's disposition
+  reason,            // string | null       — why, when state needs explaining
+  suspectScore,      // number | null       — null when nothing scored it
+  suspectLevel,      // string | null       — low, medium, high
+  triggers,          // IdentifyTrigger[]   — what the server scored on
+  verdicts,          // Verdicts | null     — the five local verdicts
+  report,            // SignalReport | null — every source, with status and timing
+  error,             // Error | null
   isLoading,    // boolean
   isReady,      // boolean             — finished, successfully or not
   isSuspicious, // boolean             — any verdict at medium+
@@ -207,6 +219,10 @@ const {
 
 `identify` and `refresh` are stable across renders, so they can go in a
 dependency array without restarting anything.
+
+`suspectScore` is `null`, not `0`, when nothing scored the submission — `0`
+means "scored, nothing fired". `visitorId` and the rest of the server's fields
+are empty under `submit: false`.
 
 A verdict is `{ value, confidence, reasons }` — `reasons` is ordered strongest
 first, and exists because a boolean that cannot say why it is true is not
