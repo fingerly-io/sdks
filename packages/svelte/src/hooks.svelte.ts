@@ -90,6 +90,36 @@ export function useIdentify(options: UseIdentifyOptions = {}): Badele {
     get requestId() {
       return badele.requestId
     },
+    get visitorId() {
+      return badele.visitorId
+    },
+    get visitorIsNew() {
+      return badele.visitorIsNew
+    },
+    get visitorConfidence() {
+      return badele.visitorConfidence
+    },
+    get identifiable() {
+      return badele.identifiable
+    },
+    get duplicate() {
+      return badele.duplicate
+    },
+    get state() {
+      return badele.state
+    },
+    get reason() {
+      return badele.reason
+    },
+    get suspectScore() {
+      return badele.suspectScore
+    },
+    get suspectLevel() {
+      return badele.suspectLevel
+    },
+    get triggers() {
+      return badele.triggers
+    },
     get verdicts() {
       return badele.verdicts
     },

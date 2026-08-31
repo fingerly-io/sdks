@@ -13,6 +13,8 @@
 import { flushSync, mount, unmount } from 'svelte'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { Badele } from '../src/state.svelte.js'
+
 const identifyMock = vi.fn()
 const loadMock = vi.fn()
 
@@ -32,6 +34,16 @@ const verdict = (value: boolean, confidence: 'low' | 'medium' | 'high', reasons:
 
 const RESULT = {
   requestId: 'req_1',
+  visitorId: 'vis_1',
+  visitorIsNew: false,
+  visitorConfidence: 93,
+  identifiable: true,
+  duplicate: false,
+  state: 'scored',
+  reason: '',
+  suspectScore: 41,
+  suspectLevel: 'medium',
+  triggers: [{ signal: 'patched-natives', group: 'automation', weight: 22, confidence: 'high', reason: '' }],
   verdicts: {
     incognito: verdict(true, 'medium', ['firefox-private-origin-filesystem-refused']),
     tor: verdict(false, 'low'),
@@ -45,7 +57,9 @@ const RESULT = {
 interface Mounted {
   target: HTMLElement
   text: () => string
-  state: { identify: (options?: { tag?: string; force?: boolean }) => Promise<unknown> }
+  // The whole binding surface, not the one method the tests started with: a
+  // stub type here would let a field be added to Badele and never asserted on.
+  state: Badele
   destroy: () => void
 }
 
@@ -127,6 +141,49 @@ describe('useIdentify', () => {
     expect(page.text()).toContain('request:req_1')
     expect(page.text()).toContain('suspicious:true')
     expect(page.text()).toContain('loading:false')
+  })
+
+  it('surfaces everything the server decided', async () => {
+    const page = render({ options: { apiKey: 'pk_test' } })
+
+    await page.state.identify()
+
+    expect(page.state.visitorId).toBe('vis_1')
+    expect(page.state.visitorIsNew).toBe(false)
+    expect(page.state.visitorConfidence).toBe(93)
+    expect(page.state.identifiable).toBe(true)
+    expect(page.state.duplicate).toBe(false)
+    expect(page.state.state).toBe('scored')
+    expect(page.state.suspectScore).toBe(41)
+    expect(page.state.suspectLevel).toBe('medium')
+    expect(page.state.triggers).toHaveLength(1)
+    expect(page.state.triggers[0]?.signal).toBe('patched-natives')
+    // Empty on the wire means "nothing to say", and null is how this binding
+    // says that - so a template can write `reason ?? fallback`.
+    expect(page.state.reason).toBeNull()
+  })
+
+  it('reports an unscored check as null, not zero', async () => {
+    // Null and zero are different answers. Zero is "we scored it and found
+    // nothing"; null is "nobody scored it". A binding that collapsed them
+    // would make an unsubmitted page look clean.
+    identifyMock.mockResolvedValueOnce({
+      ...RESULT,
+      requestId: '',
+      visitorId: '',
+      identifiable: false,
+      suspectScore: null,
+      suspectLevel: null,
+      triggers: [],
+    })
+    const page = render({ options: { apiKey: 'pk_test' } })
+
+    await page.state.identify()
+
+    expect(page.state.suspectScore).toBeNull()
+    expect(page.state.suspectLevel).toBeNull()
+    expect(page.state.visitorId).toBeNull()
+    expect(page.state.identifiable).toBe(false)
   })
 
   it('shares one identification across every component that asks', async () => {

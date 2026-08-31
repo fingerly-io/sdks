@@ -19,6 +19,7 @@ import {
   load,
   type BadeleClient,
   type IdentifyResult,
+  type IdentifyTrigger,
   type SignalReport,
   type Verdicts,
 } from '@badele/web-js'
@@ -32,9 +33,11 @@ export interface BadeleOptions {
   /**
    * Collect and score without submitting anything.
    *
-   * For a page that wants the local verdicts and nothing else. `requestId`
-   * stays null, which is the honest answer: nothing was sent, so there is
-   * nothing to fetch later.
+   * For a page that wants the local verdicts and nothing else. Everything
+   * the server decides comes back empty: no `requestId`, no `visitorId` and
+   * no `suspectScore`. That is the honest answer rather than a gap - nothing
+   * was sent, so nobody scored it, and a zero here would read as "scored,
+   * found nothing".
    */
   submit?: boolean
 }
@@ -42,6 +45,35 @@ export interface BadeleOptions {
 /** What a component reads. Every field is reactive; none of them is settable. */
 export interface Badele {
   readonly requestId: string | null
+  /**
+   * Who the server decided this is. Null under `submit: false`, and null
+   * before the first identification - never empty-string, so a template can
+   * ask `badele.visitorId` without also asking whether it means anything.
+   */
+  readonly visitorId: string | null
+  /** True when the server had never seen this visitor before. */
+  readonly visitorIsNew: boolean
+  /** How sure the server is of `visitorId`, 0-100. */
+  readonly visitorConfidence: number
+  /** False when the signals were too thin to identify anybody. */
+  readonly identifiable: boolean
+  /** True when this submission had already been answered. */
+  readonly duplicate: boolean
+  /** The server's disposition of the check. */
+  readonly state: string | null
+  /** Why, when `state` needs explaining. */
+  readonly reason: string | null
+  /**
+   * The server's score, 0-100, or null when it did not score.
+   *
+   * Null and zero are different answers: null is "not scored", zero is
+   * "scored, nothing found". Do not collapse them with `?? 0`.
+   */
+  readonly suspectScore: number | null
+  /** The score as a band - `low`, `medium`, `high`. Null when unscored. */
+  readonly suspectLevel: string | null
+  /** What the server scored on. Empty when it found nothing. */
+  readonly triggers: readonly IdentifyTrigger[]
   readonly verdicts: Verdicts | null
   readonly report: SignalReport | null
   readonly error: Error | null
@@ -86,6 +118,16 @@ export class BadeleServerError extends Error {
  */
 export function createBadele(options: BadeleOptions): Badele {
   let requestId = $state<string | null>(null)
+  let visitorId = $state<string | null>(null)
+  let visitorIsNew = $state(false)
+  let visitorConfidence = $state(0)
+  let identifiable = $state(false)
+  let duplicate = $state(false)
+  let checkState = $state<string | null>(null)
+  let reason = $state<string | null>(null)
+  let suspectScore = $state<number | null>(null)
+  let suspectLevel = $state<string | null>(null)
+  let triggers = $state<readonly IdentifyTrigger[]>([])
   let verdicts = $state<Verdicts | null>(null)
   let report = $state<SignalReport | null>(null)
   let error = $state<Error | null>(null)
@@ -138,6 +180,16 @@ export function createBadele(options: BadeleOptions): Badele {
       )
       .then((result) => {
         requestId = result.requestId === '' ? null : result.requestId
+        visitorId = result.visitorId === '' ? null : result.visitorId
+        visitorIsNew = result.visitorIsNew
+        visitorConfidence = result.visitorConfidence
+        identifiable = result.identifiable
+        duplicate = result.duplicate
+        checkState = result.state === '' ? null : result.state
+        reason = result.reason === '' ? null : result.reason
+        suspectScore = result.suspectScore
+        suspectLevel = result.suspectLevel
+        triggers = result.triggers
         verdicts = result.verdicts
         report = result.report
         return result
@@ -169,6 +221,36 @@ export function createBadele(options: BadeleOptions): Badele {
   return {
     get requestId() {
       return requestId
+    },
+    get visitorId() {
+      return visitorId
+    },
+    get visitorIsNew() {
+      return visitorIsNew
+    },
+    get visitorConfidence() {
+      return visitorConfidence
+    },
+    get identifiable() {
+      return identifiable
+    },
+    get duplicate() {
+      return duplicate
+    },
+    get state() {
+      return checkState
+    },
+    get reason() {
+      return reason
+    },
+    get suspectScore() {
+      return suspectScore
+    },
+    get suspectLevel() {
+      return suspectLevel
+    },
+    get triggers() {
+      return triggers
     },
     get verdicts() {
       return verdicts
