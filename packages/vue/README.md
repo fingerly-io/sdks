@@ -149,8 +149,10 @@ For a page that wants the local verdicts and nothing else:
 app.use(createBadele({ apiKey: 'pk_live_…', submit: false }))
 ```
 
-`requestId` stays `null`, which is the honest answer — nothing was sent, so
-there is nothing to fetch later.
+Everything the server decides comes back empty: no `requestId`, no `visitorId`,
+and `suspectScore` is `null` rather than `0`. That is the honest answer rather
+than a gap — nothing was sent, so nobody scored it, and a `0` would read as
+"scored, found nothing".
 
 ## Options API
 
@@ -173,10 +175,20 @@ export default {
 
 ```ts
 const {
-  requestId,    // Ref<string | null>      — correlates the enriched event
-  verdicts,     // Ref<Verdicts | null>    — the five local verdicts
-  report,       // Ref<SignalReport | null> — every source, with status and timing
-  error,        // Ref<Error | null>
+  requestId,         // Ref<string | null>       — identifies this submission
+  visitorId,         // Ref<string | null>       — who the server decided this is
+  visitorIsNew,      // Ref<boolean>             — never seen before
+  visitorConfidence, // Ref<number>              — 0 to 100
+  identifiable,      // Ref<boolean>             — false when the signals were too thin
+  duplicate,         // Ref<boolean>             — answered before; this is the first answer
+  state,             // Ref<string | null>       — the server's disposition
+  reason,            // Ref<string | null>       — why, when state needs explaining
+  suspectScore,      // Ref<number | null>       — null when nothing scored it
+  suspectLevel,      // Ref<string | null>       — low, medium, high
+  triggers,          // Ref<IdentifyTrigger[]>   — what the server scored on
+  verdicts,          // Ref<Verdicts | null>     — the five local verdicts
+  report,            // Ref<SignalReport | null> — every source, with status and timing
+  error,             // Ref<Error | null>
   isLoading,    // Ref<boolean>
   isReady,      // ComputedRef<boolean>    — finished, successfully or not
   isSuspicious, // ComputedRef<boolean>    — any verdict at medium+

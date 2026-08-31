@@ -31,6 +31,16 @@ const verdict = (value: boolean, confidence: 'low' | 'medium' | 'high', reasons:
 
 const RESULT = {
   requestId: 'req_1',
+  visitorId: 'vis_1',
+  visitorIsNew: false,
+  visitorConfidence: 93,
+  identifiable: true,
+  duplicate: false,
+  state: 'scored',
+  reason: '',
+  suspectScore: 41,
+  suspectLevel: 'medium',
+  triggers: [{ signal: 'patched-natives', group: 'automation', weight: 22, confidence: 'high', reason: '' }],
   verdicts: {
     incognito: verdict(false, 'low'),
     tor: verdict(false, 'low'),
@@ -214,6 +224,65 @@ describe('useIdentify', () => {
     await result.identify()
 
     expect(identifyMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('hands a cached call the same answer as the first one', async () => {
+    // Regression, and the reason this file asserts on whole objects rather
+    // than a field or two. The cached branch does not replay the first
+    // promise - it *rebuilds* a result from the stored refs, so any field
+    // added to IdentifyResult and forgotten there makes the second caller
+    // silently poorer than the first. The second caller is the common one:
+    // every component after the first takes this path.
+    const { result } = withSetup(() => useIdentify(), createBadele({ apiKey: 'pk_test' }))
+
+    const first = await result.identify()
+    const cached = await result.identify()
+
+    expect(identifyMock).toHaveBeenCalledTimes(1)
+    expect(cached).toEqual(first)
+  })
+
+  it('surfaces everything the server decided', async () => {
+    const { result } = withSetup(() => useIdentify(), createBadele({ apiKey: 'pk_test' }))
+
+    await result.identify()
+
+    expect(result.visitorId.value).toBe('vis_1')
+    expect(result.visitorIsNew.value).toBe(false)
+    expect(result.visitorConfidence.value).toBe(93)
+    expect(result.identifiable.value).toBe(true)
+    expect(result.duplicate.value).toBe(false)
+    expect(result.state.value).toBe('scored')
+    expect(result.suspectScore.value).toBe(41)
+    expect(result.suspectLevel.value).toBe('medium')
+    expect(result.triggers.value).toHaveLength(1)
+    expect(result.triggers.value[0]?.signal).toBe('patched-natives')
+    // Empty on the wire means "nothing to say", and null is how this binding
+    // says that - so a template can use `reason ?? fallback`.
+    expect(result.reason.value).toBeNull()
+  })
+
+  it('reports an unscored check as null, not zero', async () => {
+    // Null and zero are different answers. Zero is "we scored it and found
+    // nothing"; null is "nobody scored it". A binding that collapsed them
+    // would make an unsubmitted page look clean.
+    identifyMock.mockResolvedValueOnce({
+      ...RESULT,
+      requestId: '',
+      visitorId: '',
+      identifiable: false,
+      suspectScore: null,
+      suspectLevel: null,
+      triggers: [],
+    })
+    const { result } = withSetup(() => useIdentify(), createBadele({ apiKey: 'pk_test' }))
+
+    await result.identify()
+
+    expect(result.suspectScore.value).toBeNull()
+    expect(result.suspectLevel.value).toBeNull()
+    expect(result.visitorId.value).toBeNull()
+    expect(result.identifiable.value).toBe(false)
   })
 
   it('starts a fresh one on refresh()', async () => {

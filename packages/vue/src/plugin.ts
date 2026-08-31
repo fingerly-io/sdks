@@ -9,9 +9,17 @@
  * three different `requestId`s for the same visitor.
  */
 
-import { load, type BadeleClient, type IdentifyResult, type SignalReport, type Verdicts } from '@badele/web-js'
+import {
+  load,
+  type BadeleClient,
+  type IdentifyResult,
+  type IdentifyTrigger,
+  type SignalReport,
+  type Verdicts,
+} from '@badele/web-js'
 import {
   readonly,
+  shallowReadonly,
   ref,
   shallowRef,
   type App,
@@ -31,9 +39,11 @@ export interface BadeleVueOptions {
   /**
    * Collect and score without submitting anything.
    *
-   * For a page that wants the local verdicts and nothing else. `requestId`
-   * stays null, which is the honest answer: nothing was sent, so there is
-   * nothing to fetch later.
+   * For a page that wants the local verdicts and nothing else. Everything
+   * the server decides comes back empty: no `requestId`, no `visitorId` and
+   * no `suspectScore`. That is the honest answer rather than a gap - nothing
+   * was sent, so nobody scored it, and a zero here would read as "scored,
+   * found nothing".
    */
   submit?: boolean
 }
@@ -41,6 +51,16 @@ export interface BadeleVueOptions {
 /** The shared, reactive result of the app's one identification. */
 export interface BadeleState {
   requestId: ShallowRef<string | null>
+  visitorId: ShallowRef<string | null>
+  visitorIsNew: ShallowRef<boolean>
+  visitorConfidence: ShallowRef<number>
+  identifiable: ShallowRef<boolean>
+  duplicate: ShallowRef<boolean>
+  state: ShallowRef<string | null>
+  reason: ShallowRef<string | null>
+  suspectScore: ShallowRef<number | null>
+  suspectLevel: ShallowRef<string | null>
+  triggers: ShallowRef<IdentifyTrigger[]>
   verdicts: ShallowRef<Verdicts | null>
   report: ShallowRef<SignalReport | null>
   error: ShallowRef<Error | null>
@@ -89,6 +109,16 @@ function createState(): BadeleState {
     // object that is replaced wholesale, never edited field by field. Deep
     // reactivity would walk every source on every assignment and buy nothing.
     requestId: shallowRef<string | null>(null),
+    visitorId: shallowRef<string | null>(null),
+    visitorIsNew: shallowRef(false),
+    visitorConfidence: shallowRef(0),
+    identifiable: shallowRef(false),
+    duplicate: shallowRef(false),
+    state: shallowRef<string | null>(null),
+    reason: shallowRef<string | null>(null),
+    suspectScore: shallowRef<number | null>(null),
+    suspectLevel: shallowRef<string | null>(null),
+    triggers: shallowRef<IdentifyTrigger[]>([]),
     verdicts: shallowRef<Verdicts | null>(null),
     report: shallowRef<SignalReport | null>(null),
     error: shallowRef<Error | null>(null),
@@ -143,7 +173,23 @@ export function createBadele(options: BadeleVueOptions): Plugin {
       return Promise.resolve({
         // Back to the empty string the client uses for "nothing was submitted",
         // so a cached result is indistinguishable from the original.
+        //
+        // Every field is re-emitted, not just the ones a caller usually reads.
+        // This branch reconstructs a result rather than replaying one, so
+        // anything forgotten here is a field the second caller silently does
+        // not get - and the second caller is the common one, since this is the
+        // path every component after the first takes.
         requestId: state.requestId.value ?? '',
+        visitorId: state.visitorId.value ?? '',
+        visitorIsNew: state.visitorIsNew.value,
+        visitorConfidence: state.visitorConfidence.value,
+        identifiable: state.identifiable.value,
+        duplicate: state.duplicate.value,
+        state: state.state.value ?? '',
+        reason: state.reason.value ?? '',
+        suspectScore: state.suspectScore.value,
+        suspectLevel: state.suspectLevel.value,
+        triggers: state.triggers.value,
         verdicts: state.verdicts.value as Verdicts,
         report: state.report.value,
       })
@@ -161,6 +207,16 @@ export function createBadele(options: BadeleVueOptions): Plugin {
       )
       .then((result) => {
         state.requestId.value = result.requestId === '' ? null : result.requestId
+        state.visitorId.value = result.visitorId === '' ? null : result.visitorId
+        state.visitorIsNew.value = result.visitorIsNew
+        state.visitorConfidence.value = result.visitorConfidence
+        state.identifiable.value = result.identifiable
+        state.duplicate.value = result.duplicate
+        state.state.value = result.state === '' ? null : result.state
+        state.reason.value = result.reason === '' ? null : result.reason
+        state.suspectScore.value = result.suspectScore
+        state.suspectLevel.value = result.suspectLevel
+        state.triggers.value = result.triggers
         state.verdicts.value = result.verdicts
         state.report.value = result.report
         return result
@@ -199,6 +255,16 @@ export function createBadele(options: BadeleVueOptions): Plugin {
 /** Readonly views of the shared state, for returning from composables. */
 export type ReadonlyState = {
   requestId: Readonly<ShallowRef<string | null>>
+  visitorId: Readonly<ShallowRef<string | null>>
+  visitorIsNew: Readonly<ShallowRef<boolean>>
+  visitorConfidence: Readonly<ShallowRef<number>>
+  identifiable: Readonly<ShallowRef<boolean>>
+  duplicate: Readonly<ShallowRef<boolean>>
+  state: Readonly<ShallowRef<string | null>>
+  reason: Readonly<ShallowRef<string | null>>
+  suspectScore: Readonly<ShallowRef<number | null>>
+  suspectLevel: Readonly<ShallowRef<string | null>>
+  triggers: Readonly<ShallowRef<IdentifyTrigger[]>>
   verdicts: Readonly<ShallowRef<DeepReadonly<Verdicts> | null>>
   report: Readonly<ShallowRef<DeepReadonly<SignalReport> | null>>
   error: Readonly<ShallowRef<Error | null>>
@@ -208,6 +274,20 @@ export type ReadonlyState = {
 export function toReadonly(state: BadeleState): ReadonlyState {
   return {
     requestId: readonly(state.requestId),
+    visitorId: readonly(state.visitorId),
+    visitorIsNew: readonly(state.visitorIsNew),
+    visitorConfidence: readonly(state.visitorConfidence),
+    identifiable: readonly(state.identifiable),
+    duplicate: readonly(state.duplicate),
+    state: readonly(state.state),
+    reason: readonly(state.reason),
+    suspectScore: readonly(state.suspectScore),
+    suspectLevel: readonly(state.suspectLevel),
+    // shallowReadonly, not readonly: the array is replaced wholesale on every
+    // identification and never mutated in place, so deep-freezing each element
+    // buys nothing and costs the element type - a DeepReadonly<IdentifyTrigger>
+    // is not an IdentifyTrigger, and a consumer would have to widen it back.
+    triggers: shallowReadonly(state.triggers),
     verdicts: readonly(state.verdicts) as ReadonlyState['verdicts'],
     report: readonly(state.report) as ReadonlyState['report'],
     error: readonly(state.error) as ReadonlyState['error'],
