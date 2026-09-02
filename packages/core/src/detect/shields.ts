@@ -216,43 +216,31 @@ export function farblesFingerprints(report: SignalReport): boolean {
 }
 
 /**
- * The sources whose values this browser is rewriting, and which therefore must
- * not be treated as stable traits of the device.
+ * There is deliberately no `farbledSources` any more, and the reason is worth
+ * keeping.
  *
- * The list is the actionable half of this file. Brave reseeds its farbling per
- * session and per site, so a canvas hash from a Brave visitor is not wrong - it
- * is *correct today and different tomorrow*, which is worse, because it looks
- * exactly like a returning visitor's genuine hash right up until it silently
- * splits them into two identities. Anything named here belongs out of the
- * identity hash and out of any rule that expects a value to persist.
+ * It used to return the source ids a farbling browser rewrites - canvas, webgl,
+ * audio, fonts, hardware and the rest - for a caller to drop from an identity.
+ * Building that caller for real, in the server's `domain/identity`, showed the
+ * shape was wrong: a source is too coarse a unit to drop.
  *
- * Returned in the source set's own order rather than sorted, so two reports
- * from the same browser produce the same list.
+ * `audio` is the clearest case. Brave redraws the rendered buffer, so
+ * `audio.value` has to go - measured at 172.52, 172.54, 172.60 and 172.56
+ * across four windows on one machine. It does not touch `audio.sample_rate`,
+ * which is a perfectly good component and one of the few a Brave visitor has
+ * left. Dropping the source drops both. The same is true of `webgl`, whose
+ * unmasked vendor and renderer measured identical in all four windows and are
+ * the backbone of the candidate bucket, and of `fonts`, which measured the same
+ * on Brave as on Chrome.
  *
- * A source is the granularity available, and for one source it is too coarse
- * the other way: [[SOURCE.navigator]] carries `device_memory`,
- * `hardware_concurrency` and `plugin_count`, all farbled, alongside the
- * user-agent and the platform, which are not. It is left off this list because
- * dropping it would discard more than it saves, so a hash built over those
- * four fields still moves on Brave. Naming the fields is the fix, and it wants
- * a field-level vocabulary this type does not have yet.
+ * So the list was not merely imprecise, it pointed the wrong way. Every
+ * component removed is entropy removed, and removing the stable ones inverts
+ * the failure this whole file exists to fix: instead of one person becoming
+ * many, many people become one - and a wrong identifier is worse than a missing
+ * one, because everything downstream trusts it.
+ *
+ * The real list is component-level, evidence-led and lives beside the code that
+ * uses it, in the server's `domain/identity/shields.go`. What remains here is
+ * [[farblesFingerprints]], which answers the only question the SDK itself needs:
+ * whether the numbers in this report can be reasoned from at all.
  */
-export function farbledSources(report: SignalReport): SourceId[] {
-  if (!farblesFingerprints(report)) return []
-
-  return [
-    SOURCE.canvas,
-    SOURCE.webgl,
-    SOURCE.webglExtensions,
-    SOURCE.audio,
-    SOURCE.audioLatency,
-    SOURCE.fonts,
-    SOURCE.fontPreferences,
-    SOURCE.plugins,
-    SOURCE.mediaDevices,
-    SOURCE.speech,
-    // Not a rendering surface, but farbled by the same machinery and read by
-    // the private-window detector, which is how this file came to be written.
-    SOURCE.hardware,
-  ]
-}

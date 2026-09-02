@@ -66,8 +66,26 @@ const WRITES_PER_BLOCK = 15
  * is other tabs, not this one. Below `MIN_ROUNDS` the median is not a median,
  * and the source reports what it managed rather than pretending - the detector
  * has the floor.
+ *
+ * Nine rather than the fifteen this started with, and the reduction is measured
+ * rather than guessed. The same four windows were sampled twice, once at nine
+ * rounds and once at fifteen:
+ *
+ *   ordinary Chrome    3.778 / 3.86      ordinary Brave    3.062 / 3.17
+ *   incognito Chrome   1.000 / 1.056     private Brave     0.962 / 1.043
+ *
+ * The two columns agree about every window, and not marginally - each pair sits
+ * on the same side of the threshold with the whole of the gap to spare. The six
+ * extra rounds bought no accuracy at all.
+ *
+ * They were not free, and the asymmetry is the point. A round costs almost
+ * nothing in memory and roughly 15ms on disk, so the rounds this drops are
+ * mostly rounds spent on visitors who are *not* browsing privately - the common
+ * case, paying for the rare one. Measured on the collection as a whole: 248ms
+ * to 154ms for an ordinary Chrome window, against 81ms either way for an
+ * incognito one.
  */
-const MAX_ROUNDS = 15
+const MAX_ROUNDS = 9
 const MIN_ROUNDS = 5
 
 /**
@@ -189,7 +207,7 @@ export const storageDurabilitySource: Source<StorageDurabilitySignal> = {
 
       // The stopping rule has to look forwards, not backwards, and the reason
       // is the asymmetry this source is built on. In memory a round is nearly
-      // free and fifteen of them fit inside the budget with room to spare. On
+      // free and all nine fit inside the budget with room to spare. On
       // disk a single round is two dozen fsyncs and can outlast the whole
       // deferred tier by itself - so a loop that checks the clock only after
       // the round it just paid for overshoots by exactly the amount that hurts.

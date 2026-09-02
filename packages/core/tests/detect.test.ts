@@ -7,7 +7,6 @@ import {
   detectIncognito,
   detectShields,
   detectTor,
-  farbledSources,
   trustedDeviceMemory,
 } from '../src/detect/index.js'
 import { SOURCE } from '../src/signals.js'
@@ -345,14 +344,6 @@ describe('anti-fingerprinting countermeasures', () => {
     expect(detectIncognito(bigChrome).value).toBe(false)
   })
 
-  it('names the sources whose values will not survive to the next session', () => {
-    // Brave reseeds per session and per site, so these are not wrong today -
-    // they are correct today and different tomorrow, which is worse, because
-    // an identity built on them silently splits one visitor into two.
-    expect(farbledSources(braveMac)).toContain(SOURCE.canvas)
-    expect(farbledSources(braveMac)).toContain(SOURCE.hardware)
-    expect(farbledSources(ordinaryChromeMac)).toEqual([])
-  })
 
   it('still reads the legacy quota when the modern one has been pinned', () => {
     // The whole reason the second reading exists. Brave patches the binding
@@ -393,7 +384,7 @@ describe('anti-fingerprinting countermeasures', () => {
         status: 'ok',
         ms: 480,
         // Measured: Chrome 152 incognito, M1 Pro, median of 15 rounds.
-        value: { ratio: 1.056, rounds: 15, honored: true },
+        value: { ratio: 1.0, rounds: 9, honored: true },
       },
     })
 

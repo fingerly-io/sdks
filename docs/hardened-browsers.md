@@ -205,10 +205,18 @@ previous generation of this idea came to fire on cheap Android hardware. The
 ratio divides the hardware out: a slow device and a fast one disagree about
 everything here except that syncing costs more than not syncing.
 
-The technique and the constants (16KB payload, 15 writes, median of rounds,
-threshold 1.30) are Joe Rutkowski's, from
+The technique and the constants (16KB payload, 15 writes per block, threshold
+1.30) are Joe Rutkowski's, from
 [detectIncognito](https://github.com/Joe12387/detectIncognito) v1.8, calibrated
-there against eighteen real Android devices. `SOURCE.storage_durability` reports
+there against eighteen real Android devices.
+
+The round count is ours and is lower: nine, not fifteen. The four windows above
+were sampled at both, and the two agree about every one of them with the whole
+of the gap to spare - 3.778/3.86, 1.000/1.056, 3.062/3.17, 0.962/1.043. The six
+extra rounds bought no accuracy, and they were not free: a round costs almost
+nothing in memory and about 15ms on disk, so they were mostly spent on visitors
+who are *not* browsing privately. Collection for an ordinary Chrome window went
+from 248ms to 154ms; an incognito one was 81ms either way. `SOURCE.storage_durability` reports
 the ratio rather than his boolean, so the threshold can be re-cut server-side
 over stored reports instead of waiting for every customer to ship a new SDK.
 
@@ -274,16 +282,55 @@ within a session and reseeded between them looks exactly like a genuine
 returning visitor right up to the moment it silently splits one person into two
 identities, on every visit, forever.
 
-`farbledSources(report)` names the sources this applies to. Anything it returns
-belongs out of the identity hash and out of any rule that expects a value to
-persist between sessions.
+Which components that costs is a component-level question, and the list lives
+server-side in `domain/identity/shields.go`, beside the code that uses it.
+Measured across four Brave windows on one machine, these move on their own:
 
-One gap remains there: `SOURCE.navigator` carries `device_memory`,
-`hardware_concurrency` and `plugin_count`, all farbled, alongside the user-agent
-and platform, which are not. It is left off the list because dropping the whole
-source would discard more than it saves, so a hash over those four fields still
-moves on Brave. Fixing it properly wants a field-level vocabulary that
-`SourceId` does not have yet.
+| field | four windows |
+|---|---|
+| `hardware_concurrency` | 10, 8, 2, 5 |
+| `device_memory` | 16, 4, 4, 4 |
+| canvas (data URL length) | 10018, 10162, 10098, 10094 |
+| audio buffer sum | 172.52, 172.54, 172.60, 172.56 |
+
+The audio figure is the one to look at twice. The identity vector rounds it to
+four significant figures precisely to absorb scheduler jitter, and Brave's
+redraw still crosses the boundary - 172.5 against 172.6 - so the rounding that
+saves an ordinary browser does not save this one.
+
+The bucket was the half that hurt most. The candidate bucket included
+`hardware.cores`, so a Brave visitor landed in a different bucket on every visit
+and was never scored against their own history at all.
+
+**The list is deliberately short, because over-dropping inverts the failure.**
+Instead of one person becoming many, many become one, and a wrong identifier is
+worse than a missing one because everything downstream trusts it. So
+`webgl.vendor` and `webgl.renderer` stay - measured identical in all four
+windows, unmasked, and the backbone of the bucket - as do screen, platform and
+`audio.sample_rate`. The soft tier is untouched entirely: nothing there reaches
+the exact key or the bucket, so a soft component that drifts costs a little
+similarity score and cannot split a visitor in two.
+
+There was briefly a `farbledSources()` in the SDK returning *source ids* for
+this. It is gone, and the reason is instructive: a source is too coarse a unit.
+Dropping the `audio` source takes `sample_rate` with `value`, and `sample_rate`
+is one of the few components a Brave visitor has left. Dropping `webgl` takes
+the vendor and renderer that the bucket is built on. The list was not merely
+imprecise; it pointed the wrong way.
+
+### Still open
+
+`webgl.params` and `webgl.precision` are not dropped, and it is a real question
+rather than an oversight. Brave patches `webgl_rendering_context_base.cc`, so
+`getParameter` is a farbling surface on paper - but neither hash was captured in
+the runs above, and nothing is dropped on the strength of a code path nobody
+measured. It is load-bearing: a Brave vector keeps eight hard components, and
+those two are a quarter of what is left. If they churn, both must go, which puts
+Brave at exactly the minimum with no margin.
+
+`demo/shields.html` reports `identity_inputs` for exactly this: run it, quit the
+browser, run it again, and diff that block. Anything that moved is a component
+that splits one visitor into two.
 
 ## Reproducing
 

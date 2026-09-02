@@ -458,6 +458,40 @@
         navigator: pick('navigator'),
         hardware: pick('hardware'),
         engine: pick('engine'),
+        webgl: pick('webgl'),
+        canvas: pick('canvas'),
+        audio: pick('audio'),
+        // Exactly the values that become tier-A identity components, pulled
+        // out flat. Run this in one browser, quit it, run it again, and diff
+        // this block: anything that moved is a component that splits one
+        // visitor into two, and belongs in the server's `farbled` list.
+        //
+        // A whole-report diff cannot answer that question, because half of
+        // what moves between two sessions is supposed to move.
+        identity_inputs: (() => {
+          const of = (id, key) => {
+            const outcome = sources && sources[id]
+            return outcome && outcome.status === 'ok' && outcome.value
+              ? outcome.value[key]
+              : null
+          }
+          return {
+            'canvas.geometry': of('canvas', 'geometry'),
+            'canvas.text': of('canvas', 'text'),
+            'webgl.vendor': of('webgl', 'unmasked_vendor') || of('webgl', 'vendor'),
+            'webgl.renderer': of('webgl', 'unmasked_renderer') || of('webgl', 'renderer'),
+            'webgl.params': of('webgl', 'parameters_hash'),
+            'webgl.precision': of('webgl', 'shader_precision_hash'),
+            'audio.value': of('audio', 'value'),
+            'audio.sample_rate': of('audio', 'sample_rate'),
+            'screen.resolution': [of('screen', 'width'), of('screen', 'height')].join('x'),
+            'screen.depth': [of('screen', 'color_depth'), of('screen', 'pixel_depth')].join('/'),
+            'hardware.cores': of('hardware', 'hardware_concurrency'),
+            'hardware.memory': of('hardware', 'device_memory'),
+            'platform': of('navigator', 'platform'),
+            'fonts.count': (of('fonts', 'available') || []).length,
+          }
+        })(),
         elapsed_ms: result.report && result.report.elapsed_ms,
       }
     } catch (error) {

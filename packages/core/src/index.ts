@@ -75,7 +75,6 @@ export {
   detectIncognito,
   detectShields,
   detectTor,
-  farbledSources,
   farblesFingerprints,
   trustedDeviceMemory,
   unknown,
