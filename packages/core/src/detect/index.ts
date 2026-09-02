@@ -29,7 +29,6 @@ export { detectIncognito } from './incognito.js'
 export {
   BRAVE_SYNTHETIC_QUOTA,
   detectShields,
-  farbledSources,
   farblesFingerprints,
   trustedDeviceMemory,
 } from './shields.js'
