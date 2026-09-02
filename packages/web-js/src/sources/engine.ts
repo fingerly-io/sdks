@@ -291,18 +291,39 @@ function errorCarries(property: string): boolean | undefined {
  * have to move `stack` off its prototype to fake it - and the lengths vote
  * once each, because a browser release can reword a message.
  *
- * JavaScriptCore is not measured here: no WebKit build was available on the
- * machine this was written on. Its markers are left out rather than guessed,
- * so Safari reports `undefined` and nothing downstream fires on it - which is
- * the honest failure, and is why every reader of this field gates on it.
+ * JavaScriptCore has since been measured, on Safari 26.5 / macOS: its caught
+ * Error carries `column,line,message,sourceURL,stack`. That is the reading that
+ * corrected the assumption this comment used to record - that Safari would
+ * report `undefined` here and nothing would fire on it. It did not report
+ * `undefined`; it reported `chromium`, because it has an own `stack` too.
+ *
+ * The message *lengths* are still not measured for JavaScriptCore, and are
+ * deliberately not guessed. They are the weaker probe on this engine anyway:
+ * JSC embeds the source text of the failing expression in the message, so the
+ * length moves with whatever the bundler named the variable.
  */
-function observedFromErrors(errors: Omit<ErrorsSignal, 'observed'>): string | undefined {
+export function observedFromErrors(errors: Omit<ErrorsSignal, 'observed'>): string | undefined {
   const votes: string[] = []
   const own = errors.own_properties
 
   if (own !== undefined) {
-    if (own.includes('lineNumber')) votes.push('gecko', 'gecko')
-    else if (own.includes('stack')) votes.push('chromium', 'chromium')
+    // Exact match for V8, substring for the other two, and the asymmetry is the
+    // bug this once had. `stack` is not a V8 marker - JavaScriptCore has an own
+    // `stack` as well, and only SpiderMonkey keeps it on the prototype - so
+    // `includes('stack')` voted chromium twice for every Safari on earth. That
+    // contradicted the engine probe's honest `webkit`, and `detect/automation`
+    // read the disagreement as a spoof: Safari 26 reported itself automated,
+    // with `low` confidence and two reasons that were the same fact counted
+    // twice.
+    //
+    // What actually separates them is which *extra* properties are there.
+    // `sourceURL` is JavaScriptCore's alone and `lineNumber` is SpiderMonkey's
+    // alone, so both are checked before falling through to the pair V8 leaves
+    // behind - and V8's is matched exactly, because "exactly message and stack"
+    // is the claim, not "stack appears somewhere".
+    if (own.includes('sourceURL')) votes.push('webkit', 'webkit')
+    else if (own.includes('lineNumber')) votes.push('gecko', 'gecko')
+    else if (own === 'message,stack') votes.push('chromium', 'chromium')
   }
 
   if (errors.null_property_length === 44) votes.push('chromium')

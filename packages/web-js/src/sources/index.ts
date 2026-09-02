@@ -19,11 +19,13 @@ import {
   touchSource,
 } from './device.js'
 import { mediaQueriesSource, screenSource } from './display.js'
+import { storageDurabilitySource } from './durability.js'
 import { domBlockersSource } from './dom.js'
 import { engineSource, errorsSource, mathSource } from './engine.js'
 import { navigatorSource, userAgentDataSource } from './navigator.js'
 import { canvasSource, webglExtensionsSource, webglSource } from './render.js'
 import { automationSource, permissionsSource, timingSource } from './runtime.js'
+import { shieldsSource } from './shields.js'
 import { storageQuotaSource, storageSource } from './storage.js'
 import { fontsSource } from './text.js'
 
@@ -41,6 +43,7 @@ export const browserSources: readonly Source[] = [
   intlSource,
   storageSource,
   storageQuotaSource,
+  shieldsSource,
   timingSource,
   permissionsSource,
   automationSource,
@@ -56,15 +59,18 @@ export const browserSources: readonly Source[] = [
   mediaDevicesSource,
   userAgentDataSource,
   domBlockersSource,
+  storageDurabilitySource,
 ]
 
 export * from './audio.js'
 export * from './device.js'
 export * from './display.js'
 export * from './dom.js'
+export * from './durability.js'
 export * from './engine.js'
 export * from './navigator.js'
 export * from './render.js'
 export * from './runtime.js'
+export * from './shields.js'
 export * from './storage.js'
 export * from './text.js'

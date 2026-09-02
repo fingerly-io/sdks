@@ -57,7 +57,9 @@ export {
   type PermissionsSignal,
   type ScreenSignal,
   type SensorsSignal,
+  type ShieldsSignal,
   type SourceId,
+  type StorageDurabilitySignal,
   type StorageSignal,
   type TimingSignal,
   type TouchSignal,
@@ -65,12 +67,17 @@ export {
 } from './signals.js'
 
 export {
+  BRAVE_SYNTHETIC_QUOTA,
   detectAll,
   detectAutomation,
   detectEmulator,
   detectFarm,
   detectIncognito,
+  detectShields,
   detectTor,
+  farbledSources,
+  farblesFingerprints,
+  trustedDeviceMemory,
   unknown,
   weigh,
   type Evidence,

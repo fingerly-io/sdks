@@ -109,6 +109,60 @@ async function originFilesystem(): Promise<StorageSignal['origin_filesystem']> {
 }
 
 /**
+ * The deprecated quota API, read as a second opinion on the modern one.
+ *
+ * `navigator.storage.estimate()` used to be the whole Chromium private-window
+ * tell, and on Brave it is now a constant: 2147483648 from every window on
+ * every machine, because Brave pins the `StorageEstimate` binding that fills it
+ * in. `webkitTemporaryStorage.queryUsageAndQuota` reaches the same quota
+ * manager by an older road that the patch does not cover, and still answers
+ * honestly - 10 GiB from an ordinary Brave window against 3 GiB from a private
+ * one, measured on the same machine minutes apart.
+ *
+ * Callback-style, Chromium-only, deprecated, and one day it will be removed.
+ * All three are fine: it is reported as its own field, so when it disappears
+ * the field is absent and the detector goes back to what it did before, rather
+ * than reading a missing value as a small one.
+ */
+const LEGACY_QUOTA_PROBE_MS = 150
+
+interface DeprecatedStorageQuota {
+  queryUsageAndQuota: (
+    onSuccess: (usage: number, quota: number) => void,
+    onError?: (error: unknown) => void,
+  ) => void
+}
+
+function legacyQuota(): Promise<number | undefined> {
+  const storage = (navigator as Navigator & { webkitTemporaryStorage?: DeprecatedStorageQuota })
+    .webkitTemporaryStorage
+
+  if (typeof storage?.queryUsageAndQuota !== 'function') return Promise.resolve(undefined)
+
+  return new Promise<number | undefined>((resolve) => {
+    // Settled once, whichever arrives first. The API is old enough to have
+    // implementations that call neither callback, and this source carries four
+    // other answers that should not wait on it.
+    let settled = false
+    const settle = (value: number | undefined) => {
+      if (settled) return
+      settled = true
+      resolve(value)
+    }
+
+    setTimeout(() => settle(undefined), LEGACY_QUOTA_PROBE_MS)
+    try {
+      storage.queryUsageAndQuota(
+        (_usage, quota) => settle(typeof quota === 'number' ? quota : undefined),
+        () => settle(undefined),
+      )
+    } catch {
+      settle(undefined)
+    }
+  })
+}
+
+/**
  * Whether a service worker container is exposed.
  *
  * Firefox's old private-window tell, kept for the builds it still fires on -
@@ -129,11 +183,25 @@ export const storageSource: Source<StorageSignal> = {
   async run() {
     requireWindow()
 
-    const quota = await attempt(async () => {
+    // All three started before any is awaited, because their deadlines are
+    // concurrent and this source's is not the sum of them: 150ms for the legacy
+    // quota and 200ms for the file system awaited in turn is 350ms against a
+    // 250ms budget, which would have turned a source that answers into a source
+    // that times out on a slow profile and reports nothing at all.
+    const estimated = attempt(async () => {
       if (typeof navigator.storage?.estimate !== 'function') return undefined
       const estimate = await navigator.storage.estimate()
-      return estimate.quota
+      return { quota: estimate.quota, usage: estimate.usage }
     })
+    const legacy = legacyQuota()
+    const filesystem = originFilesystem()
+
+    const [estimate, legacyValue, originFilesystemValue] = await Promise.all([
+      estimated,
+      legacy,
+      filesystem,
+    ])
+    const quota = estimate?.quota
 
     const deviceMemory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory
 
@@ -142,16 +210,23 @@ export const storageSource: Source<StorageSignal> = {
       session_storage: storageWorks('sessionStorage'),
       indexed_db: indexedDbWorks(),
       quota,
+      usage: estimate?.usage,
+      legacy_quota: legacyValue,
       // Chromium's incognito quota is derived from device memory on recent
       // builds rather than being a fixed number, so the ratio is the form of
       // the test that survives the next change to it. Reported alongside the
       // absolute value rather than instead, because older builds need the
       // absolute one.
+      //
+      // Both inputs are farbled on Brave, which is why the detector recomputes
+      // this from the quota and the memory reading it decided to trust rather
+      // than taking it. Kept because reports stored by shipped SDKs carry it
+      // and the server's copy of the rules still has to read them.
       quota_ratio:
         typeof quota === 'number' && typeof deviceMemory === 'number' && deviceMemory > 0
           ? quota / (deviceMemory * 1024 * 1024 * 1024)
           : undefined,
-      origin_filesystem: await originFilesystem(),
+      origin_filesystem: originFilesystemValue,
       service_worker: serviceWorkerAvailable(),
     })
   },

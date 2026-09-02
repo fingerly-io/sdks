@@ -5,7 +5,7 @@ import { useActionState } from 'react'
 import { BadeleRequestId, useIdentify, useVerdict, type VerdictName } from '@badele/next'
 import { submit } from './actions'
 
-const NAMES: VerdictName[] = ['incognito', 'tor', 'emulator', 'automation', 'farm']
+const NAMES: VerdictName[] = ['incognito', 'shields', 'tor', 'emulator', 'automation', 'farm']
 
 const card = {
   background: '#171a21',

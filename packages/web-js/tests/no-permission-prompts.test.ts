@@ -42,6 +42,7 @@ const FORBIDDEN: [pattern: RegExp, what: string][] = [
   [/\brequestDevice\b|\brequestPort\b/, 'bluetooth/usb/hid/serial chooser'],
   [/credentials\s*\.\s*(get|create)\b/, 'credential prompt'],
   [/\brequestMIDIAccess\b/, 'MIDI prompt'],
+  [/\brequestMediaKeySystemAccess\b/, 'Widevine/DRM install prompt'],
   [/\brequestFullscreen\b|\brequestPointerLock\b/, 'fullscreen/pointer-lock grab'],
   [/wakeLock\s*\.\s*request\b/, 'wake-lock request'],
   [/\bIdleDetector\b/, 'idle-detection prompt'],
@@ -94,6 +95,63 @@ describe('no source may prompt the user', () => {
  * order; what matters is whether a canvas is ever created. `createElement` is
  * therefore booby-trapped: if the guard works, it is never reached.
  */
+/**
+ * The probe bench is pointed at real browsers too.
+ *
+ * `demo/shields.html` exists to answer "what did this browser actually do",
+ * which means it is run, by hand, in an ordinary window and a private one, on
+ * whatever machine is nearest. It is not shipped - so the rule above, which
+ * reads the source tree, never saw it - and an EME probe added there raised a
+ * Widevine install prompt in Brave at someone who had not asked for one.
+ *
+ * Hence a second, narrower rule. Narrower in two ways, both deliberate:
+ *
+ *  - it matches *calls* rather than mentions, because the bench reads
+ *    `typeof navigator.requestMIDIAccess` to report whether the interface is
+ *    there, and reporting that an API exists prompts nobody;
+ *  - it permits the clipboard, because the demo pages copy their output from a
+ *    button the developer clicked, which is a user gesture rather than a
+ *    measurement taken behind one.
+ */
+const PROMPTS_WHEN_CALLED = [
+  'getUserMedia',
+  'getDisplayMedia',
+  'requestPermission',
+  'getCurrentPosition',
+  'watchPosition',
+  'requestStorageAccess',
+  'showOpenFilePicker',
+  'showSaveFilePicker',
+  'showDirectoryPicker',
+  'requestDevice',
+  'requestPort',
+  'requestMIDIAccess',
+  'requestMediaKeySystemAccess',
+  'requestFullscreen',
+  'requestPointerLock',
+  // `persisted()` only reads the answer; `persist()` asks for it.
+  'persist',
+  'alert',
+  'confirm',
+]
+
+describe('no demo page may prompt the user', () => {
+  const DEMO = join(fileURLToPath(new URL('.', import.meta.url)), '..', 'demo')
+  const pages = readdirSync(DEMO).filter((entry) => entry.endsWith('.html'))
+
+  it('finds the demo pages', () => {
+    expect(pages.length).toBeGreaterThan(0)
+  })
+
+  it.each(PROMPTS_WHEN_CALLED)('never calls %s()', (api) => {
+    const pattern = new RegExp(`\\b${api}\\s*\\(`)
+    const offenders = pages.filter((page) =>
+      pattern.test(code(readFileSync(join(DEMO, page), 'utf8'))),
+    )
+    expect(offenders, `${api}() called in: ${offenders.join(', ')}`).toEqual([])
+  })
+})
+
 describe('canvas readback under resistFingerprinting', () => {
   const withFakeDom = async (nowResolution: number) => {
     let createdElement = false

@@ -106,6 +106,12 @@ export function findContradictions(sources: Record<string, SignalOutcome>): Lie[
   // The user-agent against the error shapes, for the case where `engine` was
   // the probe that got patched: the two readings then agree with each other
   // and both disagree with the claim.
+  //
+  // Note that this and the lie above co-fire on one fact whenever the
+  // user-agent agrees with the engine, because `errors !== engine` then implies
+  // `errors !== claimed`. Both are still recorded - this layer is a record and
+  // an [[IntegrityReport]] is explicitly raw - and `detect/automation` is where
+  // the pair is collapsed back into the single disagreement it describes.
   const claimed = engine?.claimed
   if (errors?.observed && claimed && errors.observed !== claimed) {
     lies.push({
