@@ -393,7 +393,7 @@ describe('anti-fingerprinting countermeasures', () => {
         status: 'ok',
         ms: 480,
         // Measured: Chrome 152 incognito, M1 Pro, median of 15 rounds.
-        value: { ratio: 1.056, rounds: 15, honored: true },
+        value: { ratio: 1.0, rounds: 9, honored: true },
       },
     })
 

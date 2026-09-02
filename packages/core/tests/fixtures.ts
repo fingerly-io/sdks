@@ -83,7 +83,7 @@ export const ordinaryChromeMac = report({
     service_worker: true,
   }),
   // Measured: Chrome 152 ordinary window, M1 Pro. 3ms relaxed against 11ms strict.
-  [SOURCE.storageDurability]: ok({ ratio: 3.86, rounds: 15, honored: true }),
+  [SOURCE.storageDurability]: ok({ ratio: 3.778, rounds: 9, honored: true }),
   [SOURCE.timing]: ok({ now_resolution: 0.1, has_performance: true, jitter: 0.4 }),
   [SOURCE.intl]: ok({ timezone: 'Europe/London', timezone_offset: -60, locale: 'en-GB' }),
   [SOURCE.webgl]: ok({
@@ -198,7 +198,7 @@ export const braveMac = report({
 export const privateBraveMac = report({
   ...braveMac.sources,
   // Measured: Brave 152 private window, same machine. 2ms against 2ms.
-  [SOURCE.storageDurability]: ok({ ratio: 1.04, rounds: 15, honored: true }),
+  [SOURCE.storageDurability]: ok({ ratio: 0.962, rounds: 9, honored: true }),
   [SOURCE.navigator]: ok({
     user_agent:
       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36',

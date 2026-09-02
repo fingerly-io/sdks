@@ -205,10 +205,18 @@ previous generation of this idea came to fire on cheap Android hardware. The
 ratio divides the hardware out: a slow device and a fast one disagree about
 everything here except that syncing costs more than not syncing.
 
-The technique and the constants (16KB payload, 15 writes, median of rounds,
-threshold 1.30) are Joe Rutkowski's, from
+The technique and the constants (16KB payload, 15 writes per block, threshold
+1.30) are Joe Rutkowski's, from
 [detectIncognito](https://github.com/Joe12387/detectIncognito) v1.8, calibrated
-there against eighteen real Android devices. `SOURCE.storage_durability` reports
+there against eighteen real Android devices.
+
+The round count is ours and is lower: nine, not fifteen. The four windows above
+were sampled at both, and the two agree about every one of them with the whole
+of the gap to spare - 3.778/3.86, 1.000/1.056, 3.062/3.17, 0.962/1.043. The six
+extra rounds bought no accuracy, and they were not free: a round costs almost
+nothing in memory and about 15ms on disk, so they were mostly spent on visitors
+who are *not* browsing privately. Collection for an ordinary Chrome window went
+from 248ms to 154ms; an incognito one was 81ms either way. `SOURCE.storage_durability` reports
 the ratio rather than his boolean, so the threshold can be re-cut server-side
 over stored reports instead of waiting for every customer to ship a new SDK.
 
