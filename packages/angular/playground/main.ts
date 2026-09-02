@@ -25,7 +25,7 @@ import { bootstrapApplication } from '@angular/platform-browser'
 
 import { injectIdentify, injectVerdict, provideBadele, type VerdictName } from '../src/index.js'
 
-const NAMES: VerdictName[] = ['incognito', 'tor', 'emulator', 'automation', 'farm']
+const NAMES: VerdictName[] = ['incognito', 'shields', 'tor', 'emulator', 'automation', 'farm']
 
 @Component({
   selector: 'badele-playground',

@@ -2,7 +2,7 @@
   import { setupBadele, useIdentify, type VerdictName } from '../src/index.js'
   import Verdict from './Verdict.svelte'
 
-  const NAMES: VerdictName[] = ['incognito', 'tor', 'emulator', 'automation', 'farm']
+  const NAMES: VerdictName[] = ['incognito', 'shields', 'tor', 'emulator', 'automation', 'farm']
 
   // submit: false - the playground collects and scores locally, and sends
   // nothing.

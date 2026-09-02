@@ -1,0 +1,482 @@
+<!doctype html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>badele - shield probe</title>
+
+<!--
+  A bench for the probes that privacy browsers interfere with.
+
+  Separate from `demo.html` because it answers a different question. That page
+  asks what the SDK reports; this one asks what a *hardened* browser reports,
+  which is the input the SDK's gates are calibrated against. Run it in an
+  ordinary window and a private one, in each browser, and diff the two.
+
+  Nothing here is imported from the SDK on purpose: when a gate is wrong, the
+  first thing to establish is what the browser actually did, without the layer
+  under suspicion in the way.
+-->
+
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; margin: 0; padding: 24px; }
+  h1 { font: 600 15px/1.4 system-ui, sans-serif; margin: 0 0 4px; }
+  p { font: 13px/1.5 system-ui, sans-serif; color: #6b7280; margin: 0 0 16px; }
+  button { font: 500 13px system-ui, sans-serif; padding: 6px 14px; margin-bottom: 12px; cursor: pointer; }
+  pre { white-space: pre-wrap; word-break: break-word; margin: 0; padding: 14px;
+        border: 1px solid color-mix(in srgb, currentColor 20%, transparent); border-radius: 6px; }
+</style>
+
+<script src="../dist/badele.global.js"></script>
+
+<h1>Shield probe</h1>
+<p>Run this in a normal window and a private window, in each browser. Copy both.</p>
+<button id="copy">Copy JSON</button>
+<pre id="out">running...</pre>
+
+<script>
+  /** Run a probe, and report a thrown error as the answer instead of losing it. */
+  async function probe(fn) {
+    try {
+      const value = await fn()
+      return value === undefined ? null : value
+    } catch (error) {
+      return `throw: ${error && error.name}: ${error && error.message}`
+    }
+  }
+
+  /** Settle a callback-style API, with a deadline, since some never call back. */
+  function callback(fn, ms = 1500) {
+    return new Promise((resolve) => {
+      const done = (value) => resolve(value)
+      setTimeout(() => done('timeout'), ms)
+      try {
+        fn(done)
+      } catch (error) {
+        done(`throw: ${error && error.name}: ${error && error.message}`)
+      }
+    })
+  }
+
+  /** A canvas render, twice, so per-read noise shows up as a disagreement. */
+  function canvasTwice() {
+    const draw = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = 240
+      canvas.height = 60
+      const context = canvas.getContext('2d')
+      context.textBaseline = 'alphabetic'
+      context.font = '14px "Arial"'
+      context.fillStyle = '#f60'
+      context.fillRect(12, 4, 62, 20)
+      context.fillStyle = '#069'
+      context.fillText('badele,org <canvas> 1.0', 4, 21)
+      context.fillStyle = 'rgba(102, 204, 0, 0.7)'
+      context.fillText('badele,org <canvas> 1.0', 6, 25)
+      return canvas.toDataURL()
+    }
+    const first = draw()
+    const second = draw()
+    return { stable: first === second, length: first.length }
+  }
+
+  async function collect() {
+    const nav = navigator
+    const report = {}
+
+    report.at = new Date().toISOString()
+    report.url = location.href
+    report.secure_context = window.isSecureContext
+
+    // --- who the browser says it is -------------------------------------
+    report.claimed = {
+      user_agent: nav.userAgent,
+      brands: nav.userAgentData ? nav.userAgentData.brands : null,
+      platform: nav.platform,
+      vendor: nav.vendor,
+      languages: nav.languages,
+      language: nav.language,
+      device_memory: nav.deviceMemory === undefined ? null : nav.deviceMemory,
+      hardware_concurrency: nav.hardwareConcurrency,
+      plugins: nav.plugins.length,
+      mime_types: nav.mimeTypes.length,
+      pdf_viewer_enabled: nav.pdfViewerEnabled === undefined ? null : nav.pdfViewerEnabled,
+      webdriver: nav.webdriver,
+      cookie_enabled: nav.cookieEnabled,
+      max_touch_points: nav.maxTouchPoints,
+    }
+
+    // --- vendor-specific give-aways -------------------------------------
+    // Brave exposes `navigator.brave.isBrave()` deliberately, and no other
+    // browser does. Duck Duck Go's app and Firefox's RFP have their own.
+    report.vendor_api = {
+      brave_object: typeof nav.brave,
+      brave_is_brave: await probe(() =>
+        nav.brave && typeof nav.brave.isBrave === 'function' ? nav.brave.isBrave() : null,
+      ),
+      // Brave removes these outright rather than farbling them.
+      get_battery: typeof nav.getBattery,
+      bluetooth: typeof nav.bluetooth,
+      usb: typeof nav.usb,
+      serial: typeof nav.serial,
+      hid: typeof nav.hid,
+      request_midi: typeof nav.requestMIDIAccess,
+      idle_detector: typeof window.IdleDetector,
+      network_information: nav.connection
+        ? { type: nav.connection.effectiveType, rtt: nav.connection.rtt, downlink: nav.connection.downlink }
+        : null,
+    }
+
+    // --- storage, which is where the incognito verdict comes from -------
+    const estimate = await probe(() => nav.storage.estimate())
+    report.storage = {
+      estimate,
+      // The number Brave hard-codes. Both windows, every machine.
+      quota_is_brave_constant: estimate && estimate.quota === 2147483648,
+      quota_ratio:
+        estimate && typeof estimate.quota === 'number' && nav.deviceMemory
+          ? estimate.quota / (nav.deviceMemory * 1024 * 1024 * 1024)
+          : null,
+      // The *other* quota API. Brave patches the `StorageEstimate` binding
+      // that `navigator.storage.estimate()` fills in; whether this deprecated
+      // path goes through the same binding is the question worth answering.
+      webkit_temporary_storage: typeof nav.webkitTemporaryStorage,
+      webkit_quota: nav.webkitTemporaryStorage
+        ? await callback((done) =>
+            nav.webkitTemporaryStorage.queryUsageAndQuota(
+              (usage, quota) => done({ usage, quota }),
+              (error) => done(`throw: ${error && error.name}`),
+            ),
+          )
+        : null,
+      opfs: await probe(async () => {
+        await nav.storage.getDirectory()
+        return 'ok'
+      }),
+      persisted: await probe(() => nav.storage.persisted()),
+      local_storage: await probe(() => {
+        localStorage.setItem('__p__', '1')
+        localStorage.removeItem('__p__')
+        return true
+      }),
+      indexed_db: typeof indexedDB,
+      caches: typeof caches,
+      service_worker: 'serviceWorker' in nav,
+      // Chromium's incognito windows still refuse the old filesystem API.
+      request_file_system: typeof window.webkitRequestFileSystem,
+      request_file_system_result: window.webkitRequestFileSystem
+        ? await callback((done) =>
+            window.webkitRequestFileSystem(
+              window.TEMPORARY,
+              1,
+              () => done('granted'),
+              (error) => done(`refused: ${error && error.name}`),
+            ),
+          )
+        : null,
+    }
+
+    // --- the surfaces that get farbled ----------------------------------
+    report.farbling = {
+      canvas: canvasTwice(),
+      webgl: await probe(() => {
+        const gl = document.createElement('canvas').getContext('webgl')
+        if (!gl) return null
+        const info = gl.getExtension('WEBGL_debug_renderer_info')
+        return {
+          vendor: gl.getParameter(gl.VENDOR),
+          renderer: gl.getParameter(gl.RENDERER),
+          unmasked_vendor: info ? gl.getParameter(info.UNMASKED_VENDOR_WEBGL) : null,
+          unmasked_renderer: info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : null,
+          extensions: (gl.getSupportedExtensions() || []).length,
+        }
+      }),
+      audio: await probe(async () => {
+        const Ctx = window.OfflineAudioContext || window.webkitOfflineAudioContext
+        if (!Ctx) return null
+        const render = async () => {
+          const context = new Ctx(1, 5000, 44100)
+          const oscillator = context.createOscillator()
+          oscillator.type = 'triangle'
+          oscillator.frequency.value = 10000
+          const compressor = context.createDynamicsCompressor()
+          oscillator.connect(compressor)
+          compressor.connect(context.destination)
+          oscillator.start(0)
+          const buffer = await context.startRendering()
+          let sum = 0
+          const data = buffer.getChannelData(0)
+          for (let i = 4500; i < 5000; i += 1) sum += Math.abs(data[i])
+          return sum
+        }
+        const first = await render()
+        const second = await render()
+        return { first, second, stable: first === second }
+      }),
+      // Brave reports a fixed voice list; Firefox RFP reports none.
+      voices: await probe(() => (speechSynthesis.getVoices() || []).length),
+      // Element metrics, the font-fingerprinting surface Brave perturbs.
+      text_metrics: await probe(() => {
+        const span = document.createElement('span')
+        span.style.cssText = 'position:absolute;font:72px monospace;white-space:nowrap'
+        span.textContent = 'mmmmmmmmmmlli'
+        document.body.appendChild(span)
+        const first = span.getBoundingClientRect().width
+        const second = span.getBoundingClientRect().width
+        document.body.removeChild(span)
+        return { first, second, stable: first === second }
+      }),
+      media_devices: await probe(async () => {
+        const devices = await nav.mediaDevices.enumerateDevices()
+        return devices.map((device) => ({ kind: device.kind, id: device.deviceId ? 'set' : 'empty' }))
+      }),
+    }
+
+    // --- screen and time -------------------------------------------------
+    report.display = {
+      width: screen.width,
+      height: screen.height,
+      avail_width: screen.availWidth,
+      avail_height: screen.availHeight,
+      color_depth: screen.colorDepth,
+      pixel_ratio: devicePixelRatio,
+      inner: [innerWidth, innerHeight],
+      outer: [outerWidth, outerHeight],
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      timezone_offset: new Date().getTimezoneOffset(),
+    }
+
+    // --- candidate private-window tells that owe nothing to memory -------
+    // The quota tests need a device-memory denominator, and Brave farbles
+    // that. Everything here is looking for a tell that does not.
+    report.incognito_candidates = {
+      // The classic Chromium contradiction: incognito forces the Notification
+      // permission to `denied` while the Permissions API still says `prompt`.
+      // Neither value is unusual alone; disagreeing is.
+      notification_permission: typeof Notification === 'undefined' ? null : Notification.permission,
+      permissions_notifications: await probe(async () => {
+        const status = await nav.permissions.query({ name: 'notifications' })
+        return status.state
+      }),
+      // Persistent storage is refused outright in an incognito profile.
+      webkit_persistent_storage: typeof nav.webkitPersistentStorage,
+      webkit_persistent_quota: nav.webkitPersistentStorage
+        ? await callback((done) =>
+            nav.webkitPersistentStorage.queryUsageAndQuota(
+              (usage, quota) => done({ usage, quota }),
+              (error) => done(`throw: ${error && error.name}`),
+            ),
+          )
+        : null,
+      request_file_system_persistent: window.webkitRequestFileSystem
+        ? await callback((done) =>
+            window.webkitRequestFileSystem(
+              window.PERSISTENT,
+              1024 * 1024,
+              () => done('granted'),
+              (error) => done(`refused: ${error && error.name}`),
+            ),
+          )
+        : null,
+      // A request larger than an incognito profile is willing to back.
+      request_file_system_large: window.webkitRequestFileSystem
+        ? await callback((done) =>
+            window.webkitRequestFileSystem(
+              window.TEMPORARY,
+              256 * 1024 * 1024,
+              () => done('granted'),
+              (error) => done(`refused: ${error && error.name}`),
+            ),
+          )
+        : null,
+      storage_buckets: typeof nav.storageBuckets,
+      indexed_db_databases: await probe(async () => (await indexedDB.databases()).length),
+      // Not memory-derived, but worth knowing whether it moves at all.
+      js_heap_size_limit: performance.memory ? performance.memory.jsHeapSizeLimit : null,
+
+      // No EME probe here, and the omission is the finding.
+      //
+      // `requestMediaKeySystemAccess('com.widevine.alpha', ...)` looked like the
+      // strongest remaining candidate - a persistent licence needs disk that an
+      // incognito profile does not have - and it is disqualified twice over.
+      // It made Brave raise a Widevine install prompt at a visitor who had not
+      // asked for one, which is the single thing this SDK must never do; and it
+      // discriminated nothing anyway, throwing NotSupportedError in both Chrome
+      // windows and both Brave ones. The banned-API list in
+      // `tests/no-permission-prompts.test.ts` now covers it, and covers this
+      // directory too, so the next person cannot rediscover it the same way.
+
+      // Whether `usageDetails` breaks the total down by backend once there is
+      // something to break down. Incognito's storage is in memory, and has
+      // historically reported a bare total.
+      usage_details_after_write: await probe(async () => {
+        const db = await new Promise((resolve, reject) => {
+          const request = indexedDB.open('__badele_probe__', 1)
+          request.onupgradeneeded = () => request.result.createObjectStore('s')
+          request.onsuccess = () => resolve(request.result)
+          request.onerror = () => reject(request.error)
+        })
+        const payload = new Uint8Array(4 * 1024 * 1024)
+        await new Promise((resolve, reject) => {
+          const tx = db.transaction('s', 'readwrite')
+          tx.objectStore('s').put(payload, 'blob')
+          tx.oncomplete = resolve
+          tx.onerror = () => reject(tx.error)
+        })
+        const after = await nav.storage.estimate()
+        db.close()
+        indexedDB.deleteDatabase('__badele_probe__')
+        return { usage: after.usage, details: after.usageDetails || null, quota: after.quota }
+      }),
+
+      // In-memory storage against disk-backed storage. Incognito keeps the
+      // whole quota in RAM, so a bulk write should be markedly cheaper there.
+      // Reported raw: one machine's numbers decide nothing, and a threshold
+      // written from a single reading is the mistake this whole exercise is about.
+      indexeddb_write_ms: await probe(async () => {
+        const db = await new Promise((resolve, reject) => {
+          const request = indexedDB.open('__badele_timing__', 1)
+          request.onupgradeneeded = () => request.result.createObjectStore('s')
+          request.onsuccess = () => resolve(request.result)
+          request.onerror = () => reject(request.error)
+        })
+        const payload = new Uint8Array(16 * 1024 * 1024)
+        const started = performance.now()
+        await new Promise((resolve, reject) => {
+          const tx = db.transaction('s', 'readwrite')
+          tx.objectStore('s').put(payload, 'blob')
+          tx.oncomplete = resolve
+          tx.onerror = () => reject(tx.error)
+        })
+        const elapsed = performance.now() - started
+        db.close()
+        indexedDB.deleteDatabase('__badele_timing__')
+        return Math.round(elapsed)
+      }),
+
+      // The durability ratio, measured here independently of the SDK so the
+      // threshold can be checked against raw numbers. An incognito profile's
+      // IndexedDB is in-memory, so a `durability:"strict"` commit's fsync is a
+      // no-op and costs the same as `relaxed`; on disk it dominates.
+      durability_ratio: await probe(async () => {
+        const name = '__probe_dur_' + Math.random().toString(36).slice(2)
+        const db = await new Promise((resolve, reject) => {
+          const request = indexedDB.open(name, 1)
+          request.onupgradeneeded = () => request.result.createObjectStore('s')
+          request.onsuccess = () => resolve(request.result)
+          request.onerror = () => reject(request.error)
+        })
+        const probeTx = db.transaction('s', 'readwrite', { durability: 'strict' })
+        const honored = probeTx.durability === 'strict'
+        probeTx.abort()
+        if (!honored) { db.close(); indexedDB.deleteDatabase(name); return { honored: false } }
+
+        const payload = new Uint8Array(16384)
+        const block = (durability) =>
+          new Promise((resolve, reject) => {
+            const t0 = performance.now()
+            let i = 0
+            const step = () => {
+              if (i === 15) { resolve(performance.now() - t0); return }
+              const tx = db.transaction('s', 'readwrite', { durability })
+              tx.objectStore('s').put(payload, i)
+              i++
+              tx.oncomplete = step
+              tx.onerror = tx.onabort = () => reject(tx.error)
+            }
+            step()
+          })
+
+        await block('relaxed'); await block('strict') // warm-up, discarded
+        const ratios = []
+        const timings = []
+        for (let r = 0; r < 9; r++) {
+          const rel = await block('relaxed')
+          const str = await block('strict')
+          timings.push({ relaxed: Math.round(rel), strict: Math.round(str) })
+          if (rel > 0) ratios.push(str / rel)
+        }
+        db.close(); indexedDB.deleteDatabase(name)
+        ratios.sort((a, b) => a - b)
+        return {
+          honored: true,
+          median_ratio: Number(ratios[ratios.length >> 1].toFixed(3)),
+          all_ratios: ratios.map((x) => Number(x.toFixed(2))),
+          timings_ms: timings,
+        }
+      }),
+
+    }
+
+    // --- engine ground truth, to check nothing is being spoofed ----------
+    report.engine = {
+      to_fixed_error_length: (() => {
+        try {
+          ;(-1).toFixed(-1)
+        } catch (error) {
+          return error.message.length
+        }
+        return null
+      })(),
+      eval_length: eval.toString().length,
+      stack_has_at: (new Error('p').stack || '').includes('    at '),
+      error_own_properties: (() => {
+        try {
+          throw new Error('p')
+        } catch (error) {
+          return Object.getOwnPropertyNames(error).sort().join(',')
+        }
+      })(),
+    }
+
+    return report
+  }
+
+  /**
+   * What the SDK itself made of this browser.
+   *
+   * The probe above answers "what did the browser do"; this answers "what did
+   * we conclude", and the gap between them is where a gate is wrong. Loaded
+   * from the built bundle rather than reimplemented, because a reimplementation
+   * that agrees with the source proves nothing about the source.
+   */
+  async function sdkView() {
+    if (typeof Badele === 'undefined') return { error: 'bundle not loaded' }
+    try {
+      const client = await Badele.load({ apiKey: 'demo' })
+      const result = await client.identify({ submit: false })
+      const sources = result.report && result.report.sources
+      const pick = (id) => {
+        const outcome = sources && sources[id]
+        if (!outcome) return null
+        return { status: outcome.status, ms: outcome.ms, reason: outcome.reason, value: outcome.value }
+      }
+      return {
+        verdicts: result.verdicts,
+        storage: pick('storage'),
+        storage_durability: pick('storage_durability'),
+        shields: pick('shields'),
+        navigator: pick('navigator'),
+        hardware: pick('hardware'),
+        engine: pick('engine'),
+        elapsed_ms: result.report && result.report.elapsed_ms,
+      }
+    } catch (error) {
+      return { error: `${error && error.name}: ${error && error.message}` }
+    }
+  }
+
+  collect().then(
+    async (report) => {
+      report.sdk = await sdkView()
+      const text = JSON.stringify(report, null, 2)
+      document.getElementById('out').textContent = text
+      document.getElementById('copy').onclick = () => {
+        navigator.clipboard.writeText(text)
+        document.getElementById('copy').textContent = 'Copied'
+      }
+    },
+    (error) => {
+      document.getElementById('out').textContent = `probe failed: ${error && error.stack}`
+    },
+  )
+</script>

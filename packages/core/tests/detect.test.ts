@@ -5,13 +5,20 @@ import {
   detectAutomation,
   detectEmulator,
   detectIncognito,
+  detectShields,
   detectTor,
+  farbledSources,
+  trustedDeviceMemory,
 } from '../src/detect/index.js'
+import { SOURCE } from '../src/signals.js'
 import {
   androidEmulator,
+  braveMac,
   incognitoChromeMac,
+  ordinarySafari,
   ordinaryChromeMac,
   ordinaryFirefox,
+  privateBraveMac,
   privateFirefox,
   privateFirefoxLegacy,
   privateSafari,
@@ -265,7 +272,299 @@ describe('verdict shape', () => {
       'emulator',
       'farm',
       'incognito',
+      'shields',
       'tor',
     ])
+  })
+})
+
+describe('anti-fingerprinting countermeasures', () => {
+  it('does not call an ordinary Brave window a private one', () => {
+    // The regression this whole file exists for. Brave pins
+    // `storage.estimate().quota` to 2 GiB and reseeds `deviceMemory` per
+    // session, so the old ratio test computed 2/16 = 0.125 against a 0.3
+    // ceiling and reported every Brave visitor on the web to be browsing
+    // privately - from an ordinary window, at medium confidence, with a
+    // reason that read perfectly plausibly.
+    const verdict = detectIncognito(braveMac)
+
+    expect(verdict.value).toBe(false)
+    expect(verdict.reasons).toEqual([])
+  })
+
+  it('reports the countermeasures instead, which is the honest finding', () => {
+    const verdict = detectShields(braveMac)
+
+    expect(verdict.value).toBe(true)
+    expect(verdict.confidence).toBe('high')
+    expect(verdict.reasons).toContain('storage-quota-is-brave-constant')
+    expect(verdict.reasons).toContain('brave-vendor-api')
+    expect(verdict.reasons).toContain('plugin-list-padded')
+  })
+
+  it('fires nothing but `shields` on Brave', () => {
+    // Running a privacy browser is not evidence of anything else. Every other
+    // detector has to stay quiet, or the fix has just moved the false positive
+    // from one verdict to another.
+    const verdicts = detectAll(braveMac)
+
+    expect(verdicts.shields.value).toBe(true)
+    for (const [name, verdict] of Object.entries(verdicts)) {
+      if (name === 'shields') continue
+      expect(verdict.value, `${name} fired on an ordinary Brave window`).toBe(false)
+    }
+  })
+
+  it('refuses to divide by a farbled device memory', () => {
+    expect(trustedDeviceMemory(braveMac)).toBeUndefined()
+    expect(trustedDeviceMemory(privateBraveMac)).toBeUndefined()
+    // And still hands back an honest one, or the gate has eaten the signal
+    // for every visitor rather than for the browsers that earned it.
+    expect(trustedDeviceMemory(ordinaryChromeMac)).toBe(8)
+  })
+
+  it('does not mistake a large ordinary machine for a farbled one', () => {
+    // The rule that was one commit from shipping: `deviceMemory > 8 means
+    // farbling`. Chromium clamps to [2, 32] on desktop, so 16 is what an
+    // ordinary Chrome on a 16GB machine reports, and that rule would have
+    // fired on every one of them.
+    const bigChrome = report({
+      ...ordinaryChromeMac.sources,
+      [SOURCE.navigator]: {
+        status: 'ok',
+        ms: 1,
+        value: {
+          ...(ordinaryChromeMac.sources[SOURCE.navigator]?.value as object),
+          device_memory: 32,
+        },
+      },
+    })
+
+    expect(detectShields(bigChrome).value).toBe(false)
+    expect(trustedDeviceMemory(bigChrome)).toBe(32)
+    expect(detectIncognito(bigChrome).value).toBe(false)
+  })
+
+  it('names the sources whose values will not survive to the next session', () => {
+    // Brave reseeds per session and per site, so these are not wrong today -
+    // they are correct today and different tomorrow, which is worse, because
+    // an identity built on them silently splits one visitor into two.
+    expect(farbledSources(braveMac)).toContain(SOURCE.canvas)
+    expect(farbledSources(braveMac)).toContain(SOURCE.hardware)
+    expect(farbledSources(ordinaryChromeMac)).toEqual([])
+  })
+
+  it('still reads the legacy quota when the modern one has been pinned', () => {
+    // The whole reason the second reading exists. Brave patches the binding
+    // behind `storage.estimate()`; `webkitTemporaryStorage` reaches the same
+    // quota manager without passing through it, and reported 10 GiB from this
+    // window against 3 GiB from the private one while `quota` said 2 GiB in
+    // both. An absolute test on a real 3 GiB is a miss, not a false positive.
+    const chromeQuota = incognitoChromeMac.sources[SOURCE.storage]?.value as { quota?: number }
+    expect(chromeQuota.quota).toBeLessThan(1_073_741_824)
+    expect(detectIncognito(incognitoChromeMac).reasons).toContain('chromium-storage-quota-capped')
+  })
+
+  it('detects a Brave private window by the pool the farbling does not reach', () => {
+    // Recovered after Chrome 152 made the ordinary quota useless. Brave took
+    // Chromium's static quota for normal windows - its legacy reading is the
+    // 10 GiB constant - without taking `kIncognitoStaticStorageQuota`, so a
+    // private window still reports the memory-derived pool at 3 GiB. A reading
+    // below the constant therefore did not come from an ordinary window, and
+    // getting there costs no device memory, which is why it works where the
+    // ratio does not.
+    const verdict = detectIncognito(privateBraveMac)
+
+    expect(verdict.value).toBe(true)
+    expect(verdict.reasons).toContain('chromium-quota-below-static-pool')
+    // And the ordinary Brave window it has to be told apart from.
+    expect(detectIncognito(braveMac).value).toBe(false)
+  })
+
+  it('detects a Chrome 152 incognito window by an fsync that costs nothing', () => {
+    // The tell that outlived the quota. Chrome 152 reports `usage + 10 GiB`
+    // from both windows on purpose, so every value-based test is blind here -
+    // but an incognito profile has no disk to sync to, and a `durability:
+    // "strict"` commit against an in-memory LevelDB is free. On disk it is the
+    // most expensive part of the transaction.
+    const chrome152Incognito = report({
+      ...ordinaryChromeMac.sources,
+      [SOURCE.storageDurability]: {
+        status: 'ok',
+        ms: 480,
+        // Measured: Chrome 152 incognito, M1 Pro, median of 15 rounds.
+        value: { ratio: 1.056, rounds: 15, honored: true },
+      },
+    })
+
+    const verdict = detectIncognito(chrome152Incognito)
+    expect(verdict.value).toBe(true)
+    expect(verdict.reasons).toContain('chromium-indexeddb-writes-are-not-durable')
+    // The ordinary window it has to be told apart from differs in nothing else.
+    expect(detectIncognito(ordinaryChromeMac).value).toBe(false)
+  })
+
+  it('abstains when the durability probe did not get enough rounds', () => {
+    // A median over two readings is not a median, and a report with too few of
+    // them was taken on a machine too loaded to measure - which is exactly
+    // where answering anyway turns a slow phone into a false positive.
+    const rushed = report({
+      ...ordinaryChromeMac.sources,
+      [SOURCE.storageDurability]: {
+        status: 'ok',
+        ms: 600,
+        value: { ratio: 1.01, rounds: 2, honored: true },
+      },
+    })
+
+    expect(detectIncognito(rushed).value).toBe(false)
+  })
+
+  it('abstains when the engine ignored the durability hint', () => {
+    // An engine that does not honour `durability` runs both halves of the ratio
+    // identically, which reads as in-memory on every machine on earth. The
+    // source says so rather than reporting a 1.0 that means nothing.
+    const notHonored = report({
+      ...ordinaryChromeMac.sources,
+      [SOURCE.storageDurability]: {
+        status: 'ok',
+        ms: 30,
+        value: { honored: false },
+      },
+    })
+
+    expect(detectIncognito(notHonored).value).toBe(false)
+  })
+
+  it('reaches high confidence when the quota and the clock agree', () => {
+    // Brave private trips both: the pool below the static constant, and the
+    // fsync that costs nothing. Two independent readings agreeing is what the
+    // `high` band is reserved for - neither reaches it alone, and that is the
+    // point of weighting rather than chaining.
+    const verdict = detectIncognito(privateBraveMac)
+
+    expect(verdict.value).toBe(true)
+    expect(verdict.confidence).toBe('high')
+    expect(verdict.reasons).toContain('chromium-indexeddb-writes-are-not-durable')
+    expect(verdict.reasons).toContain('chromium-quota-below-static-pool')
+  })
+
+  it('reads nothing into Chromium\'s static quota, in either window', () => {
+    // Chrome 152 reports `usage + 10 GiB` from both windows on purpose -
+    // the flag is called `kIncognitoStaticStorageQuota` and its comment says
+    // it is there "to avoid fingerprinting and incognito detection". Both
+    // windows are therefore the same report, and the only correct answer is
+    // the same answer. An incognito Chrome 152 is a miss, not a false positive.
+    const chrome152 = (usage: number) =>
+      report({
+        ...ordinaryChromeMac.sources,
+        [SOURCE.storage]: {
+          status: 'ok',
+          ms: 1,
+          value: {
+            local_storage: true,
+            session_storage: true,
+            indexed_db: true,
+            quota: 10_737_418_240 + usage,
+            usage,
+            legacy_quota: 10_737_418_240 + usage,
+            origin_filesystem: 'ok',
+            service_worker: true,
+          },
+        },
+      })
+
+    expect(detectIncognito(chrome152(0)).value).toBe(false)
+    // The usage has to come off before the constant is recognisable.
+    expect(detectIncognito(chrome152(524_288_000)).value).toBe(false)
+  })
+
+  it('does not read a small quota on a small disk as a private window', () => {
+    // The inversion. Below the constant Chromium reports the disk size rounded
+    // up, and only for an ordinary window - the incognito path stays pinned. So
+    // on a current build a small quota is evidence *against* a private window,
+    // and the rule that read it the other way fired on every visitor whose
+    // laptop was full.
+    const fullDisk = report({
+      ...ordinaryChromeMac.sources,
+      [SOURCE.storage]: {
+        status: 'ok',
+        ms: 1,
+        value: {
+          local_storage: true,
+          session_storage: true,
+          indexed_db: true,
+          // 0.29 of 16GiB - under the old 0.3 ceiling, over the new 0.25 one.
+          quota: 5_000_000_000,
+          usage: 0,
+          origin_filesystem: 'ok',
+          service_worker: true,
+        },
+      },
+    })
+
+    expect(detectIncognito(fullDisk).value).toBe(false)
+  })
+})
+
+describe('Safari is not a spoofed Chromium', () => {
+  it('fires nothing on an ordinary Safari', () => {
+    // Measured on Safari 26.5. It reported `automation: true` here, which is
+    // the worst false positive in the codebase by consequence: the customer
+    // acts on that one.
+    const verdicts = detectAll(ordinarySafari)
+
+    for (const [name, verdict] of Object.entries(verdicts)) {
+      expect(verdict.value, `${name} fired on an ordinary Safari`).toBe(false)
+    }
+  })
+
+  it('scores one engine disagreement once, not twice', () => {
+    // The amplifier. `errors !== engine` implies `errors !== claimed` whenever
+    // the user-agent agrees with the engine, so emitting both lies scored a
+    // single fact at 0.5 + 0.5 = 1.0 - exactly `detect/automation`'s firing
+    // threshold. One mis-read engine was therefore enough on its own, which is
+    // what turned a wrong vote into a verdict about a real person's browser.
+    const oneContradiction = report(
+      { ...ordinarySafari.sources },
+      {
+        lies: [
+          {
+            id: 'engine-vs-error-shapes',
+            kind: 'contradiction',
+            detail: 'engine-webkit-errors-chromium',
+          },
+          // Recorded, because the record is raw - and implied by the line
+          // above, so it must not be scored a second time.
+          {
+            id: 'user-agent-vs-error-shapes',
+            kind: 'contradiction',
+            detail: 'claimed-webkit-errors-chromium',
+          },
+        ],
+      },
+    )
+
+    const verdict = detectAutomation(oneContradiction)
+    expect(verdict.value).toBe(false)
+    // Both are still shown to a reviewer; only the arithmetic collapses them.
+    expect(verdict.reasons.join()).toContain('engine-vs-error-shapes')
+    expect(verdict.reasons.join()).toContain('user-agent-vs-error-shapes')
+  })
+
+  it('still fires when two independent contradictions really are two facts', () => {
+    // The fix must not have disarmed the rule. Two unrelated contradictions
+    // are still two, and still reach the threshold.
+    const genuinelySpoofed = report(
+      { ...ordinarySafari.sources },
+      {
+        lies: [
+          { id: 'engine-vs-error-shapes', kind: 'contradiction', detail: 'engine-webkit-errors-chromium' },
+          { id: 'user-agent-vs-platform', kind: 'contradiction', detail: 'os-windows-platform-macintel' },
+        ],
+      },
+    )
+
+    expect(detectAutomation(genuinelySpoofed).value).toBe(true)
   })
 })

@@ -158,6 +158,16 @@ export interface Verdict {
  */
 export interface Verdicts {
   incognito: Verdict
+  /**
+   * Anti-fingerprinting countermeasures are rewriting this report's values.
+   *
+   * The one verdict here that is never a reason to challenge anyone. It says
+   * which of the other numbers are fabricated - Brave's farbling, Tor's RFP, an
+   * anti-detect build - so the detectors above it can decline to reason from
+   * them and the identity hash can decline to include them. A customer acting
+   * on this one is acting on "uses a privacy browser", which is not a finding.
+   */
+  shields: Verdict
   tor: Verdict
   emulator: Verdict
   automation: Verdict

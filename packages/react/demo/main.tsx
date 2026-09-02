@@ -15,7 +15,7 @@ import { createRoot } from 'react-dom/client'
 
 import { BadeleProvider, useIdentify, useVerdict, type VerdictName } from '../src/index.js'
 
-const NAMES: VerdictName[] = ['incognito', 'tor', 'emulator', 'automation', 'farm']
+const NAMES: VerdictName[] = ['incognito', 'shields', 'tor', 'emulator', 'automation', 'farm']
 
 function Row({ label, value, hit = false }: { label: string; value: unknown; hit?: boolean }) {
   return (

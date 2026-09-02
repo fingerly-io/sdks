@@ -55,6 +55,7 @@ export const SOURCE = {
   // Storage, and the private-mode probes that live on top of it.
   storage: 'storage',
   storageQuota: 'storage_quota',
+  storageDurability: 'storage_durability',
 
   // Device capability.
   hardware: 'hardware',
@@ -69,6 +70,9 @@ export const SOURCE = {
   timing: 'timing',
   permissions: 'permissions',
   automation: 'automation',
+
+  // Countermeasures the browser itself applies to everything above.
+  shields: 'shields',
 
   // Side effects of the visitor's extensions.
   domBlockers: 'dom_blockers',
@@ -268,6 +272,45 @@ export interface ErrorsSignal {
  * same lists are indistinguishable from here, which is the honest limit of a
  * measurement taken from inside the page.
  */
+/**
+ * The countermeasures the browser applies to every other signal.
+ *
+ * A hardened browser does not merely withhold a value - it *replaces* one, and
+ * a replaced value read as though it were a measurement is how a detector comes
+ * to be confidently wrong about an ordinary visitor.
+ *
+ * Brave is the case that forced this source to exist. It hard-codes
+ * `navigator.storage.estimate().quota` to exactly 2 GiB in every window, and
+ * draws `navigator.deviceMemory` pseudo-randomly from {2, 4, 8, 16, 32} per
+ * site and per session. The private-window detector divided one by the other,
+ * and so reported "incognito" for every Brave visitor on the web, from an
+ * ordinary window, with medium confidence and a plausible-looking reason.
+ *
+ * So the countermeasures are measured first, and the detectors that read a
+ * farbled surface gate on what this reports. Note what the source is *for*: it
+ * says which values cannot be trusted. It does not say the visitor is
+ * suspicious. Running Brave is evidence of running Brave and of nothing else,
+ * and any detector that treats it as more than that is the same bug again.
+ *
+ * Only two fields, because farbling shows up in signals other sources already
+ * report - the quota in [[StorageSignal]], the memory and the plugin count in
+ * [[NavigatorSignal]] - and reading any of them a second time here would just
+ * be two chances to disagree. `detect/shields` does the reading.
+ */
+export interface ShieldsSignal {
+  /**
+   * `navigator.brave.isBrave()` resolved true.
+   *
+   * Brave exposes this deliberately, for sites that need to adapt to it, and
+   * no other browser has it. Decisive while it lasts - and paired with the
+   * behavioural tells below, so that a build with the courtesy API removed is
+   * still recognised.
+   */
+  brave?: boolean
+  /** Brave named itself in the UA-CH brand list. A claim, and separately removable. */
+  brave_claimed?: boolean
+}
+
 export interface DomBlockersSignal {
   /** The filter lists whose selectors were hidden. Names, never selectors. */
   blocked?: string[]
@@ -361,7 +404,38 @@ export interface StorageSignal {
   indexed_db?: boolean
   /** `navigator.storage.estimate().quota`, in bytes. */
   quota?: number
-  /** `deviceMemory`-derived expectation, so the quota can be read as a ratio. */
+  /**
+   * `navigator.storage.estimate().usage`, in bytes.
+   *
+   * Collected because the quota is no longer independent of it. Chromium
+   * reports `usage + 10 GiB`, so the constant only shows itself once the usage
+   * is subtracted back off - and telling the constant apart from a real
+   * measurement is the whole of the Chromium private-window rule now.
+   */
+  usage?: number
+  /**
+   * The same figure from `webkitTemporaryStorage.queryUsageAndQuota`, in bytes.
+   *
+   * A second reading of what should be one number, because on Brave it is two.
+   * Brave patches the `StorageEstimate` binding that fills in the modern API
+   * and pins it to 2 GiB; this deprecated path goes somewhere else and still
+   * reports the real quota. Measured on Brave 152 / Chromium 152, one machine,
+   * minutes apart: 10 GiB from an ordinary window and 3 GiB from a private one,
+   * while `quota` said 2147483648 in both.
+   *
+   * Deprecated in Chromium and expected to be removed, which is why it is a
+   * second opinion rather than a replacement: when it goes, this field goes
+   * undefined and the detector falls back to `quota` as it did before.
+   */
+  legacy_quota?: number
+  /**
+   * `deviceMemory`-derived expectation, so the quota can be read as a ratio.
+   *
+   * Reported for continuity with stored reports; prefer recomputing from
+   * [[HardwareSignal.device_memory]] and the quota you decided to trust.
+   * Both of this ratio's inputs are values Brave replaces, and a ratio of two
+   * fabrications is not a measurement - see [[ShieldsSignal]].
+   */
   quota_ratio?: number
   /**
    * What `navigator.storage.getDirectory()` did. One probe, and the two
@@ -394,6 +468,63 @@ export interface StorageSignal {
    * browsing, and because "no container at all" is worth reporting anyway.
    */
   service_worker?: boolean
+}
+
+/**
+ * How long a durable write actually takes, which is where private browsing
+ * still shows itself on Chromium.
+ *
+ * Every *value* Chromium exposes about storage has now been flattened: the
+ * quota is a constant in both windows on purpose, and the APIs that used to
+ * refuse in incognito no longer do. What has not been flattened is the
+ * behaviour underneath, because flattening that would mean making an incognito
+ * profile actually write to disk.
+ *
+ * An incognito profile has nowhere to write. `CreateLevelDBState` sees an empty
+ * path and builds the store on `leveldb_chrome::NewMemEnv` - an in-memory
+ * environment - where the fsync that `BackingStore::ShouldSyncOnCommit`
+ * performs for a `durability: 'strict'` commit is a no-op. On disk that fsync is
+ * the most expensive thing a small transaction does.
+ *
+ * So the same two commits cost the same in memory and very different amounts on
+ * disk, and the *ratio* between them is the tell. A ratio rather than a duration
+ * because a duration is a measurement of the machine - a slow phone and a fast
+ * workstation disagree about everything except that fsync costs more than not
+ * fsyncing. The ratio normalises the hardware out of the answer, which is what
+ * an absolute threshold failed to do.
+ *
+ * The technique is Joe Rutkowski's, from `detectIncognito` v1.8, where the
+ * constants below were calibrated against eighteen real Android devices; this
+ * reports the measurement rather than his boolean, so the threshold can move
+ * server-side without an SDK release.
+ */
+export interface StorageDurabilitySignal {
+  /**
+   * Median of `strict / relaxed` commit times over the rounds that fitted.
+   *
+   * About 1 when the store is in memory, comfortably above it on disk. Reported
+   * raw, including the awkward values: a ratio of 1.2 is a report the detector
+   * should be unsure about, and rounding it to a boolean here would throw away
+   * the only thing that says so.
+   */
+  ratio?: number
+  /**
+   * How many rounds the median was taken over.
+   *
+   * A median of two is not a median. The detector requires a floor, because a
+   * budget that ran out is exactly the case where the noise is worst and the
+   * temptation to answer anyway is strongest.
+   */
+  rounds?: number
+  /**
+   * Whether the engine honoured the durability hint at all.
+   *
+   * `IDBTransaction.durability` reflects it back. An engine that ignores it
+   * makes both halves of the ratio the same measurement, which would read as
+   * in-memory on every machine on earth - so when this is false there is no
+   * measurement, and the field exists to say which of the two it was.
+   */
+  honored?: boolean
 }
 
 export interface HardwareSignal {

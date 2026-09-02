@@ -19,18 +19,27 @@ import { detectAutomation } from './automation.js'
 import { detectEmulator } from './emulator.js'
 import { detectFarm } from './farm.js'
 import { detectIncognito } from './incognito.js'
+import { detectShields } from './shields.js'
 import { detectTor } from './tor.js'
 
 export { detectAutomation } from './automation.js'
 export { detectEmulator } from './emulator.js'
 export { detectFarm } from './farm.js'
 export { detectIncognito } from './incognito.js'
+export {
+  BRAVE_SYNTHETIC_QUOTA,
+  detectShields,
+  farbledSources,
+  farblesFingerprints,
+  trustedDeviceMemory,
+} from './shields.js'
 export { detectTor } from './tor.js'
 export { unknown, weigh, type Evidence } from './verdict.js'
 
 export function detectAll(report: SignalReport): Verdicts {
   return {
     incognito: detectIncognito(report),
+    shields: detectShields(report),
     tor: detectTor(report),
     emulator: detectEmulator(report),
     automation: detectAutomation(report),

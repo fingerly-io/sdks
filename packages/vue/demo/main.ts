@@ -12,7 +12,7 @@
 
 import { createApp, defineComponent, h } from 'vue'
 
-import { createBadele, useIdentify, useVerdict } from '../src/index.js'
+import { createBadele, useIdentify, useVerdict, type VerdictName } from '../src/index.js'
 
 const row = (label: string, value: unknown, className = '') =>
   h('div', { class: `row ${className}` }, [
@@ -25,7 +25,10 @@ const VerdictCard = defineComponent({
   props: { name: { type: String, required: true } },
   setup(props) {
     const { matched, confidence, reasons } = useVerdict(
-      () => props.name as 'automation' | 'tor' | 'incognito' | 'emulator' | 'farm',
+      // `VerdictName` rather than the union spelled out. The spelled-out one
+      // was already a verdict behind by the time `shields` was added, which is
+      // what a duplicated type does when the original grows.
+      () => props.name as VerdictName,
     )
     return () =>
       h('div', { class: 'card' }, [
@@ -73,7 +76,7 @@ const App = defineComponent({
         h(
           'div',
           { class: 'grid' },
-          ['incognito', 'tor', 'emulator', 'automation', 'farm'].map((name) =>
+          ['incognito', 'shields', 'tor', 'emulator', 'automation', 'farm'].map((name) =>
             h(VerdictCard, { name, key: name }),
           ),
         ),

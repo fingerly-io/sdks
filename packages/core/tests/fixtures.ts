@@ -33,7 +33,15 @@ export function report(
   }
 }
 
-/** An unremarkable Chrome on a MacBook. Nothing should fire on this. */
+/**
+ * An unremarkable Chrome on a MacBook. Nothing should fire on this.
+ *
+ * The storage figures are Chrome 152's, measured: `usage + 10 GiB` exactly,
+ * from the modern API and the deprecated one alike. That is the constant
+ * `kIncognitoStaticStorageQuota` also hands an incognito window, which is why
+ * this fixture and an incognito Chrome 152 are the same report and have to
+ * reach the same verdict.
+ */
 export const ordinaryChromeMac = report({
   [SOURCE.engine]: ok({
     to_fixed_error_length: 51,
@@ -68,10 +76,14 @@ export const ordinaryChromeMac = report({
     local_storage: true,
     session_storage: true,
     indexed_db: true,
-    quota: 300_000_000_000,
-    quota_ratio: 0.6,
+    quota: 10_737_418_240,
+    usage: 0,
+    legacy_quota: 10_737_418_240,
+    quota_ratio: 0.625,
     service_worker: true,
   }),
+  // Measured: Chrome 152 ordinary window, M1 Pro. 3ms relaxed against 11ms strict.
+  [SOURCE.storageDurability]: ok({ ratio: 3.86, rounds: 15, honored: true }),
   [SOURCE.timing]: ok({ now_resolution: 0.1, has_performance: true, jitter: 0.4 }),
   [SOURCE.intl]: ok({ timezone: 'Europe/London', timezone_offset: -60, locale: 'en-GB' }),
   [SOURCE.webgl]: ok({
@@ -95,7 +107,14 @@ export const ordinaryChromeMac = report({
   }),
 })
 
-/** The same Mac, in an incognito window. Only the quota moves. */
+/**
+ * The same Mac in an incognito window, on a build old enough to say so.
+ *
+ * Chrome 152 no longer produces this report - it pins the incognito quota to
+ * the ordinary constant - but builds that predate the flag do, and they are
+ * most of the installed base for a while yet. The ~120MB figure is the oldest
+ * of the three shapes the cap has taken.
+ */
 export const incognitoChromeMac = report({
   ...ordinaryChromeMac.sources,
   [SOURCE.storage]: ok({
@@ -104,6 +123,105 @@ export const incognitoChromeMac = report({
     indexed_db: true,
     quota: 104_857_600,
     quota_ratio: 0.02,
+    service_worker: true,
+  }),
+})
+
+/**
+ * Brave on a MacBook, ordinary window. Every number below was measured.
+ *
+ * The report that broke the private-window detector, kept in the exact shape
+ * the browser produced it. Brave 152 / Chromium 152, M1 Pro, 16GB, one machine,
+ * two windows a minute apart - this one and [[privateBraveMac]] - so the pair
+ * shows what actually moves between them and what only appears to.
+ *
+ * Three things to notice, because each one broke a different assumption:
+ *
+ *   - `quota` is 2147483648 here *and* in the private window. Brave pins it.
+ *   - `legacy_quota` is 10 GiB here and 3 GiB there. Brave does not pin that.
+ *   - `device_memory` is 16 here and 4 there. It is farbled per session, and
+ *     both values are ones a real desktop Chromium could report, so neither
+ *     can be caught by looking at it.
+ *
+ * The old detector divided the first by the third, got 0.125, compared it
+ * against a 0.3 ceiling and called this an incognito window.
+ */
+export const braveMac = report({
+  ...ordinaryChromeMac.sources,
+  [SOURCE.navigator]: ok({
+    // Byte-identical to Chrome's. Brave's name appears only in UA-CH.
+    user_agent:
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36',
+    platform: 'MacIntel',
+    product_sub: '20030107',
+    hardware_concurrency: 10,
+    device_memory: 16,
+    max_touch_points: 0,
+    webdriver: false,
+    // Five from Blink plus two Brave invented.
+    plugin_count: 7,
+    mime_type_count: 2,
+    language: 'en-US',
+    languages: ['en-US'],
+  }),
+  [SOURCE.storage]: ok({
+    local_storage: true,
+    session_storage: true,
+    indexed_db: true,
+    quota: 2_147_483_648,
+    usage: 0,
+    legacy_quota: 10_737_418_240,
+    quota_ratio: 0.125,
+    origin_filesystem: 'ok',
+    service_worker: true,
+  }),
+  [SOURCE.shields]: ok({ brave: true, brave_claimed: true }),
+  // Brave removes the Network Information API rather than farbling it.
+  [SOURCE.network]: failed('unsupported', 'no-network-information'),
+})
+
+/**
+ * The same Brave, in a private window, a minute later.
+ *
+ * The only field that moves for the right reason is `legacy_quota`: 3 GiB
+ * against the ordinary window's 10, which is Chromium's incognito pool at
+ * 0.1875 of 16GB of physical memory. `device_memory` and
+ * `hardware_concurrency` also move, but they move because Brave reseeds them
+ * per session, and would have moved the same way between two ordinary windows.
+ *
+ * The values here are one draw of several observed. A second private window
+ * on the same machine minutes later reported `device_memory: 16` - the same as
+ * the ordinary window - and `hardware_concurrency: 4`. That is the point: the
+ * field is not biased in a direction a rule could correct for, it is redrawn,
+ * and a detector reading it is reading a die roll.
+ */
+export const privateBraveMac = report({
+  ...braveMac.sources,
+  // Measured: Brave 152 private window, same machine. 2ms against 2ms.
+  [SOURCE.storageDurability]: ok({ ratio: 1.04, rounds: 15, honored: true }),
+  [SOURCE.navigator]: ok({
+    user_agent:
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36',
+    platform: 'MacIntel',
+    product_sub: '20030107',
+    hardware_concurrency: 8,
+    device_memory: 4,
+    max_touch_points: 0,
+    webdriver: false,
+    plugin_count: 7,
+    mime_type_count: 2,
+    language: 'en-US',
+    languages: ['en-US'],
+  }),
+  [SOURCE.storage]: ok({
+    local_storage: true,
+    session_storage: true,
+    indexed_db: true,
+    quota: 2_147_483_648,
+    usage: 0,
+    legacy_quota: 3_221_225_472,
+    quota_ratio: 0.5,
+    origin_filesystem: 'ok',
     service_worker: true,
   }),
 })
@@ -172,6 +290,73 @@ export const privateFirefoxLegacy = report({
 })
 
 /** Safari in a private window. */
+/**
+ * Safari 26.5 on macOS, ordinary window. Every value measured.
+ *
+ * Here because it was reported automated. `errorOwnProperties` returns
+ * `column,line,message,sourceURL,stack` on JavaScriptCore - note the `stack`,
+ * which V8 also has - and the error-shape vote read that as chromium, against
+ * the engine probe's honest `webkit`. Two contradictions fired from that one
+ * mis-read, `detect/automation` scored them at 0.5 apiece, and the sum landed
+ * exactly on the threshold.
+ *
+ * The `errors` source is the point of the fixture, so it carries the real
+ * property list rather than a plausible one.
+ */
+export const ordinarySafari = report({
+  [SOURCE.engine]: ok({
+    to_fixed_error_length: 44,
+    eval_length: 37,
+    stack_style: 'javascriptcore',
+    observed: 'webkit',
+    claimed: 'webkit',
+    agrees: true,
+  }),
+  [SOURCE.errors]: ok({
+    own_properties: 'column,line,message,sourceURL,stack',
+    observed: 'webkit',
+  }),
+  [SOURCE.navigator]: ok({
+    user_agent:
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Safari/605.1.15',
+    platform: 'MacIntel',
+    vendor: 'Apple Computer, Inc.',
+    product_sub: '20030107',
+    hardware_concurrency: 8,
+    max_touch_points: 0,
+    webdriver: false,
+    plugin_count: 5,
+    mime_type_count: 2,
+    language: 'en-US',
+    languages: ['en-US'],
+  }),
+  [SOURCE.storage]: ok({
+    local_storage: true,
+    session_storage: true,
+    indexed_db: true,
+    quota: 82_463_372_084,
+    usage: 0,
+    origin_filesystem: 'ok',
+    service_worker: true,
+  }),
+  [SOURCE.screen]: ok({
+    width: 2056,
+    height: 1329,
+    device_pixel_ratio: 2,
+    inner_width: 2056,
+    inner_height: 1153,
+    color_depth: 24,
+  }),
+  [SOURCE.intl]: ok({ timezone: 'Europe/Istanbul', timezone_offset: -180, locale: 'en-US' }),
+  [SOURCE.timing]: ok({ now_resolution: 1, has_performance: true, jitter: 0.4 }),
+  [SOURCE.canvas]: ok({ geometry: 'c0ffee', text: 'decaf0', unstable: false }),
+  [SOURCE.permissions]: ok({
+    notification: 'prompt',
+    notification_legacy: 'default',
+    inconsistent: false,
+  }),
+})
+
 export const privateSafari = report({
   [SOURCE.engine]: ok({
     to_fixed_error_length: 44,

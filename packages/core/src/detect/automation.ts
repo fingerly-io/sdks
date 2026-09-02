@@ -71,11 +71,29 @@ export function detectAutomation(report: SignalReport): Verdict {
     })
   }
 
+  // Contradictions, counted by fact rather than by finding.
+  //
+  // `lies` is a raw record - see [[IntegrityReport]] - and two of its entries
+  // describe one disagreement. `engine-vs-error-shapes` says the two engine
+  // readings differ; `user-agent-vs-error-shapes` says the error shapes differ
+  // from the claim. Whenever the user-agent agrees with the engine, which is
+  // every honest browser and most dishonest ones, the first implies the second,
+  // so a single disagreement arrived here as two contradictions worth 0.5 each
+  // and landed exactly on the firing threshold.
+  //
+  // That is how an ordinary Safari came to be reported as automated: one
+  // mis-read engine, scored twice. Both are still listed in `reasons`, because
+  // a reviewer should see everything that fired; only the arithmetic changes.
   const contradictions = integrity.lies.filter((lie) => lie.kind === 'contradiction')
+  const ids = new Set(contradictions.map((lie) => lie.id))
+  const distinctFacts =
+    contradictions.length -
+    (ids.has('engine-vs-error-shapes') && ids.has('user-agent-vs-error-shapes') ? 1 : 0)
+
   if (contradictions.length > 0) {
     evidence.push({
       reason: `signal-contradictions-${contradictions.map((lie) => lie.id).join(',')}`,
-      weight: Math.min(1.5, 0.5 * contradictions.length),
+      weight: Math.min(1.5, 0.5 * distinctFacts),
     })
   }
 
