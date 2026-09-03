@@ -129,6 +129,18 @@ The verdicts returned here are advisory. The same detectors run again
 server-side over the stored report, where the rules can improve without every
 customer redeploying an SDK.
 
+## Privacy
+
+[`docs/privacy.md`](docs/privacy.md) is the collection notice for integrators:
+every signal each platform reads, what we add server-side, how long it is kept,
+and what an integrator has to do about consent.
+
+The header on it is the part to know — **there is no consent parameter yet**, so
+every SDK collects unconditionally the moment it is initialised. Until that
+changes, gating initialisation is the integrator's job, and the docs say so.
+Background in
+[`server/docs/compliance/`](../server/docs/compliance/README.md).
+
 ## The SDK never asks the visitor for anything
 
 No permission prompt, no picker, no dialog — not on any browser, not for any
