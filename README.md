@@ -17,12 +17,12 @@ repo relates to `server` and `panels`.
 - `packages/node` — server-side Node SDK
 - `packages/vue` — Vue 3 plugin and composables ([README](packages/vue/README.md)).
   One shared identification per app, readonly reactive state, SSR-safe.
-- `packages/{react,svelte,angular,nuxt,next}` — framework bindings, built on
-  `web-js`/`vue`/`react`. Still stubs; `vue` is the template to follow.
+- `packages/{react,svelte,angular,nuxt,next}` — implemented framework bindings,
+  built on `web-js`/`vue`/`react`.
 - `mobile/ios` — the native iOS SDK (Swift). Implemented; see its
-  [README](mobile/ios/README.md). Ships an SPM package and a podspec, because
-  React Native and Flutter integrate native code through CocoaPods and neither
-  can consume a Swift package from a plugin.
+  [README](mobile/ios/README.md). Ships an SPM package and a podspec: React
+  Native integrates through CocoaPods, while Flutter supports both CocoaPods
+  and Swift Package Manager.
 - `mobile/android` — the native Android SDK (Kotlin). Implemented; see its
   [README](mobile/android/README.md). One dependency (coroutines), no JNI, and
   two install-time permissions that prompt nobody. Publishes an AAR as
@@ -57,6 +57,15 @@ xcodebuild test -scheme Badele -destination 'platform=iOS Simulator,name=iPhone 
 ./Example/run.sh                    # builds, installs and launches on a booted simulator
 ```
 
+Flutter is a separate Dart package:
+
+```
+cd mobile/flutter
+flutter pub get
+flutter analyze
+flutter test
+```
+
 The demo page runs the browser SDK against whatever browser opens it and renders
 the whole report — every source with its status and duration, the tamper
 findings, and the verdicts. It submits nothing unless an endpoint and SDK key
@@ -68,9 +77,9 @@ written out there.
 
 ## Status
 
-`core`, `web-js`, the framework bindings, `mobile/ios` and `mobile/android` are
-implemented. The Node SDK is not. See [`todo.md`](todo.md) for what is done,
-what was measured, and what is left, and
+`core`, `web-js`, the framework bindings, `mobile/ios`, `mobile/android`, and
+the Flutter and React Native bridges are implemented. The Node SDK is not. See [`todo.md`](todo.md)
+for what is done, what was measured, and what is left, and
 [`docs/another library-teardown.md`](docs/another library-teardown.md) for the
 another library teardown the design argues against.
 
