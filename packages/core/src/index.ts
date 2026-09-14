@@ -2,8 +2,8 @@
  * @badele/core - the framework-agnostic kernel every Badele SDK is built on.
  *
  * It contains no browser code. The collectors live in `@badele/web-js`, and the
- * mobile SDKs bring their own, because `@badele/node` and `@badele/react-native`
- * both depend on this package and neither should carry a DOM.
+ * mobile SDKs bring their own; `@badele/node` depends on this package and must
+ * not carry a DOM.
  */
 
 export { BadeleClient, SCHEMA_VERSION } from './client.js'

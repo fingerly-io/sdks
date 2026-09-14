@@ -10,7 +10,7 @@
     // incidental. This package uses the web-standard globals that exist
     // everywhere it runs - fetch, AbortController, TextEncoder, timers,
     // performance - but must never touch `document` or `window`, because
-    // @badele/node and @badele/react-native both depend on it. The worker lib
+    // @badele/node depends on it. The worker lib
     // is exactly that set: every global this package is allowed to use, and
     // none of the ones it is not. A `document.` typo fails the build here
     // instead of failing at runtime inside a customer's Node process.

@@ -7,3 +7,12 @@
 [submodule "mobile/flutter"]
 	path = mobile/flutter
 	url = git@github.com:badele-io/sdk-flutter.git
+[submodule "packages/types"]
+	path = packages/types
+	url = git@github.com:badele-io/sdk-types.git
+[submodule "mobile/react-native"]
+	path = mobile/react-native
+	url = git@github.com:badele-io/sdk-react-native.git
+[submodule "mobile/lynx"]
+	path = mobile/lynx
+	url = git@github.com:badele-io/sdk-lynx.git

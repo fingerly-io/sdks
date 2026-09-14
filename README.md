@@ -1,17 +1,20 @@
 # badele/sdks
 
-Client SDKs for the Badele fraud detection/prevention platform. pnpm workspace +
-Turborepo.
+Client SDKs for the Badele fraud detection/prevention platform. This repository
+is the integration workspace: independently versioned SDK repositories are
+mounted here as git submodules, alongside the pnpm workspace and Turborepo.
 
 See [`server/docs/architecture.md`](../server/docs/architecture.md) for how this
 repo relates to `server` and `panels`.
 
 ## Layout
 
-- `packages/core` — framework-agnostic device/event core (TS), shared by every SDK.
+- `packages/types` — canonical TypeScript wire contracts, maintained in the
+  standalone private `sdk-types` repository and consumed by TypeScript bridges.
+- `packages/core` — framework-agnostic device/event core (TS), shared by web and Node SDKs.
   The budgeted scheduler, the signal vocabulary, the transport, and the detectors.
   Contains no DOM code and is compiled against the worker lib so that it cannot
-  acquire any — `node` and `react-native` both depend on it.
+  acquire any — `node` depends on it.
 - `packages/web-js` — vanilla browser SDK. The ~22 browser sources and the
   tamper layer that checks whether the browser is lying about them.
 - `packages/node` — server-side Node SDK
@@ -26,19 +29,24 @@ repo relates to `server` and `panels`.
 - `mobile/android` — the native Android SDK (Kotlin). Implemented; see its
   [README](mobile/android/README.md). One dependency (coroutines), no JNI, and
   two install-time permissions that prompt nobody. Publishes an AAR as
-  `io.badele:badele`, which is what the two bridges depend on.
-- `mobile/react-native`, `mobile/flutter` — bridges to the native SDKs, not
-  second implementations. Both are thin on purpose: almost every signal worth
+  `io.badele:badele`, which is what the three bridges depend on.
+- `mobile/react-native`, `mobile/flutter`, `mobile/lynx` — standalone bridges to the native SDKs, not
+  second implementations. All three are thin on purpose: almost every signal worth
   having on a phone is unreachable from JavaScript or Dart, so a cross-platform
   SDK that collected only what it could reach would report a jailbroken,
-  instrumented device as clean. `react-native` is in the pnpm workspace;
-  `flutter` is a Dart/pub package and is not.
-- Both are standalone local repos destined to become git submodules once the
-  remotes in `.gitmodules` exist.
+  instrumented device as clean. React Native and Lynx are in the pnpm workspace;
+  Flutter is a Dart/pub package and is not. Lynx supports Android and iOS hosts.
 - `contract` — API contract synced from `server`'s OpenAPI spec; the sync point for
   the API shape across every SDK/panel consumer
 
 ## Development
+
+Clone recursively so the native SDKs, bridges, and shared contracts are present:
+
+```
+git clone --recurse-submodules git@github.com:badele-io/sdks.git
+git submodule update --init --recursive
+```
 
 ```
 pnpm install
@@ -66,6 +74,14 @@ flutter analyze
 flutter test
 ```
 
+Lynx is a separate library and example app inside the pnpm workspace:
+
+```
+pnpm --dir mobile/lynx test
+pnpm --dir mobile/lynx build
+pnpm --dir mobile/lynx/example build
+```
+
 The demo page runs the browser SDK against whatever browser opens it and renders
 the whole report — every source with its status and duration, the tamper
 findings, and the verdicts. It submits nothing unless an endpoint and SDK key
@@ -78,7 +94,7 @@ written out there.
 ## Status
 
 `core`, `web-js`, the framework bindings, `mobile/ios`, `mobile/android`, and
-the Flutter and React Native bridges are implemented. The Node SDK is not. See [`todo.md`](todo.md)
+the Flutter, React Native, and Lynx bridges are implemented. The Node SDK is not. See [`todo.md`](todo.md)
 for what is done, what was measured, and what is left, and
 [`docs/another library-teardown.md`](docs/another library-teardown.md) for the
 another library teardown the design argues against.
@@ -91,8 +107,9 @@ status and a duration, and the tamper layer's findings. What differs is which
 sources are in the map.
 
 That is what lets the server have one reader (`server/domain/risk/report.go`)
-and one set of rules, and it is why `packages/core`'s `types.ts` is the only
-place the shape is written down — `mobile/ios/Sources/Badele/Core/Types.swift`
+and one set of rules. The canonical TypeScript shape lives in
+`packages/types/src/index.ts`; `packages/core` re-exports it, while
+`mobile/ios/Sources/Badele/Core/Types.swift`
 and `mobile/android/.../core/Types.kt` are literal ports of it, field for field,
 because both ends were already written.
 
