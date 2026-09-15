@@ -34,6 +34,12 @@ export function toVueOptions(config: Partial<BadelePublicConfig> | undefined): B
     ...(config?.endpoint === undefined || config.endpoint === ''
       ? {}
       : { endpoint: config.endpoint }),
+    ...(config?.endpoints === undefined || config.endpoints.length === 0
+      ? {}
+      : { endpoints: config.endpoints }),
+    ...(config?.fallbackToDefaultEndpoint === undefined
+      ? {}
+      : { fallbackToDefaultEndpoint: config.fallbackToDefaultEndpoint }),
     ...(config?.submit === undefined ? {} : { submit: config.submit }),
   }
 }

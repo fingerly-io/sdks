@@ -180,8 +180,17 @@
           const options = { apiKey: $('apikey').value || 'demo' }
           if ($('endpoint').value) options.endpoint = $('endpoint').value
 
+          // Xcode's simulator can be heavily throttled while the local Docker
+          // stack is running. `?slow=1` is a probe-bench mode: give collection
+          // room to finish and submit the complete report in one request. The
+          // normal demo still exercises the production fast/deferred flow.
+          const slowMode = new URLSearchParams(location.search).get('slow') === '1'
+          if (slowMode) options.schedule = { budgetMs: 5000 }
+
           const badele = await Badele.load(options)
-          const result = await badele.identify({ submit })
+          const result = await badele.identify(
+            slowMode ? { submit, tiers: ['fast', 'deferred'] } : { submit },
+          )
 
           renderStats(result.report, result.requestId)
           renderVerdicts(result.verdicts)
@@ -195,6 +204,28 @@
           // Read back by the browser-automation check.
           window.__badele = result
           console.log('[badele] done', result)
+
+          // A submitted identification returns after the fast tier, then the
+          // tracked deferred promise supplies the complete local report. Keep
+          // the fast result visible immediately, but refresh the demo once the
+          // second tier finishes so verdicts such as Tor detection do not look
+          // as though they disappeared on submission.
+          if (submit) {
+            const deferred = await result.deferred
+            window.__badeleDeferred = deferred
+            if (deferred.status === 'submitted') {
+              renderStats(deferred.combinedReport, result.requestId)
+              renderVerdicts(deferred.verdicts)
+              renderIntegrity(deferred.combinedReport.integrity)
+              renderSources(deferred.combinedReport.sources)
+              $('raw').textContent = JSON.stringify(
+                { sdk: { platform: 'web', version: '0.1.0' }, signals: deferred.combinedReport },
+                null,
+                2,
+              )
+              console.log('[badele] deferred done', deferred)
+            }
+          }
         } catch (error) {
           $('raw').textContent = String(error && error.stack ? error.stack : error)
           console.error('[badele] failed', error)

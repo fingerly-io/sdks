@@ -12,11 +12,14 @@ import {
   UnsupportedSignal,
   type HardwareSignal,
   type IntlSignal,
+  type BatterySignal,
   type MediaDevicesSignal,
   type NetworkSignal,
   type SensorsSignal,
   type Source,
+  type SpeechSignal,
   type TouchSignal,
+  type TimezoneSignal,
 } from '@badele/core'
 
 import { attempt, compact, requireWindow } from '../util.js'
@@ -206,5 +209,81 @@ export const intlSource: Source<IntlSignal> = {
         }).format(new Date(0)),
       ),
     })
+  },
+}
+
+export const timezoneSource: Source<TimezoneSignal> = {
+  id: SOURCE.timezone,
+  tier: 'fast',
+  run() {
+    if (typeof Intl === 'undefined') throw new UnsupportedSignal('no-intl')
+    return compact({
+      name: attempt(() => new Intl.DateTimeFormat().resolvedOptions().timeZone),
+      offset: attempt(() => new Date().getTimezoneOffset()),
+    })
+  },
+}
+
+interface BatteryManagerLike {
+  charging?: boolean
+  chargingTime?: number
+  dischargingTime?: number
+  level?: number
+}
+
+export const batterySource: Source<BatterySignal> = {
+  id: SOURCE.battery,
+  tier: 'deferred',
+  timeoutMs: 250,
+  async run() {
+    if (typeof navigator === 'undefined') throw new UnsupportedSignal('no-navigator')
+    const getBattery = (navigator as Navigator & {
+      getBattery?: () => Promise<BatteryManagerLike>
+    }).getBattery
+    if (typeof getBattery !== 'function') throw new UnsupportedSignal('no-battery-api')
+    const battery = await getBattery.call(navigator)
+    const finiteOrNull = (value: number | undefined): number | null | undefined =>
+      value === undefined ? undefined : Number.isFinite(value) ? value : null
+    return compact<BatterySignal>({
+      charging: battery.charging,
+      charging_time: finiteOrNull(battery.chargingTime),
+      discharging_time: finiteOrNull(battery.dischargingTime),
+      level: battery.level,
+    })
+  },
+}
+
+export const speechSource: Source<SpeechSignal> = {
+  id: SOURCE.speech,
+  tier: 'deferred',
+  timeoutMs: 250,
+  async run(ctx) {
+    if (typeof speechSynthesis === 'undefined') throw new UnsupportedSignal('no-speech-synthesis')
+
+    let voices = speechSynthesis.getVoices()
+    if (voices.length === 0) {
+      voices = await new Promise<SpeechSynthesisVoice[]>((resolve) => {
+        const finish = () => {
+          speechSynthesis.removeEventListener('voiceschanged', changed)
+          ctx.signal.removeEventListener('abort', aborted)
+          resolve(speechSynthesis.getVoices())
+        }
+        const changed = () => finish()
+        const aborted = () => finish()
+        speechSynthesis.addEventListener('voiceschanged', changed, { once: true })
+        ctx.signal.addEventListener('abort', aborted, { once: true })
+        setTimeout(finish, Math.min(100, ctx.budgetRemainingMs()))
+      })
+    }
+
+    return {
+      voices: voices.map((voice) => ({
+        name: voice.name,
+        language: voice.lang,
+        local_service: voice.localService,
+        default: voice.default,
+        uri: voice.voiceURI,
+      })),
+    }
   },
 }

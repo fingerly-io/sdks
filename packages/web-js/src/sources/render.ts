@@ -94,18 +94,19 @@ function supportsWinding(): boolean {
 }
 
 /**
- * Whether resistFingerprinting is active, from the fast tier's clock probe.
+ * Whether resistFingerprinting may be active, from the fast tier's clock probe.
  *
- * RFP clamps `performance.now()` to 100ms, which no ordinary browser does, so
- * this is a reliable read and it costs nothing here - the measurement already
- * happened. Tiers are barriers, so `timing` is guaranteed complete by the time
- * a deferred source asks.
+ * Tor 15 was measured using both a 16.667ms clamp at Standard security and a
+ * 100ms clamp at Safest. The lower threshold is deliberately conservative:
+ * this guard does not produce a Tor verdict, it only gives up a canvas hash to
+ * uphold the stronger promise that collection never opens a permission
+ * doorhanger. Tiers are barriers, so `timing` is guaranteed complete here.
  */
 function resistFingerprintingActive(ctx: SourceContext): boolean {
   const timing = ctx.completed(SOURCE.timing)
   if (timing?.status !== 'ok') return false
   const resolution = (timing.value as TimingSignal | undefined)?.now_resolution
-  return typeof resolution === 'number' && resolution >= 100
+  return typeof resolution === 'number' && resolution >= 16
 }
 
 export const canvasSource: Source<CanvasSignal> = {
@@ -168,7 +169,9 @@ function webglContext(): WebGLRenderingContext {
 
 export const webglSource: Source<WebGLSignal> = {
   id: SOURCE.webgl,
-  tier: 'deferred',
+  // Renderer and GPU strings are hard identity components, and context setup
+  // is synchronous; keep them in the authoritative initial report.
+  tier: 'fast',
   timeoutMs: 400,
   run() {
     const gl = webglContext()

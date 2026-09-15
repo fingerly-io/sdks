@@ -111,6 +111,32 @@ export interface NavigatorSignal {
   languages?: string[]
 }
 
+export interface LanguagesSignal {
+  primary?: string
+  accepted?: string[]
+}
+
+export interface PluginMimeTypeSignal {
+  type?: string
+  suffixes?: string
+  description?: string
+}
+
+export interface PluginSignal {
+  name?: string
+  filename?: string
+  description?: string
+  mime_types?: PluginMimeTypeSignal[]
+}
+
+export interface PluginsSignal {
+  plugins?: PluginSignal[]
+}
+
+export interface VendorSignal {
+  vendor?: string
+}
+
 /**
  * Engine identity, observed rather than claimed.
  *
@@ -333,6 +359,15 @@ export interface ScreenSignal {
   inner_height?: number
 }
 
+export interface ScreenFrameSignal {
+  /** Window chrome insets: top, right, bottom, left. */
+  frame?: (number | null)[]
+}
+
+export interface ColorGamutSignal {
+  gamut?: 'srgb' | 'p3' | 'rec2020'
+}
+
 export interface WebGLSignal {
   vendor?: string
   renderer?: string
@@ -381,6 +416,11 @@ export interface FontsSignal {
   probed?: number
 }
 
+export interface FontPreferencesSignal {
+  /** Widths of the same text under generic/system font preferences. */
+  widths?: Record<string, number>
+}
+
 export interface IntlSignal {
   timezone?: string
   timezone_offset?: number
@@ -389,6 +429,30 @@ export interface IntlSignal {
   numbering_system?: string
   /** `Intl.DateTimeFormat().format()` of a fixed instant. Catches locale data differences. */
   formatted?: string
+}
+
+export interface TimezoneSignal {
+  name?: string
+  offset?: number
+}
+
+export interface BatterySignal {
+  charging?: boolean
+  charging_time?: number | null
+  discharging_time?: number | null
+  level?: number
+}
+
+export interface SpeechVoiceSignal {
+  name?: string
+  language?: string
+  local_service?: boolean
+  default?: boolean
+  uri?: string
+}
+
+export interface SpeechSignal {
+  voices?: SpeechVoiceSignal[]
 }
 
 /**

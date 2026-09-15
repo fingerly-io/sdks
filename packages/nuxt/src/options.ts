@@ -12,6 +12,8 @@ export interface ModuleOptions {
   apiKey?: string
   /** Origin of the API. Defaults to production. */
   endpoint?: string
+  endpoints?: string[]
+  fallbackToDefaultEndpoint?: boolean
   /**
    * Collect and score without submitting anything.
    *
@@ -36,6 +38,8 @@ export interface ModuleOptions {
 export interface BadelePublicConfig {
   apiKey: string
   endpoint: string
+  endpoints: string[]
+  fallbackToDefaultEndpoint: boolean
   submit: boolean
 }
 
@@ -63,6 +67,8 @@ export function resolvePublicConfig(
   return {
     apiKey: pick(existing?.apiKey, options.apiKey) ?? '',
     endpoint: pick(existing?.endpoint, options.endpoint) ?? '',
+    endpoints: existing?.endpoints ?? options.endpoints ?? [],
+    fallbackToDefaultEndpoint: existing?.fallbackToDefaultEndpoint ?? options.fallbackToDefaultEndpoint ?? false,
     submit: existing?.submit ?? options.submit ?? true,
   }
 }

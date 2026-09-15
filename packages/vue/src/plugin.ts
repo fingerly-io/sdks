@@ -36,6 +36,8 @@ export interface BadeleVueOptions {
   apiKey: string
   /** Origin of the API. Defaults to production. */
   endpoint?: string
+  endpoints?: string | readonly string[]
+  fallbackToDefaultEndpoint?: boolean
   /**
    * Collect and score without submitting anything.
    *
@@ -143,6 +145,7 @@ export function createBadele(options: BadeleVueOptions): Plugin {
 
   let clientPromise: Promise<BadeleClient> | undefined
   let inFlight: Promise<IdentifyResult> | undefined
+  let completed: IdentifyResult | undefined
 
   const client = (): Promise<BadeleClient> => {
     if (typeof window === 'undefined') return Promise.reject(new BadeleServerError())
@@ -151,6 +154,8 @@ export function createBadele(options: BadeleVueOptions): Plugin {
     clientPromise ??= load({
       apiKey: options.apiKey,
       ...(options.endpoint === undefined ? {} : { endpoint: options.endpoint }),
+      ...(options.endpoints === undefined ? {} : { endpoints: options.endpoints }),
+      ...(options.fallbackToDefaultEndpoint === undefined ? {} : { fallbackToDefaultEndpoint: options.fallbackToDefaultEndpoint }),
     })
     return clientPromise
   }
@@ -169,30 +174,10 @@ export function createBadele(options: BadeleVueOptions): Plugin {
     // there is no requestId, so the cache never engaged and every caller
     // re-collected the whole fingerprint. Having a report is what "already
     // identified" means; a requestId is only what submitting adds to it.
-    if (!identifyOptions.force && state.report.value !== null) {
-      return Promise.resolve({
-        // Back to the empty string the client uses for "nothing was submitted",
-        // so a cached result is indistinguishable from the original.
-        //
-        // Every field is re-emitted, not just the ones a caller usually reads.
-        // This branch reconstructs a result rather than replaying one, so
-        // anything forgotten here is a field the second caller silently does
-        // not get - and the second caller is the common one, since this is the
-        // path every component after the first takes.
-        requestId: state.requestId.value ?? '',
-        visitorId: state.visitorId.value ?? '',
-        visitorIsNew: state.visitorIsNew.value,
-        visitorConfidence: state.visitorConfidence.value,
-        identifiable: state.identifiable.value,
-        duplicate: state.duplicate.value,
-        state: state.state.value ?? '',
-        reason: state.reason.value ?? '',
-        suspectScore: state.suspectScore.value,
-        suspectLevel: state.suspectLevel.value,
-        triggers: state.triggers.value,
-        verdicts: state.verdicts.value as Verdicts,
-        report: state.report.value,
-      })
+    if (!identifyOptions.force && completed) {
+      // Keep the original object: deferred is a live completion promise and
+      // cannot be reconstructed from the view-oriented refs below.
+      return Promise.resolve(completed)
     }
 
     state.isLoading.value = true
@@ -219,6 +204,7 @@ export function createBadele(options: BadeleVueOptions): Plugin {
         state.triggers.value = result.triggers
         state.verdicts.value = result.verdicts
         state.report.value = result.report
+        completed = result
         return result
       })
       .catch((cause: unknown) => {

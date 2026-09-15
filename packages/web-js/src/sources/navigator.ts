@@ -7,7 +7,15 @@
  * `engine.ts` and `lies/`, it is where most contradictions surface.
  */
 
-import { SOURCE, UnsupportedSignal, type NavigatorSignal, type Source } from '@badele/core'
+import {
+  SOURCE,
+  UnsupportedSignal,
+  type LanguagesSignal,
+  type NavigatorSignal,
+  type PluginsSignal,
+  type Source,
+  type VendorSignal,
+} from '@badele/core'
 
 import { attempt, compact } from '../util.js'
 
@@ -51,6 +59,50 @@ export const navigatorSource: Source<NavigatorSignal> = {
       language: attempt(() => nav.language),
       languages: attempt(() => (nav.languages ? [...nav.languages] : undefined)),
     })
+  },
+}
+
+export const languagesSource: Source<LanguagesSignal> = {
+  id: SOURCE.languages,
+  tier: 'fast',
+  run() {
+    if (typeof navigator === 'undefined') throw new UnsupportedSignal('no-navigator')
+    return compact({
+      primary: attempt(() => navigator.language),
+      accepted: attempt(() => (navigator.languages ? [...navigator.languages] : undefined)),
+    })
+  },
+}
+
+export const vendorSource: Source<VendorSignal> = {
+  id: SOURCE.vendor,
+  tier: 'fast',
+  run() {
+    if (typeof navigator === 'undefined') throw new UnsupportedSignal('no-navigator')
+    return compact({ vendor: attempt(() => navigator.vendor) })
+  },
+}
+
+export const pluginsSource: Source<PluginsSignal> = {
+  id: SOURCE.plugins,
+  tier: 'fast',
+  run() {
+    if (typeof navigator === 'undefined') throw new UnsupportedSignal('no-navigator')
+    const plugins = navigator.plugins
+    if (!plugins) throw new UnsupportedSignal('no-plugins')
+
+    return {
+      plugins: Array.from(plugins, (plugin) => ({
+        name: plugin.name,
+        filename: plugin.filename,
+        description: plugin.description,
+        mime_types: Array.from(plugin, (mime) => ({
+          type: mime.type,
+          suffixes: mime.suffixes,
+          description: mime.description,
+        })),
+      })),
+    }
   },
 }
 

@@ -22,6 +22,7 @@
   "files": ["dist"],
   "sideEffects": false,
   "dependencies": {
+    "@badele/node": "workspace:*",
     "@badele/react": "workspace:*"
   },
   "peerDependencies": {

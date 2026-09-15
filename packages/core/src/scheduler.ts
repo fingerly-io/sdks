@@ -79,6 +79,8 @@ export interface ScheduleOptions {
   tiers?: SourceTier[]
   /** Cancels the whole run from outside. */
   signal?: AbortSignal
+  /** Outcomes from an earlier phase, visible through SourceContext but not returned. */
+  completed?: Readonly<Record<string, SignalOutcome>>
 }
 
 export interface ScheduleResult {
@@ -196,9 +198,10 @@ async function runSource(
  * The motivating case is canvas. Reading pixels back triggers a *permission
  * doorhanger* in Tor Browser, and this SDK must never make a browser ask its
  * user anything. Whether resistFingerprinting is active is established by the
- * `timing` source in the fast tier, so canvas - deferred - can look that answer
- * up and decline to touch the API at all. Without the barrier that lookup would
- * be a race, and losing the race means prompting a user.
+ * `timing` source in the fast tier, so canvas - deferred - can look for Tor's
+ * measured coarse clock profiles and decline to touch the API at all. Without
+ * the barrier that lookup would be a race, and losing the race means prompting
+ * a user.
  *
  * The barrier is affordable because the tiers are defined by cost: the fast
  * tier is cheap reads, measured at well under 30ms in total, so gating on its
@@ -221,6 +224,7 @@ export async function collect(
   const started = clock()
   const deadline = started + budgetMs
   const outcomes: Record<string, SignalOutcome> = {}
+  const completed: Record<string, SignalOutcome> = { ...(options.completed ?? {}) }
 
   let truncated = false
 
@@ -251,10 +255,11 @@ export async function collect(
           // The outcomes so far. Everything from earlier tiers is complete;
           // sources within a tier run together, so a source must not depend on
           // a sibling in its own tier.
-          outcomes,
+          completed,
         )
         if (outcome.status === 'timeout') truncated = true
         outcomes[source.id] = outcome
+        completed[source.id] = outcome
       }
     }
 

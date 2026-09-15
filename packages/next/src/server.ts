@@ -10,6 +10,8 @@
  */
 
 import { REQUEST_ID_FIELD } from './field-name.js'
+export { createProxy as createBadeleProxy } from '@badele/node'
+export type { ProxyOptions as BadeleProxyOptions } from '@badele/node'
 
 export { REQUEST_ID_FIELD }
 

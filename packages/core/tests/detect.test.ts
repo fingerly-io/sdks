@@ -13,6 +13,7 @@ import { SOURCE } from '../src/signals.js'
 import {
   androidEmulator,
   braveMac,
+  currentTorBrowserMac,
   incognitoChromeMac,
   ordinarySafari,
   ordinaryChromeMac,
@@ -154,6 +155,16 @@ describe('detectTor', () => {
     expect(verdict.value).toBe(true)
     expect(verdict.confidence).toBe('high')
     expect(verdict.reasons[0]).toBe('clock-resolution-clamped-to-100ms')
+  })
+
+  it('detects the measured current Tor shape without obsolete RFP constants', () => {
+    const verdict = detectTor(currentTorBrowserMac)
+
+    expect(verdict).toEqual({
+      value: true,
+      confidence: 'medium',
+      reasons: ['canvas-readback-refused-or-noised', 'viewport-letterboxed-to-200x100-grid'],
+    })
   })
 
   it('does not fire on an ordinary Firefox private window', () => {

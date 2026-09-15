@@ -14,6 +14,8 @@ import { HttpTransport, type Transport } from './transport.js'
 import type {
   IdentifyResult,
   IdentifySubmission,
+  DeferredIdentifyResult,
+  DeferredSubmission,
   IntegrityReport,
   SdkPlatform,
   SignalReport,
@@ -35,6 +37,10 @@ export interface BadeleClientOptions {
   apiKey: string
   /** Origin of the API. Defaults to production. */
   endpoint?: string
+  /** Ordered first-party ingestion endpoints. */
+  endpoints?: string | readonly string[]
+  /** Explicitly use the regional Badele API after custom endpoints fail. */
+  fallbackToDefaultEndpoint?: boolean
   /** Which platform this SDK reports as. Set by the wrapping package. */
   platform?: SdkPlatform
   /** The sources to run. Empty here; supplied by the platform SDK. */
@@ -50,7 +56,7 @@ export interface BadeleClientOptions {
 export interface IdentifyOptions {
   /** Echoed back on the finished event, for the caller's own correlation. */
   tag?: string
-  /** Which tiers to run. Defaults to both. */
+  /** Which tiers to run in one shot. Omit for the default initial/deferred split. */
   tiers?: SourceTier[]
   /** Cancels collection and submission. */
   signal?: AbortSignal
@@ -84,11 +90,12 @@ export class BadeleClient {
     this.platform = options.platform ?? 'web'
     this.transport =
       options.transport ??
-      new HttpTransport(
-        options.endpoint === undefined
-          ? { apiKey: options.apiKey }
-          : { apiKey: options.apiKey, endpoint: options.endpoint },
-      )
+      new HttpTransport({
+        apiKey: options.apiKey,
+        ...(options.endpoint === undefined ? {} : { endpoint: options.endpoint }),
+        ...(options.endpoints === undefined ? {} : { endpoints: options.endpoints }),
+        ...(options.fallbackToDefaultEndpoint === undefined ? {} : { fallbackToDefaultEndpoint: options.fallbackToDefaultEndpoint }),
+      })
   }
 
   /**
@@ -107,7 +114,12 @@ export class BadeleClient {
    * controls. Where the two disagree, the server is the one to believe.
    */
   async identify(options: IdentifyOptions = {}): Promise<IdentifyResult> {
-    const report = await this.collect(options)
+    const automaticDeferred = options.submit !== false && options.tiers === undefined
+    const report = await this.collectReport(
+      automaticDeferred ? ['fast'] : (options.tiers ?? ['fast', 'deferred']),
+      options.signal,
+      automaticDeferred ? 300 : undefined,
+    )
     const verdicts = detectAll(report)
 
     if (options.submit === false) {
@@ -129,6 +141,7 @@ export class BadeleClient {
         triggers: [],
         verdicts,
         report,
+        deferred: Promise.resolve({ status: 'skipped', reason: 'not-submitted' }),
       }
     }
 
@@ -139,7 +152,7 @@ export class BadeleClient {
     }
 
     const answer = await this.transport.submit(submission, options.signal)
-    return {
+    const result: IdentifyResult = {
       requestId: answer.request_id,
       visitorId: answer.visitor_id ?? '',
       visitorIsNew: answer.visitor_is_new ?? false,
@@ -162,6 +175,64 @@ export class BadeleClient {
       })),
       verdicts,
       report,
+      deferred: Promise.resolve({ status: 'skipped', reason: 'explicit-tiers' }),
+    }
+
+
+    if (!automaticDeferred) return result
+    if (answer.duplicate || !answer.deferred_token) {
+      result.deferred = Promise.resolve({
+        status: 'skipped',
+        reason: answer.duplicate ? 'duplicate' : 'unsupported-transport',
+      })
+      return result
+    }
+    if (typeof this.transport.submitSupplement !== 'function') {
+      result.deferred = Promise.resolve({ status: 'skipped', reason: 'unsupported-transport' })
+      return result
+    }
+
+    result.deferred = this.finishDeferred(report, answer.request_id, answer.deferred_token, options.signal)
+    return result
+  }
+
+  private async finishDeferred(
+    initial: SignalReport,
+    requestId: string,
+    token: string,
+    signal?: AbortSignal,
+  ): Promise<DeferredIdentifyResult> {
+    let report: SignalReport | undefined
+    let combinedReport: SignalReport | undefined
+    let verdicts: ReturnType<typeof detectAll> | undefined
+    try {
+      report = await this.collectReport(['deferred'], signal, 1200, initial.sources)
+      combinedReport = {
+        schema: initial.schema,
+        budget_ms: initial.budget_ms + report.budget_ms,
+        elapsed_ms: initial.elapsed_ms + report.elapsed_ms,
+        tiers: ['fast', 'deferred'],
+        sources: { ...initial.sources, ...report.sources },
+        integrity: this.options.integrity
+          ? this.options.integrity({ sources: { ...initial.sources, ...report.sources } })
+          : EMPTY_INTEGRITY,
+      }
+      verdicts = detectAll(combinedReport)
+      const submission: DeferredSubmission = {
+        sdk: { platform: this.platform, version: SDK_VERSION },
+        signals: report,
+        token,
+      }
+      await this.transport.submitSupplement!(requestId, submission, signal)
+      return { status: 'submitted', report, combinedReport, verdicts }
+    } catch (error) {
+      return {
+        status: 'failed',
+        error: error instanceof Error ? error : new Error(String(error)),
+        ...(report === undefined ? {} : { report }),
+        ...(combinedReport === undefined ? {} : { combinedReport }),
+        ...(verdicts === undefined ? {} : { verdicts }),
+      }
     }
   }
 
@@ -173,13 +244,25 @@ export class BadeleClient {
    * they agree to send it.
    */
   async collect(options: IdentifyOptions = {}): Promise<SignalReport> {
-    const sources = this.options.sources ?? []
     const tiers: SourceTier[] = options.tiers ?? ['fast', 'deferred']
+
+    return this.collectReport(tiers, options.signal)
+  }
+
+  private async collectReport(
+    tiers: SourceTier[],
+    signal?: AbortSignal,
+    budgetMs?: number,
+    completed?: Readonly<Record<string, SignalReport['sources'][string]>>,
+  ): Promise<SignalReport> {
+    const sources = this.options.sources ?? []
 
     const schedule: ScheduleOptions = {
       ...this.options.schedule,
       tiers,
-      ...(options.signal === undefined ? {} : { signal: options.signal }),
+      ...(budgetMs === undefined ? {} : { budgetMs }),
+      ...(signal === undefined ? {} : { signal }),
+      ...(completed === undefined ? {} : { completed }),
     }
 
     const result = await collect(sources, schedule)

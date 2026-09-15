@@ -17,7 +17,8 @@ repo relates to `server` and `panels`.
   acquire any — `node` depends on it.
 - `packages/web-js` — vanilla browser SDK. The ~22 browser sources and the
   tamper layer that checks whether the browser is lying about them.
-- `packages/node` — server-side Node SDK
+- `packages/node` — server-side Node SDK for stored-event reads, webhook
+  verification, and a framework-neutral same-origin proxy.
 - `packages/vue` — Vue 3 plugin and composables ([README](packages/vue/README.md)).
   One shared identification per app, readonly reactive state, SSR-safe.
 - `packages/{react,svelte,angular,nuxt,next}` — implemented framework bindings,
@@ -93,8 +94,8 @@ written out there.
 
 ## Status
 
-`core`, `web-js`, the framework bindings, `mobile/ios`, `mobile/android`, and
-the Flutter, React Native, and Lynx bridges are implemented. The Node SDK is not. See [`todo.md`](todo.md)
+`core`, `web-js`, Node, the framework bindings, `mobile/ios`, `mobile/android`, and
+the Flutter, React Native, and Lynx bridges are implemented. See [`todo.md`](todo.md)
 for what is done, what was measured, and what is left, and
 [`docs/another library-teardown.md`](docs/another library-teardown.md) for the
 another library teardown the design argues against.
@@ -137,12 +138,24 @@ answer them — so the SDK states them and the server records them.
 import { load } from '@badele/web-js'
 
 const badele = await load({ apiKey: 'pk_live_…' })
-const { requestId, visitorId, suspectScore, verdicts } = await badele.identify({ tag: 'checkout' })
+const result = await badele.identify({ tag: 'checkout' })
+const { requestId, visitorId, suspectScore, verdicts } = result
 
 if (verdicts.automation.value && verdicts.automation.confidence === 'high') {
   // step up to a challenge
 }
+
+// The authoritative score above never changes. Expensive collectors continue
+// as an immutable sidecar that applications may observe when useful.
+const deferred = await result.deferred
 ```
+
+Region-bound keys route themselves: `bd_pk_us_…` uses
+`https://us.api.badele.io` and `bd_pk_eu_…` uses the isolated EU endpoint when
+that region launches. Regionless legacy keys retain `https://api.badele.io`.
+The optional `endpoint`/`endpoints` setting always wins, which is how a customer
+uses the Badele same-origin proxy on their own domain; it does not change the
+region bound into the credential or let traffic cross into another data plane.
 
 `identify()` collects, scores locally, and submits to `POST /api/v1/identify`,
 resolving with the server's verdict: `visitorId`, `suspectScore`,
@@ -150,6 +163,10 @@ resolving with the server's verdict: `visitorId`, `suspectScore`,
 there is no second call to make. Pass `{ submit: false }` to collect and score
 without sending anything — the server's fields are empty then, and
 `suspectScore` is `null` rather than `0`, because nobody scored it.
+
+The default browser run spends 300ms on the initial tier, then continues the
+deferred tier under a separate 1200ms budget. Deferred data is archived against
+the request but never changes identity, score, billing, or webhooks.
 
 The verdicts returned here are advisory. The same detectors run again
 server-side over the stored report, where the rules can improve without every

@@ -21,6 +21,10 @@ export interface BadeleNextProviderProps {
   apiKey?: string
   /** Overrides `NEXT_PUBLIC_BADELE_ENDPOINT`. Defaults to production. */
   endpoint?: string
+  /** Ordered first-party endpoints; overrides NEXT_PUBLIC_BADELE_ENDPOINTS. */
+  endpoints?: string | readonly string[]
+  /** Opt into the regional Badele endpoint after custom endpoints fail. */
+  fallbackToDefaultEndpoint?: boolean
   /** Collect and score without submitting anything. */
   submit?: boolean
   children?: ReactNode
@@ -35,7 +39,7 @@ export interface BadeleNextProviderProps {
  * that works locally, where the server render finds a real `process`, and is
  * empty in production the moment hydration takes over.
  */
-function fromEnvironment(): { apiKey?: string; endpoint?: string } {
+function fromEnvironment(): { apiKey?: string; endpoint?: string; endpoints?: string[] } {
   // Written out in full, twice, and not hoisted into a variable. Next replaces
   // the *exact* member expression `process.env.NEXT_PUBLIC_…` while bundling;
   // `const env = process.env` followed by `env.NEXT_PUBLIC_…` is a dynamic
@@ -49,10 +53,21 @@ function fromEnvironment(): { apiKey?: string; endpoint?: string } {
     typeof process === 'undefined' ? undefined : process.env.NEXT_PUBLIC_BADELE_API_KEY
   const endpoint =
     typeof process === 'undefined' ? undefined : process.env.NEXT_PUBLIC_BADELE_ENDPOINT
+  const endpointsRaw =
+    typeof process === 'undefined' ? undefined : process.env.NEXT_PUBLIC_BADELE_ENDPOINTS
+  let endpoints: string[] | undefined
+  if (endpointsRaw) {
+    const parsed: unknown = JSON.parse(endpointsRaw)
+    if (!Array.isArray(parsed) || parsed.length === 0 || parsed.some((value) => typeof value !== 'string')) {
+      throw new Error('NEXT_PUBLIC_BADELE_ENDPOINTS must be a non-empty JSON array of strings')
+    }
+    endpoints = parsed
+  }
 
   return {
     ...(apiKey === undefined || apiKey === '' ? {} : { apiKey }),
     ...(endpoint === undefined || endpoint === '' ? {} : { endpoint }),
+    ...(endpoints === undefined ? {} : { endpoints }),
   }
 }
 
@@ -82,7 +97,8 @@ function fromEnvironment(): { apiKey?: string; endpoint?: string } {
 export function BadeleProvider(props: BadeleNextProviderProps): ReactNode {
   const environment = fromEnvironment()
   const apiKey = props.apiKey ?? environment.apiKey
-  const endpoint = props.endpoint ?? environment.endpoint
+  const endpoints = props.endpoints ?? environment.endpoints
+  const endpoint = endpoints === undefined ? (props.endpoint ?? environment.endpoint) : undefined
 
   if (!apiKey) {
     throw new Error(
@@ -101,6 +117,8 @@ export function BadeleProvider(props: BadeleNextProviderProps): ReactNode {
     <ReactBadeleProvider
       apiKey={apiKey}
       {...(endpoint === undefined ? {} : { endpoint })}
+      {...(endpoints === undefined ? {} : { endpoints })}
+      {...(props.fallbackToDefaultEndpoint === undefined ? {} : { fallbackToDefaultEndpoint: props.fallbackToDefaultEndpoint })}
       {...(props.submit === undefined ? {} : { submit: props.submit })}
     >
       {props.children}

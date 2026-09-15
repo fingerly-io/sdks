@@ -101,6 +101,9 @@ importers:
 
   packages/next:
     dependencies:
+      '@badele/node':
+        specifier: workspace:*
+        version: link:../node
       '@badele/react':
         specifier: workspace:*
         version: link:../react
@@ -137,10 +140,19 @@ importers:
         version: 2.1.9(@types/node@26.4.0)(happy-dom@15.11.7)(lightningcss@1.33.0)(terser@5.51.2)
 
   packages/node:
-    dependencies:
-      '@badele/core':
-        specifier: workspace:*
-        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: 26.4.0
+        version: 26.4.0
+      tsup:
+        specifier: ^8.3.5
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(typescript@5.9.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@26.4.0)(happy-dom@15.11.7)(lightningcss@1.33.0)(terser@5.51.2)
 
   packages/nuxt:
     dependencies:

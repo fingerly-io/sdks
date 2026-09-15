@@ -11,23 +11,32 @@ import type { Source } from '@badele/core'
 
 import { audioLatencySource, audioSource } from './audio.js'
 import {
+  batterySource,
   hardwareSource,
   intlSource,
   mediaDevicesSource,
   networkSource,
   sensorsSource,
+  speechSource,
   touchSource,
+  timezoneSource,
 } from './device.js'
-import { mediaQueriesSource, screenSource } from './display.js'
+import { colorGamutSource, mediaQueriesSource, screenFrameSource, screenSource } from './display.js'
 import { storageDurabilitySource } from './durability.js'
 import { domBlockersSource } from './dom.js'
 import { engineSource, errorsSource, mathSource } from './engine.js'
-import { navigatorSource, userAgentDataSource } from './navigator.js'
+import {
+  languagesSource,
+  navigatorSource,
+  pluginsSource,
+  userAgentDataSource,
+  vendorSource,
+} from './navigator.js'
 import { canvasSource, webglExtensionsSource, webglSource } from './render.js'
 import { automationSource, permissionsSource, timingSource } from './runtime.js'
 import { shieldsSource } from './shields.js'
 import { storageQuotaSource, storageSource } from './storage.js'
-import { fontsSource } from './text.js'
+import { fontPreferencesSource, fontsSource } from './text.js'
 
 export const browserSources: readonly Source[] = [
   // fast
@@ -35,26 +44,35 @@ export const browserSources: readonly Source[] = [
   errorsSource,
   mathSource,
   navigatorSource,
+  languagesSource,
+  pluginsSource,
+  vendorSource,
   screenSource,
+  screenFrameSource,
   mediaQueriesSource,
+  colorGamutSource,
   hardwareSource,
   touchSource,
   networkSource,
   intlSource,
+  timezoneSource,
   storageSource,
   storageQuotaSource,
   shieldsSource,
   timingSource,
   permissionsSource,
   automationSource,
+  webglSource,
 
   // deferred
   canvasSource,
-  webglSource,
   webglExtensionsSource,
   audioSource,
   audioLatencySource,
   fontsSource,
+  fontPreferencesSource,
+  batterySource,
+  speechSource,
   sensorsSource,
   mediaDevicesSource,
   userAgentDataSource,

@@ -30,6 +30,8 @@ export interface BadeleOptions {
   apiKey: string
   /** Origin of the API. Defaults to production. */
   endpoint?: string
+  endpoints?: string | readonly string[]
+  fallbackToDefaultEndpoint?: boolean
   /**
    * Collect and score without submitting anything.
    *
@@ -151,6 +153,8 @@ export function createBadele(options: BadeleOptions): Badele {
     clientPromise ??= load({
       apiKey: options.apiKey,
       ...(options.endpoint === undefined ? {} : { endpoint: options.endpoint }),
+      ...(options.endpoints === undefined ? {} : { endpoints: options.endpoints }),
+      ...(options.fallbackToDefaultEndpoint === undefined ? {} : { fallbackToDefaultEndpoint: options.fallbackToDefaultEndpoint }),
     })
     return clientPromise
   }

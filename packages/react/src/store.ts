@@ -29,6 +29,10 @@ export interface BadeleReactOptions {
   apiKey: string
   /** Origin of the API. Defaults to production. */
   endpoint?: string
+  /** Ordered first-party ingestion endpoints. */
+  endpoints?: string | readonly string[]
+  /** Try the regional Badele API only after custom endpoints fail. */
+  fallbackToDefaultEndpoint?: boolean
   /**
    * Collect and score without submitting anything.
    *
@@ -169,6 +173,8 @@ export function createBadeleStore(options: BadeleReactOptions): BadeleStore {
     clientPromise ??= load({
       apiKey: options.apiKey,
       ...(options.endpoint === undefined ? {} : { endpoint: options.endpoint }),
+      ...(options.endpoints === undefined ? {} : { endpoints: options.endpoints }),
+      ...(options.fallbackToDefaultEndpoint === undefined ? {} : { fallbackToDefaultEndpoint: options.fallbackToDefaultEndpoint }),
     })
     return clientPromise
   }

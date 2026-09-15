@@ -191,16 +191,19 @@ describe('canvas readback under resistFingerprinting', () => {
     }
   }
 
-  it('declines without touching the canvas when the clock is clamped to 100ms', async () => {
-    const { thrown, createdElement } = await withFakeDom(100)
+  it.each([16.667, 100])(
+    'declines without touching the canvas when the clock is clamped to %sms',
+    async (nowResolution) => {
+      const { thrown, createdElement } = await withFakeDom(nowResolution)
 
-    expect(thrown).toBeInstanceOf(BlockedSignal)
-    expect((thrown as BlockedSignal).reason).toBe('rfp-canvas-prompt-avoided')
+      expect(thrown).toBeInstanceOf(BlockedSignal)
+      expect((thrown as BlockedSignal).reason).toBe('rfp-canvas-prompt-avoided')
 
-    // The point of the whole test: no canvas was created, so no doorhanger
-    // could have been raised.
-    expect(createdElement).toBe(false)
-  })
+      // The point of the whole test: no canvas was created, so no doorhanger
+      // could have been raised.
+      expect(createdElement).toBe(false)
+    },
+  )
 
   it('still collects on an ordinary browser, proving the guard is not blanket', async () => {
     // 0.1ms is Chromium's clamp. The source must get as far as the DOM here -

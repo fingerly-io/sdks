@@ -8,6 +8,8 @@
 
 export { BadeleClient, SCHEMA_VERSION } from './client.js'
 export type { BadeleClientOptions, IdentifyOptions } from './client.js'
+export { defaultEndpointForKey, regionFromKey } from './routing.js'
+export type { DataRegion } from './routing.js'
 
 export { collect } from './scheduler.js'
 export type { ScheduleOptions, ScheduleResult } from './scheduler.js'
@@ -42,27 +44,39 @@ export {
   wasBlocked,
   type AudioSignal,
   type AutomationSignal,
+  type BatterySignal,
   type CanvasSignal,
+  type ColorGamutSignal,
   type DomBlockersSignal,
   type EngineSignal,
   type ErrorsSignal,
   type FontsSignal,
+  type FontPreferencesSignal,
   type HardwareSignal,
   type IntlSignal,
   type MathSignal,
   type MediaDevicesSignal,
   type MediaQueriesSignal,
   type NavigatorSignal,
+  type LanguagesSignal,
+  type PluginsSignal,
+  type PluginSignal,
+  type PluginMimeTypeSignal,
   type NetworkSignal,
   type PermissionsSignal,
   type ScreenSignal,
+  type ScreenFrameSignal,
   type SensorsSignal,
   type ShieldsSignal,
   type SourceId,
   type StorageDurabilitySignal,
   type StorageSignal,
+  type SpeechSignal,
+  type SpeechVoiceSignal,
+  type TimezoneSignal,
   type TimingSignal,
   type TouchSignal,
+  type VendorSignal,
   type WebGLSignal,
 } from './signals.js'
 

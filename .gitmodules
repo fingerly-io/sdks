@@ -16,3 +16,6 @@
 [submodule "mobile/lynx"]
 	path = mobile/lynx
 	url = git@github.com:badele-io/sdk-lynx.git
+[submodule "proxies/cloudflare"]
+	path = proxies/cloudflare
+	url = git@github.com:badele-io/cloudflare-worker-proxy.git

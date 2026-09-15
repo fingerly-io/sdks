@@ -375,6 +375,56 @@ export const privateSafari = report({
   [SOURCE.timing]: ok({ now_resolution: 1, has_performance: true }),
 })
 
+/**
+ * Tor Browser 15 on macOS, measured at Standard security on 2026-09-14.
+ *
+ * Modern Tor no longer matches several historical RFP constants: this run
+ * exposed the host timezone and core count and quantised the clock to one
+ * 60 Hz frame rather than 100ms. The conservative canvas safety guard records
+ * that coarse clock as a blocked readback; together with letterboxing, those
+ * are the two independent browser-side signals that identify it.
+ */
+export const currentTorBrowserMac = report({
+  [SOURCE.engine]: ok({
+    to_fixed_error_length: 25,
+    eval_length: 37,
+    stack_style: 'spidermonkey',
+    observed: 'gecko',
+    claimed: 'gecko',
+    agrees: true,
+  }),
+  [SOURCE.navigator]: ok({
+    user_agent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:140.0) Gecko/20100101 Firefox/140.0',
+    hardware_concurrency: 8,
+    language: 'en-US',
+    languages: ['en-US', 'en'],
+    plugin_count: 5,
+  }),
+  [SOURCE.timing]: ok({ now_resolution: 16.667, has_performance: true }),
+  [SOURCE.intl]: ok({ timezone: 'Europe/Istanbul', timezone_offset: -180, locale: 'en' }),
+  [SOURCE.screen]: ok({
+    width: 2000,
+    height: 1200,
+    inner_width: 2000,
+    inner_height: 1200,
+    device_pixel_ratio: 1,
+  }),
+  [SOURCE.canvas]: failed('blocked', 'rfp-canvas-prompt-avoided'),
+  [SOURCE.fonts]: ok({
+    available: Array.from({ length: 9 }, (_, i) => `tor-font-${i}`),
+    probed: 90,
+  }),
+  [SOURCE.storage]: ok({
+    local_storage: true,
+    session_storage: true,
+    indexed_db: true,
+    quota: 10_737_418_240,
+    usage: 0,
+    origin_filesystem: 'refused',
+    service_worker: false,
+  }),
+})
+
 /** Tor Browser, with resistFingerprinting doing its work. */
 export const torBrowser = report({
   [SOURCE.engine]: ok({

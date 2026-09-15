@@ -28,7 +28,7 @@ export type BadeleProviderProps = { children?: ReactNode } & (
    * is shared by every visitor it renders for, which is the one way this
    * package could leak one visitor's report into another's page.
    */
-  | { store: BadeleStore; apiKey?: never; endpoint?: never; submit?: never }
+  | { store: BadeleStore; apiKey?: never; endpoint?: never; endpoints?: never; fallbackToDefaultEndpoint?: never; submit?: never }
 )
 
 /**
@@ -45,7 +45,7 @@ export type BadeleProviderProps = { children?: ReactNode } & (
  * `useIdentify({ immediate: true })` or a call of its own.
  */
 export function BadeleProvider(props: BadeleProviderProps): ReactNode {
-  const { children, store, apiKey, endpoint, submit } = props as BadeleProviderProps & BadeleReactOptions
+  const { children, store, apiKey, endpoint, endpoints, fallbackToDefaultEndpoint, submit } = props as BadeleProviderProps & BadeleReactOptions
 
   // Keyed on the values rather than on the options object, so the ordinary
   // `<BadeleProvider apiKey="…">` - a fresh object literal on every render of
@@ -56,9 +56,11 @@ export function BadeleProvider(props: BadeleProviderProps): ReactNode {
       createBadeleStore({
         apiKey: apiKey as string,
         ...(endpoint === undefined ? {} : { endpoint }),
+        ...(endpoints === undefined ? {} : { endpoints }),
+        ...(fallbackToDefaultEndpoint === undefined ? {} : { fallbackToDefaultEndpoint }),
         ...(submit === undefined ? {} : { submit }),
       }),
-    [apiKey, endpoint, submit],
+    [apiKey, endpoint, endpoints, fallbackToDefaultEndpoint, submit],
   )
 
   // React 19 renders a context directly. `<BadeleContext.Provider>` still

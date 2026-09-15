@@ -12,7 +12,13 @@
  * has only the platform defaults.
  */
 
-import { SOURCE, UnsupportedSignal, type FontsSignal, type Source } from '@badele/core'
+import {
+  SOURCE,
+  UnsupportedSignal,
+  type FontPreferencesSignal,
+  type FontsSignal,
+  type Source,
+} from '@badele/core'
 
 import { compact } from '../util.js'
 
@@ -131,6 +137,47 @@ export const fontsSource: Source<FontsSignal> = {
       })
     } finally {
       holder.remove()
+    }
+  },
+}
+
+export const fontPreferencesSource: Source<FontPreferencesSignal> = {
+  id: SOURCE.fontPreferences,
+  tier: 'deferred',
+  timeoutMs: 250,
+  run() {
+    if (typeof document === 'undefined' || !document.body) {
+      throw new UnsupportedSignal('no-document-body')
+    }
+
+    const frame = document.createElement('iframe')
+    frame.setAttribute('aria-hidden', 'true')
+    frame.style.cssText = 'position:absolute;left:-9999px;width:1px;height:1px;border:0'
+    document.body.appendChild(frame)
+    try {
+      const doc = frame.contentDocument
+      if (!doc?.body) throw new UnsupportedSignal('no-frame-document')
+      const text = 'mmMwWLliI0O&1'
+      const families: Record<string, string> = {
+        default: '',
+        serif: 'serif',
+        sans: 'sans-serif',
+        mono: 'monospace',
+        system: 'system-ui',
+        apple: '-apple-system',
+        min: 'Arial, sans-serif',
+      }
+      const widths: Record<string, number> = {}
+      for (const [name, family] of Object.entries(families)) {
+        const span = doc.createElement('span')
+        span.textContent = text
+        span.style.cssText = `font:72px ${family || 'initial'};white-space:nowrap;position:absolute`
+        doc.body.appendChild(span)
+        widths[name] = Math.round(span.getBoundingClientRect().width * 1000) / 1000
+      }
+      return { widths }
+    } finally {
+      frame.remove()
     }
   },
 }

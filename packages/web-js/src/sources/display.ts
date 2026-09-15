@@ -10,7 +10,9 @@
 import {
   SOURCE,
   UnsupportedSignal,
+  type ColorGamutSignal,
   type MediaQueriesSignal,
+  type ScreenFrameSignal,
   type ScreenSignal,
   type Source,
 } from '@badele/core'
@@ -49,6 +51,31 @@ export const screenSource: Source<ScreenSignal> = {
         s.availLeft ?? null,
       ]),
     })
+  },
+}
+
+let lastUsableFrame: (number | null)[] | undefined
+
+function readFrame(w: Window): (number | null)[] {
+  const s = w.screen as Screen & { availTop?: number; availLeft?: number }
+  return [
+    s.availTop ?? null,
+    (s.width ?? 0) - (s.availWidth ?? 0) - (s.availLeft ?? 0),
+    (s.height ?? 0) - (s.availHeight ?? 0) - (s.availTop ?? 0),
+    s.availLeft ?? null,
+  ]
+}
+
+export const screenFrameSource: Source<ScreenFrameSignal> = {
+  id: SOURCE.screenFrame,
+  tier: 'fast',
+  run() {
+    const w = requireWindow()
+    const frame = readFrame(w)
+    const fullscreen = w.document?.fullscreenElement != null
+    const allZero = frame.every((value) => value === 0 || value === null)
+    if (!fullscreen && !allZero) lastUsableFrame = frame
+    return { frame: fullscreen && lastUsableFrame ? [...lastUsableFrame] : frame }
   },
 }
 
@@ -105,5 +132,21 @@ export const mediaQueriesSource: Source<MediaQueriesSignal> = {
       ),
       hdr: attempt(() => w.matchMedia('(dynamic-range: high)').matches),
     })
+  },
+}
+
+export const colorGamutSource: Source<ColorGamutSignal> = {
+  id: SOURCE.colorGamut,
+  tier: 'fast',
+  run() {
+    const w = requireWindow()
+    if (typeof w.matchMedia !== 'function') throw new UnsupportedSignal('no-match-media')
+    const query = matchFirst(w, [
+      '(color-gamut: rec2020)',
+      '(color-gamut: p3)',
+      '(color-gamut: srgb)',
+    ])
+    const gamut = query?.match(/color-gamut:\s*(\w+)/)?.[1]
+    return gamut === 'srgb' || gamut === 'p3' || gamut === 'rec2020' ? { gamut } : {}
   },
 }
