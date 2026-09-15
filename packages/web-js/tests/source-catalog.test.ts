@@ -1,4 +1,4 @@
-import { SOURCE } from '@badele/core'
+import { SOURCE } from '@fingerly/core'
 import { describe, expect, it } from 'vitest'
 
 import { browserSources } from '../src/sources/index.js'

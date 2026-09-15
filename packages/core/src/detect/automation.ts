@@ -10,7 +10,7 @@
  *
  * So the weights here are deliberately inverted relative to how these tells are
  * usually presented. Tampering outweighs the flags. That is the whole argument
- * for the `lies/` layer in `@badele/web-js`, and it is the thing another library
+ * for the `lies/` layer in `@fingerly/web-js`, and it is the thing another library
  * has the primitive for - `isFunctionNative` - and calls exactly once, on
  * `window.print`, to detect the PDF viewer.
  */

@@ -1,8 +1,8 @@
 {
-  "name": "@badele/svelte",
+  "name": "@fingerly/svelte",
   "version": "0.0.0",
   "private": true,
-  "description": "Svelte 5 bindings for the Badele SDK",
+  "description": "Svelte 5 bindings for the Fingerly SDK",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -16,7 +16,7 @@
   "files": ["dist"],
   "sideEffects": false,
   "dependencies": {
-    "@badele/web-js": "workspace:*"
+    "@fingerly/web-js": "workspace:*"
   },
   "peerDependencies": {
     "svelte": ">=5"

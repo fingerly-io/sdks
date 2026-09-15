@@ -14,7 +14,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const identifyMock = vi.fn()
 const loadMock = vi.fn()
 
-vi.mock('@badele/web-js', () => ({
+vi.mock('@fingerly/web-js', () => ({
   load: (...args: unknown[]) => loadMock(...args),
   TransportError: class TransportError extends Error {},
 }))
@@ -22,13 +22,13 @@ vi.mock('@badele/web-js', () => ({
 const Server = (await import('./fixtures/Server.svelte')).default
 
 const globals = globalThis as Record<string, unknown>
-const { BadeleServerError } = await import('../src/state.svelte.js')
+const { FingerlyServerError } = await import('../src/state.svelte.js')
 
 beforeEach(() => {
   vi.clearAllMocks()
   identifyMock.mockResolvedValue({ requestId: 'req_1', verdicts: {}, report: {} })
   loadMock.mockResolvedValue({ identify: identifyMock })
-  delete globals.__badeleServerError
+  delete globals.__fingerlyServerError
 })
 
 describe('under SSR', () => {
@@ -55,8 +55,8 @@ describe('under SSR', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 0))
 
-    const captured = globals.__badeleServerError
-    expect(captured).toBeInstanceOf(BadeleServerError)
+    const captured = globals.__fingerlyServerError
+    expect(captured).toBeInstanceOf(FingerlyServerError)
     expect((captured as Error).message).toMatch(/cannot run during server-side rendering/)
     expect((captured as Error).message).toMatch(/immediate: true/)
   })

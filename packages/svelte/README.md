@@ -1,14 +1,14 @@
-# @badele/svelte
+# @fingerly/svelte
 
-Svelte bindings for the Badele SDK. One state per app, held in Svelte's
+Svelte bindings for the Fingerly SDK. One state per app, held in Svelte's
 context, read as plain reactive properties.
 
 Requires Svelte **5**. The state is built with runes, which is what lets a
-component read `badele.verdicts` and re-render with no store, no subscription
+component read `fingerly.verdicts` and re-render with no store, no subscription
 and no `$` prefix at the call site.
 
 ```
-pnpm add @badele/svelte
+pnpm add @fingerly/svelte
 ```
 
 ## Set it up
@@ -16,9 +16,9 @@ pnpm add @badele/svelte
 ```svelte
 <!-- +layout.svelte, or your root component -->
 <script lang="ts">
-  import { setupBadele } from '@badele/svelte'
+  import { setupFingerly } from '@fingerly/svelte'
 
-  setupBadele({ apiKey: 'pk_live_…' })
+  setupFingerly({ apiKey: 'pk_live_…' })
 </script>
 
 <slot />
@@ -38,24 +38,24 @@ not an `$effect`.
 
 ```svelte
 <script lang="ts">
-  import { useIdentify } from '@badele/svelte'
+  import { useIdentify } from '@fingerly/svelte'
 
-  const badele = useIdentify()
+  const fingerly = useIdentify()
 
   async function submit() {
-    await badele.identify()
+    await fingerly.identify()
 
-    if (badele.isSuspicious) {
+    if (fingerly.isSuspicious) {
       // step up to MFA, hold for review, add friction
     }
   }
 </script>
 
-<button onclick={submit} disabled={badele.isLoading}>
-  {badele.isLoading ? 'Checking…' : 'Continue'}
+<button onclick={submit} disabled={fingerly.isLoading}>
+  {fingerly.isLoading ? 'Checking…' : 'Continue'}
 </button>
 
-{#if badele.error}<p>{badele.error.message}</p>{/if}
+{#if fingerly.error}<p>{fingerly.error.message}</p>{/if}
 ```
 
 `identify()` collects, scores locally, and submits. It resolves as soon as the
@@ -67,7 +67,7 @@ event.
 
 ```svelte
 <script lang="ts">
-  const badele = useIdentify({ immediate: true })
+  const fingerly = useIdentify({ immediate: true })
 </script>
 ```
 
@@ -87,7 +87,7 @@ asking whether the visitor is suspicious produce **one** submission, one
 
 ```svelte
 <!-- Header.svelte, CheckoutForm.svelte, RiskBanner.svelte — all three: -->
-const badele = useIdentify({ immediate: true })
+const fingerly = useIdentify({ immediate: true })
 <!-- → one network request, one shared answer -->
 ```
 
@@ -98,14 +98,14 @@ renders. Context is per component tree, and a component tree is per request.
 To deliberately identify again — a long-lived app reaching a second checkout:
 
 ```svelte
-await badele.refresh() // ignores the cached result and collects afresh
+await fingerly.refresh() // ignores the cached result and collects afresh
 ```
 
 ## A single verdict
 
 ```svelte
 <script lang="ts">
-  import { useVerdict } from '@badele/svelte'
+  import { useVerdict } from '@fingerly/svelte'
 
   const automation = useVerdict('automation')
 </script>
@@ -145,7 +145,7 @@ page was doing. It accepts a getter, and is read at submission time rather than
 at initialisation:
 
 ```ts
-const badele = useIdentify({ tag: () => `checkout:${page.params.orderId}` })
+const fingerly = useIdentify({ tag: () => `checkout:${page.params.orderId}` })
 ```
 
 ## Collect without submitting
@@ -153,7 +153,7 @@ const badele = useIdentify({ tag: () => `checkout:${page.params.orderId}` })
 For a page that wants the local verdicts and nothing else:
 
 ```ts
-setupBadele({ apiKey: 'pk_live_…', submit: false })
+setupFingerly({ apiKey: 'pk_live_…', submit: false })
 ```
 
 Everything the server decides comes back empty: no `requestId`, no `visitorId`,
@@ -164,27 +164,27 @@ than a gap — nothing was sent, so nobody scored it, and a `0` would read as
 ## What you get back
 
 ```ts
-const badele = useIdentify()
+const fingerly = useIdentify()
 
-badele.requestId         // string | null       — identifies this submission
-badele.visitorId         // string | null       — who the server decided this is
-badele.visitorIsNew      // boolean             — never seen before
-badele.visitorConfidence // number              — 0 to 100
-badele.identifiable      // boolean             — false when the signals were too thin
-badele.duplicate         // boolean             — answered before; this is the first answer
-badele.state             // string | null       — the server's disposition
-badele.reason            // string | null       — why, when state needs explaining
-badele.suspectScore      // number | null       — null when nothing scored it
-badele.suspectLevel      // string | null       — low, medium, high
-badele.triggers          // IdentifyTrigger[]   — what the server scored on
-badele.verdicts          // Verdicts | null     — the five local verdicts
-badele.report            // SignalReport | null — every source, with status and timing
-badele.error             // Error | null
-badele.isLoading    // boolean
-badele.isReady      // boolean             — finished, successfully or not
-badele.isSuspicious // boolean             — any verdict at medium+
-badele.identify()   // Promise<IdentifyResult>
-badele.refresh()    // Promise<IdentifyResult>
+fingerly.requestId         // string | null       — identifies this submission
+fingerly.visitorId         // string | null       — who the server decided this is
+fingerly.visitorIsNew      // boolean             — never seen before
+fingerly.visitorConfidence // number              — 0 to 100
+fingerly.identifiable      // boolean             — false when the signals were too thin
+fingerly.duplicate         // boolean             — answered before; this is the first answer
+fingerly.state             // string | null       — the server's disposition
+fingerly.reason            // string | null       — why, when state needs explaining
+fingerly.suspectScore      // number | null       — null when nothing scored it
+fingerly.suspectLevel      // string | null       — low, medium, high
+fingerly.triggers          // IdentifyTrigger[]   — what the server scored on
+fingerly.verdicts          // Verdicts | null     — the five local verdicts
+fingerly.report            // SignalReport | null — every source, with status and timing
+fingerly.error             // Error | null
+fingerly.isLoading    // boolean
+fingerly.isReady      // boolean             — finished, successfully or not
+fingerly.isSuspicious // boolean             — any verdict at medium+
+fingerly.identify()   // Promise<IdentifyResult>
+fingerly.refresh()    // Promise<IdentifyResult>
 ```
 
 Every field is a getter over a rune, so reading one in a template subscribes to
@@ -205,7 +205,7 @@ the decision.
 
 No permission prompt, no picker, no dialog, on any browser. Reading a
 permission's *state* prompts nobody and is used freely; requesting is banned
-outright and enforced by a test in `@badele/web-js`. The one API that prompts on
+outright and enforced by a test in `@fingerly/web-js`. The one API that prompts on
 some browsers — canvas readback, which raises a doorhanger in Tor Browser — is
 skipped when the SDK measures a clamped clock.
 
@@ -217,14 +217,14 @@ You can drop this into a checkout without it ever interrupting the checkout.
 
 ```ts
 try {
-  await badele.identify()
+  await fingerly.identify()
 } catch (error) {
   // your own handling
 }
 ```
 
 ```svelte
-{#if badele.error}<p>{badele.error.message}</p>{/if}
+{#if fingerly.error}<p>{fingerly.error.message}</p>{/if}
 ```
 
 A failed identification is forgotten rather than remembered, so the next call
@@ -235,7 +235,7 @@ key is wrong, or was used from an origin it does not list) and `402` (the
 organisation is not accepting traffic) — both are your configuration rather than
 the visitor's.
 
-Calling `identify()` during SSR rejects with `BadeleServerError` and a message
+Calling `identify()` during SSR rejects with `FingerlyServerError` and a message
 saying what to do instead. Use `{ immediate: true }`, which already waits for
 the client.
 
@@ -245,7 +245,7 @@ the client.
 mocks — with a `useVerdict()` card per verdict, all sharing one identification.
 
 ```
-pnpm --filter @badele/svelte playground   # http://localhost:4176
+pnpm --filter @fingerly/svelte playground   # http://localhost:4176
 ```
 
 Open it twice — an ordinary window and a private one — and watch the incognito

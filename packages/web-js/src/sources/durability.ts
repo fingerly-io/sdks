@@ -25,7 +25,7 @@
  * Credit where it is due: the technique and the constants are Joe Rutkowski's,
  * from `detectIncognito` v1.8, calibrated there against eighteen real Android
  * devices. What is different here is that this reports the ratio and lets
- * `@badele/core` decide, rather than returning a boolean - so the threshold can
+ * `@fingerly/core` decide, rather than returning a boolean - so the threshold can
  * be re-cut server-side over stored reports when the next Chromium release
  * moves it, instead of waiting for every customer to ship a new SDK.
  *
@@ -43,7 +43,7 @@ import {
   type EngineSignal,
   type Source,
   type StorageDurabilitySignal,
-} from '@badele/core'
+} from '@fingerly/core'
 
 import { compact, requireWindow } from '../util.js'
 
@@ -184,7 +184,7 @@ export const storageDurabilitySource: Source<StorageDurabilitySignal> = {
     const observed = engine?.status === 'ok' ? (engine.value as EngineSignal).observed : undefined
     if (observed !== 'chromium') throw new UnsupportedSignal('not-chromium')
 
-    const name = `__badele_durability_${Math.random().toString(36).slice(2)}`
+    const name = `__fingerly_durability_${Math.random().toString(36).slice(2)}`
     const payload = new Uint8Array(PAYLOAD_BYTES)
     let db: IDBDatabase | undefined
 

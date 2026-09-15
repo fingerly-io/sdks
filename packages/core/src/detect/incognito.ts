@@ -6,7 +6,7 @@
  * engine gate on each rather than one clever trick - a trick that fires on the
  * wrong engine is a false positive on every ordinary visitor using it.
  *
- * The probes themselves run in `@badele/web-js`; this file only reads what they
+ * The probes themselves run in `@fingerly/web-js`; this file only reads what they
  * reported. That split is what lets the same rules run again server-side over a
  * stored report, with better thresholds than the SDK shipped with.
  *

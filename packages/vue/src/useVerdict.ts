@@ -8,11 +8,11 @@
  * is wrong.
  */
 
-import type { Confidence, Verdict, Verdicts } from '@badele/web-js'
+import type { Confidence, Verdict, Verdicts } from '@fingerly/web-js'
 import { computed, toValue, type ComputedRef, type MaybeRefOrGetter } from 'vue'
 
 import { toReadonly } from './plugin.js'
-import { useBadele } from './useBadele.js'
+import { useFingerly } from './useFingerly.js'
 
 export type VerdictName = keyof Verdicts
 
@@ -45,8 +45,8 @@ export function useVerdict(
   name: MaybeRefOrGetter<VerdictName>,
   options: { min?: MaybeRefOrGetter<Confidence> } = {},
 ): UseVerdictReturn {
-  const badele = useBadele()
-  const { verdicts } = toReadonly(badele.state)
+  const fingerly = useFingerly()
+  const { verdicts } = toReadonly(fingerly.state)
 
   const verdict = computed<Verdict | null>(() => {
     const all = verdicts.value

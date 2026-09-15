@@ -1,7 +1,7 @@
 /**
  * The hooks, rendered into a real React tree.
  *
- * `@badele/web-js`'s `load()` is mocked, because what is under test here is the
+ * `@fingerly/web-js`'s `load()` is mocked, because what is under test here is the
  * React layer - sharing, readiness, StrictMode, suspense, SSR safety - and not
  * whether a canvas hashes. The browser SDK has its own tests for that.
  *
@@ -17,15 +17,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const identifyMock = vi.fn()
 const loadMock = vi.fn()
 
-vi.mock('@badele/web-js', () => ({
+vi.mock('@fingerly/web-js', () => ({
   load: (...args: unknown[]) => loadMock(...args),
   TransportError: class TransportError extends Error {},
 }))
 
 import type { UseVerdictReturn } from '../src/useVerdict.js'
 
-const { BadeleProvider } = await import('../src/context.js')
-const { useBadele } = await import('../src/useBadele.js')
+const { FingerlyProvider } = await import('../src/context.js')
+const { useFingerly } = await import('../src/useFingerly.js')
 const { useIdentify } = await import('../src/useIdentify.js')
 const { useVerdict } = await import('../src/useVerdict.js')
 
@@ -135,10 +135,10 @@ beforeEach(() => {
   loadMock.mockResolvedValue({ identify: identifyMock })
 })
 
-describe('BadeleProvider', () => {
+describe('FingerlyProvider', () => {
   it('does not collect anything on mount', () => {
-    const { element } = probe(() => useBadele())
-    render(<BadeleProvider apiKey="pk_test">{element}</BadeleProvider>)
+    const { element } = probe(() => useFingerly())
+    render(<FingerlyProvider apiKey="pk_test">{element}</FingerlyProvider>)
 
     // A provider that fingerprinted as it mounted would collect during the
     // first render of every app that installs it, whether or not the page
@@ -150,9 +150,9 @@ describe('BadeleProvider', () => {
   it('passes the endpoint through, and omits it when unset', async () => {
     const { latest, element } = probe(() => useIdentify())
     render(
-      <BadeleProvider apiKey="pk_test" endpoint="http://localhost:8099">
+      <FingerlyProvider apiKey="pk_test" endpoint="http://localhost:8099">
         {element}
-      </BadeleProvider>,
+      </FingerlyProvider>,
     )
 
     await act(() => latest().identify())
@@ -165,10 +165,10 @@ describe('BadeleProvider', () => {
     // store on every render of whatever is above it - discarding the
     // identification and collecting again.
     const { latest, element } = probe(() => useIdentify())
-    const { root } = render(<BadeleProvider apiKey="pk_test">{element}</BadeleProvider>)
+    const { root } = render(<FingerlyProvider apiKey="pk_test">{element}</FingerlyProvider>)
 
     await act(() => latest().identify())
-    act(() => root.render(<BadeleProvider apiKey="pk_test">{element}</BadeleProvider>))
+    act(() => root.render(<FingerlyProvider apiKey="pk_test">{element}</FingerlyProvider>))
     await act(() => latest().identify())
 
     expect(identifyMock).toHaveBeenCalledTimes(1)
@@ -176,11 +176,11 @@ describe('BadeleProvider', () => {
   })
 
   it('accepts a store built elsewhere, for one store per request', async () => {
-    const { createBadeleStore } = await import('../src/store.js')
-    const store = createBadeleStore({ apiKey: 'pk_request', submit: false })
+    const { createFingerlyStore } = await import('../src/store.js')
+    const store = createFingerlyStore({ apiKey: 'pk_request', submit: false })
 
     const { latest, element } = probe(() => useIdentify())
-    render(<BadeleProvider store={store}>{element}</BadeleProvider>)
+    render(<FingerlyProvider store={store}>{element}</FingerlyProvider>)
 
     await act(() => latest().identify())
 
@@ -188,14 +188,14 @@ describe('BadeleProvider', () => {
   })
 })
 
-describe('useBadele', () => {
+describe('useFingerly', () => {
   it('explains itself when the provider is missing', () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    const { element } = probe(() => useBadele())
+    const { element } = probe(() => useFingerly())
 
     const { container } = render(<Boundary>{element}</Boundary>)
 
-    expect(container.textContent).toMatch(/No <BadeleProvider> found/)
+    expect(container.textContent).toMatch(/No <FingerlyProvider> found/)
     expect(container.textContent).toMatch(/apiKey/)
   })
 })
@@ -205,7 +205,7 @@ describe('useIdentify', () => {
     const { latest, element } = probe(() => useIdentify({ immediate: true }))
 
     await act(async () => {
-      render(<BadeleProvider apiKey="pk_test">{element}</BadeleProvider>)
+      render(<FingerlyProvider apiKey="pk_test">{element}</FingerlyProvider>)
     })
 
     expect(latest().isReady).toBe(true)
@@ -219,7 +219,7 @@ describe('useIdentify', () => {
     const { latest, element } = probe(() => useIdentify({ immediate: true }))
 
     await act(async () => {
-      render(<BadeleProvider apiKey="pk_test">{element}</BadeleProvider>)
+      render(<FingerlyProvider apiKey="pk_test">{element}</FingerlyProvider>)
     })
 
     expect(latest().visitorId).toBe('vis_1')
@@ -253,7 +253,7 @@ describe('useIdentify', () => {
     const { latest, element } = probe(() => useIdentify({ immediate: true }))
 
     await act(async () => {
-      render(<BadeleProvider apiKey="pk_test">{element}</BadeleProvider>)
+      render(<FingerlyProvider apiKey="pk_test">{element}</FingerlyProvider>)
     })
 
     expect(latest().suspectScore).toBeNull()
@@ -269,11 +269,11 @@ describe('useIdentify', () => {
 
     await act(async () => {
       render(
-        <BadeleProvider apiKey="pk_test">
+        <FingerlyProvider apiKey="pk_test">
           {a.element}
           {b.element}
           {c.element}
-        </BadeleProvider>,
+        </FingerlyProvider>,
       )
     })
 
@@ -293,7 +293,7 @@ describe('useIdentify', () => {
     await act(async () => {
       render(
         <StrictMode>
-          <BadeleProvider apiKey="pk_test">{element}</BadeleProvider>
+          <FingerlyProvider apiKey="pk_test">{element}</FingerlyProvider>
         </StrictMode>,
       )
     })
@@ -303,7 +303,7 @@ describe('useIdentify', () => {
 
   it('reuses a finished identification rather than repeating it', async () => {
     const { latest, element } = probe(() => useIdentify())
-    render(<BadeleProvider apiKey="pk_test">{element}</BadeleProvider>)
+    render(<FingerlyProvider apiKey="pk_test">{element}</FingerlyProvider>)
 
     await act(() => latest().identify())
     await act(() => latest().identify())
@@ -313,7 +313,7 @@ describe('useIdentify', () => {
 
   it('starts a fresh one on refresh()', async () => {
     const { latest, element } = probe(() => useIdentify())
-    render(<BadeleProvider apiKey="pk_test">{element}</BadeleProvider>)
+    render(<FingerlyProvider apiKey="pk_test">{element}</FingerlyProvider>)
 
     await act(() => latest().identify())
     await act(() => latest().refresh())
@@ -324,7 +324,7 @@ describe('useIdentify', () => {
   it('reads a getter tag at submission time, not at render time', async () => {
     let orderId = 'order_1'
     const { latest, element } = probe(() => useIdentify({ tag: () => orderId }))
-    render(<BadeleProvider apiKey="pk_test">{element}</BadeleProvider>)
+    render(<FingerlyProvider apiKey="pk_test">{element}</FingerlyProvider>)
 
     orderId = 'order_2'
     await act(() => latest().identify())
@@ -337,7 +337,7 @@ describe('useIdentify', () => {
     const { latest, element } = probe(() => useIdentify({ immediate: true }))
 
     await act(async () => {
-      render(<BadeleProvider apiKey="pk_test">{element}</BadeleProvider>)
+      render(<FingerlyProvider apiKey="pk_test">{element}</FingerlyProvider>)
     })
 
     expect(latest().error?.message).toBe('collector exploded')
@@ -348,7 +348,7 @@ describe('useIdentify', () => {
   it('retries after a failure rather than serving the rejection forever', async () => {
     identifyMock.mockRejectedValueOnce(new Error('collector exploded'))
     const { latest, element } = probe(() => useIdentify())
-    render(<BadeleProvider apiKey="pk_test">{element}</BadeleProvider>)
+    render(<FingerlyProvider apiKey="pk_test">{element}</FingerlyProvider>)
 
     await act(async () => {
       await latest().identify().catch(() => undefined)
@@ -367,10 +367,10 @@ describe('useIdentify', () => {
 
     await act(async () => {
       render(
-        <BadeleProvider apiKey="pk_test" submit={false}>
+        <FingerlyProvider apiKey="pk_test" submit={false}>
           {a.element}
           {b.element}
-        </BadeleProvider>,
+        </FingerlyProvider>,
       )
     })
 
@@ -385,7 +385,7 @@ describe('useIdentify', () => {
       identifyMock.mockResolvedValue({ ...RESULT, verdicts })
       const { latest, element } = probe(() => useIdentify({ immediate: true }))
       await act(async () => {
-        render(<BadeleProvider apiKey="pk_test">{element}</BadeleProvider>)
+        render(<FingerlyProvider apiKey="pk_test">{element}</FingerlyProvider>)
       })
       return latest
     }
@@ -402,7 +402,7 @@ describe('useIdentify', () => {
 
     it('is false before anything has been collected', () => {
       const { latest, element } = probe(() => useIdentify())
-      render(<BadeleProvider apiKey="pk_test">{element}</BadeleProvider>)
+      render(<FingerlyProvider apiKey="pk_test">{element}</FingerlyProvider>)
 
       expect(latest().isSuspicious).toBe(false)
       expect(latest().isReady).toBe(false)
@@ -422,10 +422,10 @@ describe('useVerdict', () => {
 
     await act(async () => {
       render(
-        <BadeleProvider apiKey="pk_test">
+        <FingerlyProvider apiKey="pk_test">
           {identifier.element}
           {element}
-        </BadeleProvider>,
+        </FingerlyProvider>,
       )
     })
 
@@ -439,10 +439,10 @@ describe('useVerdict', () => {
 
     await act(async () => {
       render(
-        <BadeleProvider apiKey="pk_test">
+        <FingerlyProvider apiKey="pk_test">
           {identifier.element}
           {element}
-        </BadeleProvider>,
+        </FingerlyProvider>,
       )
     })
 
@@ -458,10 +458,10 @@ describe('useVerdict', () => {
 
     await act(async () => {
       render(
-        <BadeleProvider apiKey="pk_test">
+        <FingerlyProvider apiKey="pk_test">
           {identifier.element}
           {element}
-        </BadeleProvider>,
+        </FingerlyProvider>,
       )
     })
 
@@ -471,7 +471,7 @@ describe('useVerdict', () => {
 
   it('reports nothing rather than guessing before identification', () => {
     const { latest, element } = probe(() => useVerdict('automation'))
-    render(<BadeleProvider apiKey="pk_test">{element}</BadeleProvider>)
+    render(<FingerlyProvider apiKey="pk_test">{element}</FingerlyProvider>)
 
     expect(latest().verdict).toBeNull()
     expect(latest().confidence).toBeNull()
@@ -495,11 +495,11 @@ describe('suspend', () => {
     }
 
     const { container } = await renderAsync(
-      <BadeleProvider apiKey="pk_test">
+      <FingerlyProvider apiKey="pk_test">
         <Suspense fallback={<span>collecting</span>}>
           <Card />
         </Suspense>
-      </BadeleProvider>,
+      </FingerlyProvider>,
     )
 
     expect(container.textContent).toBe('collecting')
@@ -520,12 +520,12 @@ describe('suspend', () => {
     }
 
     const { container } = await renderAsync(
-      <BadeleProvider apiKey="pk_test">
+      <FingerlyProvider apiKey="pk_test">
         <Suspense fallback={<span>collecting</span>}>
           <Card name="incognito" />
           <Card name="automation" />
         </Suspense>
-      </BadeleProvider>,
+      </FingerlyProvider>,
     )
 
     // Both components suspended on the same promise, so they came back

@@ -1,13 +1,13 @@
-# @badele/react
+# @fingerly/react
 
-React bindings for the Badele SDK. A provider, three hooks, and one shared
+React bindings for the Fingerly SDK. A provider, three hooks, and one shared
 identification per page.
 
 Requires React **19 or newer** (it uses `use()` and renders a context
 directly). Tested against 19.2.
 
 ```
-pnpm add @badele/react
+pnpm add @fingerly/react
 ```
 
 ## Add the provider
@@ -15,12 +15,12 @@ pnpm add @badele/react
 ```tsx
 // main.tsx
 import { createRoot } from 'react-dom/client'
-import { BadeleProvider } from '@badele/react'
+import { FingerlyProvider } from '@fingerly/react'
 
 createRoot(document.getElementById('root')!).render(
-  <BadeleProvider apiKey="pk_live_…">
+  <FingerlyProvider apiKey="pk_live_…">
     <App />
-  </BadeleProvider>,
+  </FingerlyProvider>,
 )
 ```
 
@@ -35,7 +35,7 @@ nothing more; when to identify is the page's decision, not the provider's.
 ## Identify
 
 ```tsx
-import { useIdentify } from '@badele/react'
+import { useIdentify } from '@fingerly/react'
 
 function Checkout() {
   const { identify, isSuspicious, isLoading, error } = useIdentify()
@@ -166,7 +166,7 @@ const { identify } = useIdentify({ tag: () => `checkout:${params.orderId}` })
 For a page that wants the local verdicts and nothing else:
 
 ```tsx
-<BadeleProvider apiKey="pk_live_…" submit={false}>
+<FingerlyProvider apiKey="pk_live_…" submit={false}>
 ```
 
 Everything the server decides comes back empty: no `requestId`, no `visitorId`,
@@ -181,10 +181,10 @@ server-rendered app that wants to be sure two visitors can never share one is
 better served by building the store per request and handing it in:
 
 ```tsx
-import { BadeleProvider, createBadeleStore } from '@badele/react'
+import { FingerlyProvider, createFingerlyStore } from '@fingerly/react'
 
-const store = createBadeleStore({ apiKey: 'pk_live_…' })   // once per request
-<BadeleProvider store={store}><App /></BadeleProvider>
+const store = createFingerlyStore({ apiKey: 'pk_live_…' })   // once per request
+<FingerlyProvider store={store}><App /></FingerlyProvider>
 ```
 
 The package is marked `'use client'`, so importing it from a React Server
@@ -237,7 +237,7 @@ the decision.
 
 No permission prompt, no picker, no dialog, on any browser. Reading a
 permission's *state* prompts nobody and is used freely; requesting is banned
-outright and enforced by a test in `@badele/web-js`. The one API that prompts on
+outright and enforced by a test in `@fingerly/web-js`. The one API that prompts on
 some browsers — canvas readback, which raises a doorhanger in Tor Browser — is
 skipped when the SDK measures a clamped clock.
 
@@ -267,7 +267,7 @@ key is wrong, or was used from an origin it does not list) and `402` (the
 organisation is not accepting traffic) — both are your configuration rather than
 the visitor's.
 
-Calling `identify()` during SSR rejects with `BadeleServerError` and a message
+Calling `identify()` during SSR rejects with `FingerlyServerError` and a message
 saying what to do instead. Use `{ immediate: true }`, which already waits for
 the client.
 
@@ -278,7 +278,7 @@ the client.
 per verdict, all sharing one identification.
 
 ```
-pnpm --filter @badele/react demo   # http://localhost:4175
+pnpm --filter @fingerly/react demo   # http://localhost:4175
 ```
 
 It is served rather than opened from disk because several sources need a secure

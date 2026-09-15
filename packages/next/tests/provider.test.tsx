@@ -1,9 +1,9 @@
 /**
  * The provider and the form field, rendered into a real tree.
  *
- * `@badele/web-js`'s `load()` is mocked - what is under test is where the
+ * `@fingerly/web-js`'s `load()` is mocked - what is under test is where the
  * configuration comes from and what reaches the server, not whether a canvas
- * hashes. It is mocked by specifier, so the copy `@badele/react` imports is the
+ * hashes. It is mocked by specifier, so the copy `@fingerly/react` imports is the
  * mocked one too.
  */
 
@@ -14,13 +14,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const identifyMock = vi.fn()
 const loadMock = vi.fn()
 
-vi.mock('@badele/web-js', () => ({
+vi.mock('@fingerly/web-js', () => ({
   load: (...args: unknown[]) => loadMock(...args),
   TransportError: class TransportError extends Error {},
 }))
 
-const { BadeleProvider } = await import('../src/provider.js')
-const { BadeleRequestId } = await import('../src/field.js')
+const { FingerlyProvider } = await import('../src/provider.js')
+const { FingerlyRequestId } = await import('../src/field.js')
 const { REQUEST_ID_FIELD } = await import('../src/field-name.js')
 
 const RESULT = {
@@ -65,15 +65,15 @@ afterEach(() => {
   Object.assign(environment, original)
 })
 
-describe('BadeleProvider', () => {
-  it('takes the key from NEXT_PUBLIC_BADELE_API_KEY', async () => {
-    environment.NEXT_PUBLIC_BADELE_API_KEY = 'pk_from_env'
+describe('FingerlyProvider', () => {
+  it('takes the key from NEXT_PUBLIC_FINGERLY_API_KEY', async () => {
+    environment.NEXT_PUBLIC_FINGERLY_API_KEY = 'pk_from_env'
 
     await act(async () => {
       render(
-        <BadeleProvider>
-          <BadeleRequestId />
-        </BadeleProvider>,
+        <FingerlyProvider>
+          <FingerlyRequestId />
+        </FingerlyProvider>,
       )
     })
 
@@ -81,31 +81,31 @@ describe('BadeleProvider', () => {
   })
 
   it('takes the endpoint from the environment too', async () => {
-    environment.NEXT_PUBLIC_BADELE_API_KEY = 'pk_from_env'
-    environment.NEXT_PUBLIC_BADELE_ENDPOINT = 'https://badele.internal'
+    environment.NEXT_PUBLIC_FINGERLY_API_KEY = 'pk_from_env'
+    environment.NEXT_PUBLIC_FINGERLY_ENDPOINT = 'https://fingerly.internal'
 
     await act(async () => {
       render(
-        <BadeleProvider>
-          <BadeleRequestId />
-        </BadeleProvider>,
+        <FingerlyProvider>
+          <FingerlyRequestId />
+        </FingerlyProvider>,
       )
     })
 
     expect(loadMock).toHaveBeenCalledWith({
       apiKey: 'pk_from_env',
-      endpoint: 'https://badele.internal',
+      endpoint: 'https://fingerly.internal',
     })
   })
 
   it('lets a prop override the environment', async () => {
-    environment.NEXT_PUBLIC_BADELE_API_KEY = 'pk_from_env'
+    environment.NEXT_PUBLIC_FINGERLY_API_KEY = 'pk_from_env'
 
     await act(async () => {
       render(
-        <BadeleProvider apiKey="pk_from_prop">
-          <BadeleRequestId />
-        </BadeleProvider>,
+        <FingerlyProvider apiKey="pk_from_prop">
+          <FingerlyRequestId />
+        </FingerlyProvider>,
       )
     })
 
@@ -113,15 +113,15 @@ describe('BadeleProvider', () => {
   })
 
   it('says which variable to set when there is no key', () => {
-    delete environment.NEXT_PUBLIC_BADELE_API_KEY
+    delete environment.NEXT_PUBLIC_FINGERLY_API_KEY
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
 
     let thrown: unknown
     try {
       render(
-        <BadeleProvider>
+        <FingerlyProvider>
           <span />
-        </BadeleProvider>,
+        </FingerlyProvider>,
       )
     } catch (error) {
       thrown = error
@@ -130,17 +130,17 @@ describe('BadeleProvider', () => {
     // The route that always works comes first, because the other one has a
     // condition on it that a reader cannot be expected to know.
     expect((thrown as Error).message).toMatch(/apiKey=\{process\.env/)
-    expect((thrown as Error).message).toMatch(/NEXT_PUBLIC_BADELE_API_KEY/)
+    expect((thrown as Error).message).toMatch(/NEXT_PUBLIC_FINGERLY_API_KEY/)
     expect((thrown as Error).message).toMatch(/transpilePackages/)
   })
 
   it('collects nothing on its own', () => {
-    environment.NEXT_PUBLIC_BADELE_API_KEY = 'pk_from_env'
+    environment.NEXT_PUBLIC_FINGERLY_API_KEY = 'pk_from_env'
 
     render(
-      <BadeleProvider>
+      <FingerlyProvider>
         <span>page</span>
-      </BadeleProvider>,
+      </FingerlyProvider>,
     )
 
     expect(loadMock).not.toHaveBeenCalled()
@@ -152,7 +152,7 @@ describe('the environment read', () => {
   it('is a literal member expression, because Next replaces nothing else', async () => {
     // The regression this pins was found by running the demo, not by a test:
     // the first version read `const env = process.env` and then
-    // `env.NEXT_PUBLIC_BADELE_API_KEY`, which Next cannot replace while
+    // `env.NEXT_PUBLIC_FINGERLY_API_KEY`, which Next cannot replace while
     // bundling. The server render found the key and hydration threw.
     //
     // Asserted against the source rather than the behaviour, because the
@@ -161,22 +161,22 @@ describe('the environment read', () => {
     // Relative to the package root, which is where vitest runs from.
     const source = await readFile('src/provider.tsx', 'utf8')
 
-    expect(source).toContain('process.env.NEXT_PUBLIC_BADELE_API_KEY')
-    expect(source).toContain('process.env.NEXT_PUBLIC_BADELE_ENDPOINT')
+    expect(source).toContain('process.env.NEXT_PUBLIC_FINGERLY_API_KEY')
+    expect(source).toContain('process.env.NEXT_PUBLIC_FINGERLY_ENDPOINT')
     // No hoisting: `= process.env` followed by a property read is the shape
     // that survives the build and breaks in the browser.
     expect(source).not.toMatch(/=\s*process\.env\s*[;\n]/)
   })
 })
 
-describe('BadeleRequestId', () => {
+describe('FingerlyRequestId', () => {
   const provider = (children: ReactNode) => {
-    environment.NEXT_PUBLIC_BADELE_API_KEY = 'pk_from_env'
-    return <BadeleProvider>{children}</BadeleProvider>
+    environment.NEXT_PUBLIC_FINGERLY_API_KEY = 'pk_from_env'
+    return <FingerlyProvider>{children}</FingerlyProvider>
   }
 
   it('renders the field empty and fills it once identified', async () => {
-    const { container } = render(provider(<BadeleRequestId />))
+    const { container } = render(provider(<FingerlyRequestId />))
 
     const input = container.querySelector('input')
     expect(input?.getAttribute('type')).toBe('hidden')
@@ -196,10 +196,10 @@ describe('BadeleRequestId', () => {
         provider(
           <>
             <form>
-              <BadeleRequestId />
+              <FingerlyRequestId />
             </form>
             <form>
-              <BadeleRequestId />
+              <FingerlyRequestId />
             </form>
           </>,
         ),
@@ -212,14 +212,14 @@ describe('BadeleRequestId', () => {
   })
 
   it('takes a field name, for a form that already uses that one', async () => {
-    const { container } = render(provider(<BadeleRequestId name="risk_ref" />))
+    const { container } = render(provider(<FingerlyRequestId name="risk_ref" />))
     await act(async () => undefined)
 
     expect(container.querySelector('input')?.getAttribute('name')).toBe('risk_ref')
   })
 
   it('can be told not to identify, for a form that does it at submit time', () => {
-    render(provider(<BadeleRequestId immediate={false} />))
+    render(provider(<FingerlyRequestId immediate={false} />))
 
     expect(identifyMock).not.toHaveBeenCalled()
     expect(document.querySelector('input')).not.toBeNull()

@@ -11,7 +11,7 @@ export default defineConfig({
   clean: true,
   target: 'es2020',
   // `#app` is Nuxt's virtual module, resolvable only inside a Nuxt build. The
-  // rest are the app's own copies - a second copy of @badele/vue would be a
+  // rest are the app's own copies - a second copy of @fingerly/vue would be a
   // second shared identification, which is the one thing this must not do.
-  external: ['#app', '@nuxt/kit', '@nuxt/schema', 'nuxt', 'vue', '@badele/vue'],
+  external: ['#app', '@nuxt/kit', '@nuxt/schema', 'nuxt', 'vue', '@fingerly/vue'],
 })

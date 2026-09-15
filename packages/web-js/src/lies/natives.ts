@@ -19,7 +19,7 @@
  * two realms' answers finds a spoofer who only patched the one they could see.
  */
 
-import type { Lie } from '@badele/core'
+import type { Lie } from '@fingerly/core'
 
 import { attempt } from '../util.js'
 

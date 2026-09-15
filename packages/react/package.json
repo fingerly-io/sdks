@@ -1,8 +1,8 @@
 {
-  "name": "@badele/react",
+  "name": "@fingerly/react",
   "version": "0.0.0",
   "private": true,
-  "description": "React bindings for the Badele SDK",
+  "description": "React bindings for the Fingerly SDK",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -17,7 +17,7 @@
   "files": ["dist"],
   "sideEffects": false,
   "dependencies": {
-    "@badele/web-js": "workspace:*"
+    "@fingerly/web-js": "workspace:*"
   },
   "peerDependencies": {
     "react": ">=19"

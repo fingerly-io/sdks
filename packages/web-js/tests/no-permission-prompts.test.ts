@@ -16,7 +16,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { BlockedSignal, SOURCE, type SourceContext } from '@badele/core'
+import { BlockedSignal, SOURCE, type SourceContext } from '@fingerly/core'
 import { describe, expect, it } from 'vitest'
 
 import { canvasSource } from '../src/sources/render.js'

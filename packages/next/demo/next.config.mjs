@@ -7,7 +7,7 @@
  * files.
  */
 export default {
-  transpilePackages: ['@badele/next', '@badele/react', '@badele/web-js', '@badele/core'],
+  transpilePackages: ['@fingerly/next', '@fingerly/react', '@fingerly/web-js', '@fingerly/core'],
   typescript: { ignoreBuildErrors: true },
   // This app is a fixture, not a project: it does not want a generated
   // AGENTS.md and CLAUDE.md appearing in the repository beside it.

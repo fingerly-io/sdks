@@ -15,7 +15,7 @@ import {
   type ScreenFrameSignal,
   type ScreenSignal,
   type Source,
-} from '@badele/core'
+} from '@fingerly/core'
 
 import { attempt, compact, requireWindow } from '../util.js'
 

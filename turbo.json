@@ -7,8 +7,8 @@
     },
     "lint": {
       // `lint` is `tsc --noEmit`, and a package typechecks against its
-      // dependencies' *built* declarations - @badele/web-js resolves
-      // @badele/core to core's dist/index.d.ts. Without this, linting a clean
+      // dependencies' *built* declarations - @fingerly/web-js resolves
+      // @fingerly/core to core's dist/index.d.ts. Without this, linting a clean
       // checkout reports two dozen "could not find a declaration file" errors
       // that say nothing about the code.
       "dependsOn": ["^build"]

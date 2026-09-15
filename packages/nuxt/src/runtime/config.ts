@@ -1,14 +1,14 @@
-import type { BadeleVueOptions } from '@badele/vue'
+import type { FingerlyVueOptions } from '@fingerly/vue'
 
-import type { BadelePublicConfig } from '../options.js'
+import type { FingerlyPublicConfig } from '../options.js'
 
 /**
- * Turn the published runtime config into the options `createBadele()` takes.
+ * Turn the published runtime config into the options `createFingerly()` takes.
  *
  * Its own function because of the missing-key case, which is the one thing
  * here worth a decision. Unlike a build-time key, this one can legitimately be
  * absent when the module runs and present when the app starts - that is what
- * `NUXT_PUBLIC_BADELE_API_KEY` is for - so the module cannot fail the build
+ * `NUXT_PUBLIC_FINGERLY_API_KEY` is for - so the module cannot fail the build
  * over it, and this is the last place that can say anything at all.
  *
  * It warns and carries on rather than throwing. Throwing here would take down
@@ -19,13 +19,13 @@ import type { BadelePublicConfig } from '../options.js'
  * that fails - with the SDK's own message about a missing key, at the moment
  * somebody is looking for it.
  */
-export function toVueOptions(config: Partial<BadelePublicConfig> | undefined): BadeleVueOptions {
+export function toVueOptions(config: Partial<FingerlyPublicConfig> | undefined): FingerlyVueOptions {
   const apiKey = config?.apiKey ?? ''
 
   if (!apiKey) {
     console.warn(
-      '[badele] No SDK key. Set NUXT_PUBLIC_BADELE_API_KEY in the environment, ' +
-        'or badele.apiKey in nuxt.config.ts. Identification will fail until one is set.',
+      '[fingerly] No SDK key. Set NUXT_PUBLIC_FINGERLY_API_KEY in the environment, ' +
+        'or fingerly.apiKey in nuxt.config.ts. Identification will fail until one is set.',
     )
   }
 

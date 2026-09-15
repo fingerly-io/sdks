@@ -13,7 +13,7 @@
  * stable across sessions in a way an ad-block yes/no is not.
  */
 
-import { SOURCE, UnsupportedSignal, type DomBlockersSignal, type Source } from '@badele/core'
+import { SOURCE, UnsupportedSignal, type DomBlockersSignal, type Source } from '@fingerly/core'
 
 import { compact, requireWindow } from '../util.js'
 
@@ -123,7 +123,7 @@ export const domBlockersSource: Source<DomBlockersSignal> = {
     // "blocked" reading in this run would be that instead. Reporting nothing
     // is the honest answer to that, and the alternative is telling a customer
     // their visitor runs twelve filter lists.
-    const control = probe(document, '.badele-control-element')
+    const control = probe(document, '.fingerly-control-element')
     container.appendChild(control)
 
     const elements = FILTER_LISTS.map(([name, ...selectors]) => ({

@@ -2,7 +2,7 @@
  * The shared state, in signals.
  *
  * Angular's own reactive primitive rather than an RxJS subject: a template
- * reads `badele.isSuspicious()` and re-renders, with no subscription to manage
+ * reads `fingerly.isSuspicious()` and re-renders, with no subscription to manage
  * and nothing to unsubscribe from when the component goes away. It also works
  * in a zoneless app, which Angular now defaults to.
  *
@@ -16,15 +16,15 @@
 import { computed, signal, type Signal } from '@angular/core'
 import {
   load,
-  type BadeleClient,
+  type FingerlyClient,
   type IdentifyResult,
   type IdentifyTrigger,
   type SignalReport,
   type Verdicts,
-} from '@badele/web-js'
+} from '@fingerly/web-js'
 
-/** Options for [[provideBadele]]. */
-export interface BadeleOptions {
+/** Options for [[provideFingerly]]. */
+export interface FingerlyOptions {
   /** The SDK key from the dashboard. A public key is safe in a page. */
   apiKey: string
   /** Origin of the API. Defaults to production. */
@@ -44,7 +44,7 @@ export interface BadeleOptions {
 }
 
 /** What a component injects. Every field is a signal; none of them is writable. */
-export interface Badele {
+export interface Fingerly {
   readonly requestId: Signal<string | null>
   /**
    * Who the server decided this is. Null under `submit: false`, and null
@@ -95,15 +95,15 @@ export interface Badele {
   /** Identify again from scratch, ignoring any previous result. */
   refresh(options?: { tag?: string }): Promise<IdentifyResult>
   /** The underlying client, built on first use. */
-  client(): Promise<BadeleClient>
+  client(): Promise<FingerlyClient>
 }
 
 /** Thrown when the SDK is asked to collect somewhere there is no browser. */
-export class BadeleServerError extends Error {
-  override readonly name = 'BadeleServerError'
+export class FingerlyServerError extends Error {
+  override readonly name = 'FingerlyServerError'
   constructor() {
     super(
-      'Badele collects signals from a browser and cannot run during server-side rendering. ' +
+      'Fingerly collects signals from a browser and cannot run during server-side rendering. ' +
         'Call identify() from afterNextRender, or pass { immediate: true } to injectIdentify(), ' +
         'which already waits for the browser.',
     )
@@ -118,7 +118,7 @@ export class BadeleServerError extends Error {
  * every server render, and would take the choice of *when* away from the
  * component that knows.
  */
-export function createBadele(options: BadeleOptions): Badele {
+export function createFingerly(options: FingerlyOptions): Fingerly {
   const requestId = signal<string | null>(null)
   const visitorId = signal<string | null>(null)
   const visitorIsNew = signal(false)
@@ -142,11 +142,11 @@ export function createBadele(options: BadeleOptions): Badele {
     return Object.values(all).some((verdict) => verdict.value && verdict.confidence !== 'low')
   })
 
-  let clientPromise: Promise<BadeleClient> | undefined
+  let clientPromise: Promise<FingerlyClient> | undefined
   let current: Promise<IdentifyResult> | undefined
 
-  const client = (): Promise<BadeleClient> => {
-    if (typeof window === 'undefined') return Promise.reject(new BadeleServerError())
+  const client = (): Promise<FingerlyClient> => {
+    if (typeof window === 'undefined') return Promise.reject(new FingerlyServerError())
     // Built once and memoised. `load()` is cheap today but is the documented
     // place for future warm-up work, and warming up per component would undo
     // it.
@@ -159,8 +159,8 @@ export function createBadele(options: BadeleOptions): Badele {
     return clientPromise
   }
 
-  const identify: Badele['identify'] = (identifyOptions = {}) => {
-    if (typeof window === 'undefined') return Promise.reject(new BadeleServerError())
+  const identify: Fingerly['identify'] = (identifyOptions = {}) => {
+    if (typeof window === 'undefined') return Promise.reject(new FingerlyServerError())
 
     // One promise for the page, in flight or already settled, which is what
     // makes `injectIdentify({ immediate: true })` safe in as many components
@@ -176,8 +176,8 @@ export function createBadele(options: BadeleOptions): Badele {
     error.set(null)
 
     const run = client()
-      .then((badele) =>
-        badele.identify({
+      .then((fingerly) =>
+        fingerly.identify({
           ...(identifyOptions.tag === undefined ? {} : { tag: identifyOptions.tag }),
           ...(options.submit === undefined ? {} : { submit: options.submit }),
         }),
@@ -217,7 +217,7 @@ export function createBadele(options: BadeleOptions): Badele {
     return run
   }
 
-  const refresh: Badele['refresh'] = (refreshOptions = {}) =>
+  const refresh: Fingerly['refresh'] = (refreshOptions = {}) =>
     identify({ ...refreshOptions, force: true })
 
   // The writable signals are kept in this closure and only their read-only

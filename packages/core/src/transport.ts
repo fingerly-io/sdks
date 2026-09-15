@@ -134,7 +134,7 @@ export interface HttpTransportOptions {
   endpoint?: string
   /** Ordered custom ingestion bases. Prefer this over endpoint. */
   endpoints?: string | readonly string[]
-  /** Append the API-key-derived Badele data plane after custom endpoints. */
+  /** Append the API-key-derived Fingerly data plane after custom endpoints. */
   fallbackToDefaultEndpoint?: boolean
   /** Total attempts, including the first. */
   maxAttempts?: number
@@ -159,10 +159,10 @@ function isRetryableStatus(status: number): boolean {
 function normalizeEndpoint(endpoint: string): string {
   const value = endpoint.trim()
   if (value === '' || value.includes('?') || value.includes('#')) {
-    throw new TypeError('A Badele endpoint must be a non-empty base URL without a query or fragment')
+    throw new TypeError('A Fingerly endpoint must be a non-empty base URL without a query or fragment')
   }
   if (!(value.startsWith('/') || /^https?:\/\//i.test(value))) {
-    throw new TypeError('A Badele endpoint must be an absolute URL or a root-relative browser path')
+    throw new TypeError('A Fingerly endpoint must be an absolute URL or a root-relative browser path')
   }
   return value.replace(/\/+$/, '')
 }
@@ -196,7 +196,7 @@ function newIdempotencyKey(): string {
   // Idempotency keys are opaque correlators, not secrets. Keep old JS hosts
   // working when Web Crypto is absent instead of turning retry safety into a
   // reason the submission cannot be sent at all.
-  return `badele-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`
+  return `fingerly-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`
 }
 
 export class HttpTransport implements Transport {

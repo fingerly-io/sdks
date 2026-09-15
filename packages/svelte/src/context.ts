@@ -10,7 +10,7 @@
 
 import { getContext, hasContext, setContext } from 'svelte'
 
-import { createBadele, type Badele, type BadeleOptions } from './state.svelte.js'
+import { createFingerly, type Fingerly, type FingerlyOptions } from './state.svelte.js'
 
 /**
  * The context key.
@@ -18,7 +18,7 @@ import { createBadele, type Badele, type BadeleOptions } from './state.svelte.js
  * A symbol, so nothing else can collide with it, and exported so an advanced
  * caller can reach the state with `getContext()` directly.
  */
-export const BADELE_KEY: unique symbol = Symbol('badele')
+export const FINGERLY_KEY: unique symbol = Symbol('fingerly')
 
 /**
  * Create the state and put it in context. Call it once, high up.
@@ -26,8 +26,8 @@ export const BADELE_KEY: unique symbol = Symbol('badele')
  * ```svelte
  * <!-- +layout.svelte -->
  * <script lang="ts">
- *   import { setupBadele } from '@badele/svelte'
- *   setupBadele({ apiKey: 'pk_live_…' })
+ *   import { setupFingerly } from '@fingerly/svelte'
+ *   setupFingerly({ apiKey: 'pk_live_…' })
  * </script>
  * ```
  *
@@ -36,29 +36,29 @@ export const BADELE_KEY: unique symbol = Symbol('badele')
  *
  * Nothing is collected here. When to identify stays the page's decision.
  */
-export function setupBadele(options: BadeleOptions): Badele {
-  const badele = createBadele(options)
-  setContext(BADELE_KEY, badele)
-  return badele
+export function setupFingerly(options: FingerlyOptions): Fingerly {
+  const fingerly = createFingerly(options)
+  setContext(FINGERLY_KEY, fingerly)
+  return fingerly
 }
 
 /**
- * The state `setupBadele()` put in context.
+ * The state `setupFingerly()` put in context.
  *
  * The error is worth its length: a missing setup otherwise surfaces as
  * "cannot read properties of undefined" inside a function the caller did not
  * write, and the fix - one call in a layout - is not guessable from that.
  */
-export function useBadele(): Badele {
-  if (!hasContext(BADELE_KEY)) {
+export function useFingerly(): Fingerly {
+  if (!hasContext(FINGERLY_KEY)) {
     throw new Error(
-      'No Badele context. Call setupBadele() in a component above this one:\n\n' +
-        "  import { setupBadele } from '@badele/svelte'\n" +
-        "  setupBadele({ apiKey: 'pk_live_…' })\n\n" +
+      'No Fingerly context. Call setupFingerly() in a component above this one:\n\n' +
+        "  import { setupFingerly } from '@fingerly/svelte'\n" +
+        "  setupFingerly({ apiKey: 'pk_live_…' })\n\n" +
         'It has to run during component initialisation - a <script> block, not an ' +
         'event handler or an $effect.',
     )
   }
 
-  return getContext<Badele>(BADELE_KEY)
+  return getContext<Fingerly>(FINGERLY_KEY)
 }

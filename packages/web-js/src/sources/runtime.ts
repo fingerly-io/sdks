@@ -17,7 +17,7 @@ import {
   type PermissionsSignal,
   type Source,
   type TimingSignal,
-} from '@badele/core'
+} from '@fingerly/core'
 
 import { attempt, compact, requireWindow } from '../util.js'
 

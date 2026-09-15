@@ -1,7 +1,7 @@
 /**
  * The names of the sources, and the shape of what each one reports.
  *
- * This file is the seam between the kernel and the collectors. `@badele/web-js`
+ * This file is the seam between the kernel and the collectors. `@fingerly/web-js`
  * implements these; `detect/` reads them; the server will eventually parse
  * them. Putting the vocabulary here rather than in the collectors is what lets
  * a detector be written and tested without a browser anywhere in sight, and

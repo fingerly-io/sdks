@@ -1,12 +1,12 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
 
 const endpointForKey = (key: string): string => {
-  const match = /^bd_(?:pk|sk|px)_(eu|us)_(?:production|staging|development)_/.exec(key)
+  const match = /^fly_(?:pk|sk|px)_(eu|us)_(?:production|staging|development)_/.exec(key)
   return match?.[1] === 'us'
-    ? 'https://us.api.badele.io'
+    ? 'https://us.api.fingerly.io'
     : match?.[1] === 'eu'
-      ? 'https://eu.api.badele.io'
-      : 'https://api.badele.io'
+      ? 'https://eu.api.fingerly.io'
+      : 'https://api.fingerly.io'
 }
 
 export interface EventTrigger { signal: string; weight: number; confidence?: string }
@@ -52,24 +52,24 @@ export interface EventListOptions {
   signal?: AbortSignal
 }
 export interface EventPage { rows: Event[]; page: number; page_size: number }
-export interface BadeleOptions { secretKey: string; endpoint?: string; fetchImpl?: typeof fetch }
+export interface FingerlyOptions { secretKey: string; endpoint?: string; fetchImpl?: typeof fetch }
 
-export class BadeleAPIError extends Error {
-  override readonly name = 'BadeleAPIError'
+export class FingerlyAPIError extends Error {
+  override readonly name = 'FingerlyAPIError'
   constructor(message: string, readonly status: number) { super(message) }
 }
 
 function instant(value: Date | string): string { return value instanceof Date ? value.toISOString() : value }
 
-export function load(options: BadeleOptions) {
-  if (!options.secretKey) throw new TypeError('A Badele secret key is required')
+export function load(options: FingerlyOptions) {
+  if (!options.secretKey) throw new TypeError('A Fingerly secret key is required')
   const endpoint = (options.endpoint ?? endpointForKey(options.secretKey)).replace(/\/+$/, '')
   const request = async <T>(path: string, signal?: AbortSignal): Promise<T> => {
     const response = await (options.fetchImpl ?? globalThis.fetch)(endpoint + path, {
       headers: { 'x-api-key': options.secretKey, accept: 'application/json' },
       ...(signal === undefined ? {} : { signal }),
     })
-    if (!response.ok) throw new BadeleAPIError(`Badele API returned HTTP ${response.status}`, response.status)
+    if (!response.ok) throw new FingerlyAPIError(`Fingerly API returned HTTP ${response.status}`, response.status)
     return response.json() as Promise<T>
   }
   return {
@@ -128,11 +128,11 @@ export interface ProxyOptions {
 
 /** Framework-neutral same-origin proxy for identify and supplement POSTs. */
 export function createProxy(options: ProxyOptions): (request: Request) => Promise<Response> {
-  if (!options.proxyKey && !options.secretKey) throw new TypeError('A Badele proxy key is required')
+  if (!options.proxyKey && !options.secretKey) throw new TypeError('A Fingerly proxy key is required')
   if (options.proxyKey && options.secretKey) throw new TypeError('Pass proxyKey or deprecated secretKey, not both')
   const credential = options.proxyKey ?? options.secretKey!
   const upstream = (options.upstream ?? endpointForKey(credential)).replace(/\/+$/, '')
-  const prefix = (options.prefix ?? '/api/badele').replace(/\/+$/, '')
+  const prefix = (options.prefix ?? '/api/fingerly').replace(/\/+$/, '')
   const maxBodyBytes = options.maxBodyBytes ?? 1_048_576
   const timeoutMs = options.timeoutMs ?? 5_000
   return async (request: Request) => {
@@ -148,11 +148,11 @@ export function createProxy(options: ProxyOptions): (request: Request) => Promis
     const headers = new Headers({
       'content-type': request.headers.get('content-type') ?? 'application/json',
       'x-api-key': options.proxyKey ? publicKey! : credential,
-      'x-badele-client-ip': await options.clientIp(request),
-      'x-badele-origin': request.headers.get('origin') ?? incoming.origin,
-      'x-badele-user-agent': request.headers.get('user-agent') ?? '',
+      'x-fingerly-client-ip': await options.clientIp(request),
+      'x-fingerly-origin': request.headers.get('origin') ?? incoming.origin,
+      'x-fingerly-user-agent': request.headers.get('user-agent') ?? '',
     })
-    if (options.proxyKey) headers.set('x-badele-proxy-key', options.proxyKey)
+    if (options.proxyKey) headers.set('x-fingerly-proxy-key', options.proxyKey)
     const idempotency = request.headers.get('idempotency-key')
     if (idempotency) headers.set('idempotency-key', idempotency)
     const controller = new AbortController()

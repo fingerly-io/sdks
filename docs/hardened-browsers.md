@@ -3,7 +3,7 @@
 What Brave, Tor and the rest actually do to the signals this SDK collects, and
 which of our rules that breaks.
 
-The rules themselves live in `@badele/core`'s `detect/shields.ts` and are
+The rules themselves live in `@fingerly/core`'s `detect/shields.ts` and are
 commented there. This file is the measurement record behind them: the numbers,
 where they came from, and the ones that turned out to be dead ends, so that the
 next person to have a good idea about `navigator.deviceMemory` can check here
@@ -337,7 +337,7 @@ that splits one visitor into two.
 `packages/web-js/demo/shields.html`, served by the web-js demo server:
 
 ```sh
-pnpm --filter @badele/web-js demo   # http://localhost:4173/demo/shields.html
+pnpm --filter @fingerly/web-js demo   # http://localhost:4173/demo/shields.html
 ```
 
 Deliberately imports nothing from the SDK. When a gate is wrong, the first thing

@@ -26,9 +26,9 @@ import {
   type SignalReport,
   type TouchSignal,
   type WebGLSignal,
-} from '@badele/core'
+} from '@fingerly/core'
 
-/** Enough of a report for the readers in `@badele/core` to work on. */
+/** Enough of a report for the readers in `@fingerly/core` to work on. */
 function asReport(sources: Record<string, SignalOutcome>): SignalReport {
   return {
     schema: 1,

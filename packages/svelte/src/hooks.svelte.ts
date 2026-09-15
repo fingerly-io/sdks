@@ -9,10 +9,10 @@
  * `$` prefix, no subscription.
  */
 
-import type { Confidence, Verdict, Verdicts } from '@badele/web-js'
+import type { Confidence, Verdict, Verdicts } from '@fingerly/web-js'
 
-import { useBadele } from './context.js'
-import type { Badele } from './state.svelte.js'
+import { useFingerly } from './context.js'
+import type { Fingerly } from './state.svelte.js'
 
 export type VerdictName = keyof Verdicts
 
@@ -44,20 +44,20 @@ export interface UseIdentifyOptions {
  *
  * ```svelte
  * <script lang="ts">
- *   import { useIdentify } from '@badele/svelte'
- *   const badele = useIdentify({ immediate: true })
+ *   import { useIdentify } from '@fingerly/svelte'
+ *   const fingerly = useIdentify({ immediate: true })
  * </script>
  *
- * {#if badele.isReady && badele.isSuspicious}
+ * {#if fingerly.isReady && fingerly.isSuspicious}
  *   <p>Something about this session is unusual.</p>
  * {/if}
  * ```
  *
- * Returns the same object `setupBadele()` created, so `badele.verdicts` in a
+ * Returns the same object `setupFingerly()` created, so `fingerly.verdicts` in a
  * template re-renders when the answer arrives.
  */
-export function useIdentify(options: UseIdentifyOptions = {}): Badele {
-  const badele = useBadele()
+export function useIdentify(options: UseIdentifyOptions = {}): Fingerly {
+  const fingerly = useFingerly()
 
   const resolveTag = (override?: string): string | undefined =>
     override ?? (typeof options.tag === 'function' ? options.tag() : options.tag)
@@ -66,20 +66,20 @@ export function useIdentify(options: UseIdentifyOptions = {}): Badele {
   // this component makes and not only to the one `immediate` starts. The
   // getters below forward to the shared state, so the reactivity is the same
   // object's - what is per-component here is the tag, and nothing else.
-  const identify: Badele['identify'] = (callOptions = {}) => {
+  const identify: Fingerly['identify'] = (callOptions = {}) => {
     const tag = resolveTag(callOptions.tag)
-    return badele.identify({
+    return fingerly.identify({
       ...(tag === undefined ? {} : { tag }),
       ...(callOptions.force === undefined ? {} : { force: callOptions.force }),
     })
   }
 
-  const refresh: Badele['refresh'] = (callOptions = {}) => identify({ ...callOptions, force: true })
+  const refresh: Fingerly['refresh'] = (callOptions = {}) => identify({ ...callOptions, force: true })
 
   if (options.immediate) {
     $effect(() => {
       // The rejection is swallowed rather than left to become an unhandled
-      // one: the failure is already in `badele.error`, which is where a
+      // one: the failure is already in `fingerly.error`, which is where a
       // component that opted into `immediate` will look for it. A caller who
       // wants to await the outcome calls identify() themselves.
       void identify().catch(() => undefined)
@@ -88,59 +88,59 @@ export function useIdentify(options: UseIdentifyOptions = {}): Badele {
 
   return {
     get requestId() {
-      return badele.requestId
+      return fingerly.requestId
     },
     get visitorId() {
-      return badele.visitorId
+      return fingerly.visitorId
     },
     get visitorIsNew() {
-      return badele.visitorIsNew
+      return fingerly.visitorIsNew
     },
     get visitorConfidence() {
-      return badele.visitorConfidence
+      return fingerly.visitorConfidence
     },
     get identifiable() {
-      return badele.identifiable
+      return fingerly.identifiable
     },
     get duplicate() {
-      return badele.duplicate
+      return fingerly.duplicate
     },
     get state() {
-      return badele.state
+      return fingerly.state
     },
     get reason() {
-      return badele.reason
+      return fingerly.reason
     },
     get suspectScore() {
-      return badele.suspectScore
+      return fingerly.suspectScore
     },
     get suspectLevel() {
-      return badele.suspectLevel
+      return fingerly.suspectLevel
     },
     get triggers() {
-      return badele.triggers
+      return fingerly.triggers
     },
     get verdicts() {
-      return badele.verdicts
+      return fingerly.verdicts
     },
     get report() {
-      return badele.report
+      return fingerly.report
     },
     get error() {
-      return badele.error
+      return fingerly.error
     },
     get isLoading() {
-      return badele.isLoading
+      return fingerly.isLoading
     },
     get isReady() {
-      return badele.isReady
+      return fingerly.isReady
     },
     get isSuspicious() {
-      return badele.isSuspicious
+      return fingerly.isSuspicious
     },
     identify,
     refresh,
-    client: badele.client,
+    client: fingerly.client,
   }
 }
 
@@ -180,7 +180,7 @@ export function useVerdict(
   name: VerdictName | (() => VerdictName),
   options: { min?: Confidence | (() => Confidence) } = {},
 ): UseVerdictReturn {
-  const badele = useBadele()
+  const fingerly = useFingerly()
 
   // Getters accepted as well as values, because this is called once when the
   // component initialises and its arguments may be props that change after
@@ -191,7 +191,7 @@ export function useVerdict(
     (typeof options.min === 'function' ? options.min() : options.min) ?? 'medium',
   )
 
-  const verdict = $derived(badele.verdicts ? (badele.verdicts[which] as Verdict) : null)
+  const verdict = $derived(fingerly.verdicts ? (fingerly.verdicts[which] as Verdict) : null)
   const matched = $derived(
     verdict !== null && verdict.value && RANK[verdict.confidence] >= RANK[floor],
   )

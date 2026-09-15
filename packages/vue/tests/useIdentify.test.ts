@@ -1,7 +1,7 @@
 /**
  * The composables, mounted in real components.
  *
- * `@badele/web-js`'s `load()` is mocked, because what is under test here is the
+ * `@fingerly/web-js`'s `load()` is mocked, because what is under test here is the
  * Vue layer - sharing, readiness, readonly-ness, SSR safety - and not whether a
  * canvas hashes. The browser SDK has its own tests for that.
  */
@@ -13,13 +13,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const identifyMock = vi.fn()
 const loadMock = vi.fn()
 
-vi.mock('@badele/web-js', () => ({
+vi.mock('@fingerly/web-js', () => ({
   load: (...args: unknown[]) => loadMock(...args),
   TransportError: class TransportError extends Error {},
 }))
 
-const { createBadele } = await import('../src/plugin.js')
-const { useBadele } = await import('../src/useBadele.js')
+const { createFingerly } = await import('../src/plugin.js')
+const { useFingerly } = await import('../src/useFingerly.js')
 const { useIdentify } = await import('../src/useIdentify.js')
 const { useVerdict } = await import('../src/useVerdict.js')
 
@@ -58,7 +58,7 @@ const RESULT = {
  * at one needs a component around it - this is that component, once, rather
  * than in every test.
  */
-function withSetup<T>(use: () => T, plugin?: ReturnType<typeof createBadele>): { result: T; app: App } {
+function withSetup<T>(use: () => T, plugin?: ReturnType<typeof createFingerly>): { result: T; app: App } {
   let result!: T
 
   const app = createApp(
@@ -82,9 +82,9 @@ beforeEach(() => {
   loadMock.mockResolvedValue({ identify: identifyMock })
 })
 
-describe('createBadele', () => {
+describe('createFingerly', () => {
   it('does not collect anything on install', () => {
-    withSetup(() => useBadele(), createBadele({ apiKey: 'pk_test' }))
+    withSetup(() => useFingerly(), createFingerly({ apiKey: 'pk_test' }))
 
     // A plugin that fingerprinted on install would run before the app has
     // rendered, and during SSR.
@@ -95,7 +95,7 @@ describe('createBadele', () => {
   it('passes the endpoint through, and omits it when unset', async () => {
     const { result } = withSetup(
       () => useIdentify(),
-      createBadele({ apiKey: 'pk_test', endpoint: 'http://localhost:8099' }),
+      createFingerly({ apiKey: 'pk_test', endpoint: 'http://localhost:8099' }),
     )
     await result.identify()
 
@@ -105,7 +105,7 @@ describe('createBadele', () => {
     })
   })
 
-  it('works from an Options-API component via this.$badele', async () => {
+  it('works from an Options-API component via this.$fingerly', async () => {
     // The README documents this path, so it is tested as written rather than
     // by poking at globalProperties: not every Vue 3 component is
     // `<script setup>`, and a fraud check is the kind of thing that gets
@@ -115,13 +115,13 @@ describe('createBadele', () => {
     const app = createApp(
       defineComponent({
         async mounted() {
-          const { verdicts } = await this.$badele.identify()
+          const { verdicts } = await this.$fingerly.identify()
           suspicious = verdicts.automation.value
         },
         render: () => h('div'),
       }),
     )
-    app.use(createBadele({ apiKey: 'pk_test' }))
+    app.use(createFingerly({ apiKey: 'pk_test' }))
     app.mount(document.createElement('div'))
 
     await vi.waitFor(() => expect(suspicious).toBe(true))
@@ -134,7 +134,7 @@ describe('createBadele', () => {
     // because the mock returns a requestId by default.
     identifyMock.mockResolvedValue({ ...RESULT, requestId: '' })
 
-    const plugin = createBadele({ apiKey: 'pk_test', submit: false })
+    const plugin = createFingerly({ apiKey: 'pk_test', submit: false })
     const a = withSetup(() => useIdentify(), plugin).result
     const b = withSetup(() => useIdentify(), plugin).result
 
@@ -153,7 +153,7 @@ describe('createBadele', () => {
 
     const { result } = withSetup(
       () => useIdentify(),
-      createBadele({ apiKey: 'pk_test', submit: false }),
+      createFingerly({ apiKey: 'pk_test', submit: false }),
     )
     await result.identify()
 
@@ -163,26 +163,26 @@ describe('createBadele', () => {
   })
 })
 
-describe('useBadele', () => {
+describe('useFingerly', () => {
   // Declared before the test below, and that ordering is load-bearing: a
   // `setup()` that throws leaves Vue's `currentInstance` dangling, so
   // `hasInjectionContext()` keeps reporting true for the rest of the file.
   // Verified against Vue 3.5.42. Asserting the outside-setup case first is the
   // only way to observe it honestly.
   it('explains itself when called outside setup', () => {
-    expect(() => useBadele()).toThrow(/must be called from setup\(\)/)
+    expect(() => useFingerly()).toThrow(/must be called from setup\(\)/)
   })
 
   it('explains itself when the plugin is missing', () => {
     // Without the message, this surfaces as "cannot read properties of
     // undefined" several frames away from the actual mistake.
-    expect(() => withSetup(() => useBadele())).toThrow(/No Badele plugin found/)
+    expect(() => withSetup(() => useFingerly())).toThrow(/No Fingerly plugin found/)
   })
 })
 
 describe('useIdentify', () => {
   it('collects, and exposes the result reactively', async () => {
-    const { result } = withSetup(() => useIdentify(), createBadele({ apiKey: 'pk_test' }))
+    const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'pk_test' }))
 
     expect(result.isReady.value).toBe(false)
     expect(result.isLoading.value).toBe(false)
@@ -200,7 +200,7 @@ describe('useIdentify', () => {
   })
 
   it('shares one identification across every component that asks', async () => {
-    const plugin = createBadele({ apiKey: 'pk_test' })
+    const plugin = createFingerly({ apiKey: 'pk_test' })
 
     const a = withSetup(() => useIdentify(), plugin).result
     const b = withSetup(() => useIdentify(), plugin).result
@@ -217,7 +217,7 @@ describe('useIdentify', () => {
   })
 
   it('reuses a finished identification rather than repeating it', async () => {
-    const { result } = withSetup(() => useIdentify(), createBadele({ apiKey: 'pk_test' }))
+    const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'pk_test' }))
 
     await result.identify()
     await result.identify()
@@ -233,7 +233,7 @@ describe('useIdentify', () => {
     // added to IdentifyResult and forgotten there makes the second caller
     // silently poorer than the first. The second caller is the common one:
     // every component after the first takes this path.
-    const { result } = withSetup(() => useIdentify(), createBadele({ apiKey: 'pk_test' }))
+    const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'pk_test' }))
 
     const first = await result.identify()
     const cached = await result.identify()
@@ -243,7 +243,7 @@ describe('useIdentify', () => {
   })
 
   it('surfaces everything the server decided', async () => {
-    const { result } = withSetup(() => useIdentify(), createBadele({ apiKey: 'pk_test' }))
+    const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'pk_test' }))
 
     await result.identify()
 
@@ -275,7 +275,7 @@ describe('useIdentify', () => {
       suspectLevel: null,
       triggers: [],
     })
-    const { result } = withSetup(() => useIdentify(), createBadele({ apiKey: 'pk_test' }))
+    const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'pk_test' }))
 
     await result.identify()
 
@@ -286,7 +286,7 @@ describe('useIdentify', () => {
   })
 
   it('starts a fresh one on refresh()', async () => {
-    const { result } = withSetup(() => useIdentify(), createBadele({ apiKey: 'pk_test' }))
+    const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'pk_test' }))
 
     await result.identify()
     identifyMock.mockResolvedValueOnce({ ...RESULT, requestId: 'req_2' })
@@ -299,7 +299,7 @@ describe('useIdentify', () => {
   it('runs on mount when immediate is set', async () => {
     const { result } = withSetup(
       () => useIdentify({ immediate: true }),
-      createBadele({ apiKey: 'pk_test' }),
+      createFingerly({ apiKey: 'pk_test' }),
     )
 
     await vi.waitFor(() => expect(result.isReady.value).toBe(true))
@@ -310,7 +310,7 @@ describe('useIdentify', () => {
     let order = 'order-1'
     const { result } = withSetup(
       () => useIdentify({ tag: () => order }),
-      createBadele({ apiKey: 'pk_test' }),
+      createFingerly({ apiKey: 'pk_test' }),
     )
 
     order = 'order-2'
@@ -323,7 +323,7 @@ describe('useIdentify', () => {
     const failure = new Error('network down')
     identifyMock.mockRejectedValueOnce(failure)
 
-    const { result } = withSetup(() => useIdentify(), createBadele({ apiKey: 'pk_test' }))
+    const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'pk_test' }))
 
     await expect(result.identify()).rejects.toThrow('network down')
 
@@ -334,7 +334,7 @@ describe('useIdentify', () => {
   })
 
   it('returns state that a component cannot assign to', async () => {
-    const { result } = withSetup(() => useIdentify(), createBadele({ apiKey: 'pk_test' }))
+    const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'pk_test' }))
     await result.identify()
 
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
@@ -356,7 +356,7 @@ describe('useIdentify', () => {
 
   describe('isSuspicious', () => {
     it('is true for a medium-or-better verdict', async () => {
-      const { result } = withSetup(() => useIdentify(), createBadele({ apiKey: 'pk_test' }))
+      const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'pk_test' }))
       await result.identify()
       expect(result.isSuspicious.value).toBe(true)
     })
@@ -367,14 +367,14 @@ describe('useIdentify', () => {
         verdicts: { ...RESULT.verdicts, automation: verdict(true, 'low', ['navigator-webdriver-true']) },
       })
 
-      const { result } = withSetup(() => useIdentify(), createBadele({ apiKey: 'pk_test' }))
+      const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'pk_test' }))
       await result.identify()
 
       expect(result.isSuspicious.value).toBe(false)
     })
 
     it('is false before anything has been collected', () => {
-      const { result } = withSetup(() => useIdentify(), createBadele({ apiKey: 'pk_test' }))
+      const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'pk_test' }))
       expect(result.isSuspicious.value).toBe(false)
     })
   })
@@ -382,7 +382,7 @@ describe('useIdentify', () => {
 
 describe('useVerdict', () => {
   it('reports a single verdict and its reasons', async () => {
-    const plugin = createBadele({ apiKey: 'pk_test' })
+    const plugin = createFingerly({ apiKey: 'pk_test' })
     const identifier = withSetup(() => useIdentify(), plugin).result
     const automation = withSetup(() => useVerdict('automation'), plugin).result
 
@@ -400,7 +400,7 @@ describe('useVerdict', () => {
       verdicts: { ...RESULT.verdicts, automation: verdict(true, 'medium', ['x']) },
     })
 
-    const plugin = createBadele({ apiKey: 'pk_test' })
+    const plugin = createFingerly({ apiKey: 'pk_test' })
     const identifier = withSetup(() => useIdentify(), plugin).result
     const strict = withSetup(() => useVerdict('automation', { min: 'high' }), plugin).result
     const loose = withSetup(() => useVerdict('automation', { min: 'low' }), plugin).result
@@ -417,7 +417,7 @@ describe('useVerdict', () => {
       verdicts: { ...RESULT.verdicts, tor: verdict(true, 'low', ['timezone-forced-to-utc']) },
     })
 
-    const plugin = createBadele({ apiKey: 'pk_test' })
+    const plugin = createFingerly({ apiKey: 'pk_test' })
     const identifier = withSetup(() => useIdentify(), plugin).result
     const tor = withSetup(() => useVerdict('tor'), plugin).result
 

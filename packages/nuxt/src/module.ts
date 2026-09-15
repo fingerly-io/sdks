@@ -1,13 +1,13 @@
 /**
- * @badele/nuxt - the Badele SDK as a Nuxt module.
+ * @fingerly/nuxt - the Fingerly SDK as a Nuxt module.
  *
- * Thin on purpose. `@badele/vue` already holds the client, the shared
+ * Thin on purpose. `@fingerly/vue` already holds the client, the shared
  * identification and the composables; re-implementing any of that here would
  * mean two copies of the rule that N components asking is one submission.
  * What Nuxt changes is three things, and they are what this module does:
  *
  *   - configuration comes from `nuxt.config.ts` and, at runtime, from the
- *     environment (`NUXT_PUBLIC_BADELE_*`);
+ *     environment (`NUXT_PUBLIC_FINGERLY_*`);
  *   - the Vue plugin is installed by a Nuxt plugin rather than by the app;
  *   - the composables are auto-imported, so a page uses them without an
  *     import line, which is what every other Nuxt composable does.
@@ -15,17 +15,17 @@
 
 import { addImports, addPlugin, createResolver, defineNuxtModule } from '@nuxt/kit'
 
-import { resolvePublicConfig, type BadelePublicConfig, type ModuleOptions } from './options.js'
+import { resolvePublicConfig, type FingerlyPublicConfig, type ModuleOptions } from './options.js'
 
-export type { BadelePublicConfig, ModuleOptions } from './options.js'
+export type { FingerlyPublicConfig, ModuleOptions } from './options.js'
 
-/** The composables the module auto-imports, from `@badele/vue` unchanged. */
-const COMPOSABLES = ['useBadele', 'useIdentify', 'useVerdict'] as const
+/** The composables the module auto-imports, from `@fingerly/vue` unchanged. */
+const COMPOSABLES = ['useFingerly', 'useIdentify', 'useVerdict'] as const
 
 export default defineNuxtModule<ModuleOptions>({
   meta: {
-    name: '@badele/nuxt',
-    configKey: 'badele',
+    name: '@fingerly/nuxt',
+    configKey: 'fingerly',
     compatibility: { nuxt: '>=3.0.0' },
   },
   defaults: {},
@@ -38,9 +38,9 @@ export default defineNuxtModule<ModuleOptions>({
     // Published rather than closed over, so the deployment environment can
     // still override it - a module that baked the key into the bundle would
     // need a rebuild per environment.
-    runtimeConfig.public.badele = resolvePublicConfig(
+    runtimeConfig.public.fingerly = resolvePublicConfig(
       options,
-      runtimeConfig.public.badele as Partial<BadelePublicConfig> | undefined,
+      runtimeConfig.public.fingerly as Partial<FingerlyPublicConfig> | undefined,
     )
 
     // Universal, not `.client`. Installing the Vue plugin collects nothing -
@@ -52,13 +52,13 @@ export default defineNuxtModule<ModuleOptions>({
     addPlugin(resolver.resolve('./runtime/plugin'))
 
     for (const name of COMPOSABLES) {
-      addImports({ name, from: '@badele/vue' })
+      addImports({ name, from: '@fingerly/vue' })
     }
   },
 })
 
 declare module '@nuxt/schema' {
   interface PublicRuntimeConfig {
-    badele: BadelePublicConfig
+    fingerly: FingerlyPublicConfig
   }
 }

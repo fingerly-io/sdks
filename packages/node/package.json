@@ -1,8 +1,8 @@
 {
-  "name": "@badele/node",
+  "name": "@fingerly/node",
   "version": "0.0.0",
   "private": true,
-  "description": "Server-side Badele SDK for event reads, webhook verification, and same-origin proxying",
+  "description": "Server-side Fingerly SDK for event reads, webhook verification, and same-origin proxying",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

@@ -1,6 +1,6 @@
 'use server'
 
-import { readRequestId } from '@badele/next/server'
+import { readRequestId } from '@fingerly/next/server'
 
 /**
  * A Server Action, which is the half of this package that unit tests can only
@@ -21,6 +21,6 @@ export async function submit(_previous: unknown, formData: FormData) {
     requestId,
     // The raw field, so the difference between "absent", "present and empty"
     // and "present" is visible rather than collapsed into null.
-    raw: String(formData.get('badele_request_id') ?? '(no field)'),
+    raw: String(formData.get('fingerly_request_id') ?? '(no field)'),
   }
 }

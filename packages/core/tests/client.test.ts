@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { BadeleClient } from '../src/client.js'
+import { FingerlyClient } from '../src/client.js'
 import type { Source } from '../src/source.js'
 import type { Transport } from '../src/transport.js'
 
-describe('BadeleClient deferred collection', () => {
+describe('FingerlyClient deferred collection', () => {
   it('returns the authoritative first response and exposes tracked deferred completion', async () => {
     const order: string[] = []
     let releaseDeferred!: () => void
@@ -21,7 +21,7 @@ describe('BadeleClient deferred collection', () => {
       })),
       submitSupplement,
     }
-    const result = await new BadeleClient({ apiKey: 'public', sources, transport }).identify()
+    const result = await new FingerlyClient({ apiKey: 'public', sources, transport }).identify()
 
     expect(order).toEqual(['fast'])
     expect(result).toMatchObject({ requestId: 'request-1', visitorId: 'visitor-1', suspectScore: 7 })
@@ -40,7 +40,7 @@ describe('BadeleClient deferred collection', () => {
 
   it('collects both tiers locally and never starts a network supplement', async () => {
     const transport: Transport = { submit: vi.fn() }
-    const result = await new BadeleClient({
+    const result = await new FingerlyClient({
       apiKey: 'public', transport,
       sources: [
         { id: 'a', tier: 'fast', run: () => 1 },

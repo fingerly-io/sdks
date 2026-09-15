@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { setupBadele, useIdentify, useVerdict, type BadeleOptions, type Confidence } from '../../src/index.js'
+  import { setupFingerly, useIdentify, useVerdict, type FingerlyOptions, type Confidence } from '../../src/index.js'
   import Child from './Child.svelte'
 
   interface Props {
-    options: BadeleOptions
+    options: FingerlyOptions
     immediate?: boolean
     min?: Confidence
     children?: number
@@ -16,7 +16,7 @@
   // are init-time by design - setting up the context and deciding whether to
   // identify on mount are not things a component changes its mind about.
   // svelte-ignore state_referenced_locally
-  const badele = setupBadele(options)
+  const fingerly = setupFingerly(options)
   // svelte-ignore state_referenced_locally
   const identified = useIdentify({
     immediate,
@@ -28,7 +28,7 @@
   // test reaches identify() without a click handler to fake.
   // What a component actually holds: the hook's result, tag and all.
   export const state = identified
-  export const shared = badele
+  export const shared = fingerly
   export const verdict = incognito
 </script>
 

@@ -1,13 +1,13 @@
-# @badele/vue
+# @fingerly/vue
 
-Vue 3 bindings for the Badele SDK. A plugin, three composables, and one shared
+Vue 3 bindings for the Fingerly SDK. A plugin, three composables, and one shared
 result per page.
 
 Requires Vue **3.3 or newer** (it uses `hasInjectionContext`, `toValue` and
 `MaybeRefOrGetter`). Tested against 3.5.
 
 ```
-pnpm add @badele/vue
+pnpm add @fingerly/vue
 ```
 
 ## Install the plugin
@@ -15,11 +15,11 @@ pnpm add @badele/vue
 ```ts
 // main.ts
 import { createApp } from 'vue'
-import { createBadele } from '@badele/vue'
+import { createFingerly } from '@fingerly/vue'
 import App from './App.vue'
 
 createApp(App)
-  .use(createBadele({ apiKey: 'pk_live_…' }))
+  .use(createFingerly({ apiKey: 'pk_live_…' }))
   .mount('#app')
 ```
 
@@ -35,7 +35,7 @@ nothing more; when to identify is the page's decision, not the plugin's.
 
 ```vue
 <script setup lang="ts">
-import { useIdentify } from '@badele/vue'
+import { useIdentify } from '@fingerly/vue'
 
 const { identify, verdicts, isSuspicious, isLoading, error } = useIdentify()
 
@@ -105,7 +105,7 @@ question:
 
 ```vue
 <script setup lang="ts">
-import { useVerdict } from '@badele/vue'
+import { useVerdict } from '@fingerly/vue'
 
 const { matched, confidence, reasons } = useVerdict('automation')
 </script>
@@ -146,7 +146,7 @@ const { identify } = useIdentify({ tag: () => `checkout:${route.params.orderId}`
 For a page that wants the local verdicts and nothing else:
 
 ```ts
-app.use(createBadele({ apiKey: 'pk_live_…', submit: false }))
+app.use(createFingerly({ apiKey: 'pk_live_…', submit: false }))
 ```
 
 Everything the server decides comes back empty: no `requestId`, no `visitorId`,
@@ -157,14 +157,14 @@ than a gap — nothing was sent, so nobody scored it, and a `0` would read as
 ## Options API
 
 Not every Vue 3 component is `<script setup>`, and a fraud check is exactly the
-kind of thing that gets retrofitted. The context is on `this.$badele`:
+kind of thing that gets retrofitted. The context is on `this.$fingerly`:
 
 ```vue
 <script lang="ts">
 export default {
   data: () => ({ suspicious: false }),
   async mounted() {
-    const { verdicts } = await this.$badele.identify()
+    const { verdicts } = await this.$fingerly.identify()
     this.suspicious = verdicts.automation.value
   },
 }
@@ -213,7 +213,7 @@ the decision.
 
 No permission prompt, no picker, no dialog, on any browser. Reading a
 permission's *state* prompts nobody and is used freely; requesting is banned
-outright and enforced by a test in `@badele/web-js`. The one API that prompts on
+outright and enforced by a test in `@fingerly/web-js`. The one API that prompts on
 some browsers — canvas readback, which raises a doorhanger in Tor Browser — is
 skipped when the SDK measures a clamped clock.
 
@@ -240,7 +240,7 @@ key is wrong, or was used from an origin it does not list) and `402` (the
 organisation is not accepting traffic) — both are your configuration rather than
 the visitor's.
 
-Calling `identify()` during SSR rejects with `BadeleServerError` and a message
+Calling `identify()` during SSR rejects with `FingerlyServerError` and a message
 saying what to do instead. Use `{ immediate: true }`, which already waits for
 the client.
 
@@ -251,7 +251,7 @@ the client.
 verdict, all sharing one identification.
 
 ```
-pnpm --filter @badele/vue demo   # http://localhost:4174
+pnpm --filter @fingerly/vue demo   # http://localhost:4174
 ```
 
 That bundles `demo/main.ts` — the binding, the SDK and Vue's runtime in one

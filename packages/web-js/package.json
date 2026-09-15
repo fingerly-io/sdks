@@ -1,5 +1,5 @@
 {
-  "name": "@badele/web-js",
+  "name": "@fingerly/web-js",
   "version": "0.0.0",
   "private": true,
   "description": "Vanilla browser JavaScript SDK",
@@ -7,7 +7,7 @@
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "unpkg": "./dist/badele.global.js",
+  "unpkg": "./dist/fingerly.global.js",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -18,7 +18,7 @@
   "files": ["dist"],
   "sideEffects": false,
   "dependencies": {
-    "@badele/core": "workspace:*"
+    "@fingerly/core": "workspace:*"
   },
   "scripts": {
     "build": "tsup",

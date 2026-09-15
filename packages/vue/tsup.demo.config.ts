@@ -21,7 +21,7 @@ export default defineConfig({
   outExtension: () => ({ js: '.js' }),
   platform: 'browser',
   target: 'es2020',
-  noExternal: ['vue', '@badele/web-js', '@badele/core'],
+  noExternal: ['vue', '@fingerly/web-js', '@fingerly/core'],
   // Vue's bundler build reads these at compile time. Left undefined they are a
   // ReferenceError thrown before the app mounts, which looks like a broken
   // binding rather than a missing build flag.

@@ -9,10 +9,10 @@
  * sort of expression that reads correctly and is wrong.
  */
 
-import type { Confidence, Verdict, Verdicts } from '@badele/web-js'
+import type { Confidence, Verdict, Verdicts } from '@fingerly/web-js'
 import { useDebugValue, useMemo, useSyncExternalStore } from 'react'
 
-import { useBadele } from './useBadele.js'
+import { useFingerly } from './useFingerly.js'
 
 export type VerdictName = keyof Verdicts
 
@@ -53,11 +53,11 @@ export function useVerdict(
   name: VerdictName,
   options: { min?: Confidence } = {},
 ): UseVerdictReturn {
-  const badele = useBadele()
+  const fingerly = useFingerly()
   const { verdicts } = useSyncExternalStore(
-    badele.subscribe,
-    badele.getState,
-    badele.getServerState,
+    fingerly.subscribe,
+    fingerly.getState,
+    fingerly.getServerState,
   )
 
   const min = options.min ?? 'medium'

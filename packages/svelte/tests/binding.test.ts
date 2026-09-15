@@ -1,7 +1,7 @@
 /**
  * The binding, mounted as real components.
  *
- * `@badele/web-js`'s `load()` is mocked, because what is under test is the
+ * `@fingerly/web-js`'s `load()` is mocked, because what is under test is the
  * Svelte layer - context, sharing, reactivity, the confidence floor - and not
  * whether a canvas hashes. The browser SDK has its own tests for that.
  *
@@ -13,12 +13,12 @@
 import { flushSync, mount, unmount } from 'svelte'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { Badele } from '../src/state.svelte.js'
+import type { Fingerly } from '../src/state.svelte.js'
 
 const identifyMock = vi.fn()
 const loadMock = vi.fn()
 
-vi.mock('@badele/web-js', () => ({
+vi.mock('@fingerly/web-js', () => ({
   load: (...args: unknown[]) => loadMock(...args),
   TransportError: class TransportError extends Error {},
 }))
@@ -58,8 +58,8 @@ interface Mounted {
   target: HTMLElement
   text: () => string
   // The whole binding surface, not the one method the tests started with: a
-  // stub type here would let a field be added to Badele and never asserted on.
-  state: Badele
+  // stub type here would let a field be added to Fingerly and never asserted on.
+  state: Fingerly
   destroy: () => void
 }
 
@@ -100,7 +100,7 @@ beforeEach(() => {
   loadMock.mockResolvedValue({ identify: identifyMock })
 })
 
-describe('setupBadele', () => {
+describe('setupFingerly', () => {
   it('collects nothing on mount', () => {
     render({ options: { apiKey: 'pk_test' } })
 
@@ -118,12 +118,12 @@ describe('setupBadele', () => {
   })
 })
 
-describe('useBadele', () => {
+describe('useFingerly', () => {
   it('explains itself when nothing was set up', () => {
     const target = document.createElement('div')
 
-    expect(() => mount(Orphan, { target })).toThrow(/No Badele context/)
-    expect(() => mount(Orphan, { target })).toThrow(/setupBadele/)
+    expect(() => mount(Orphan, { target })).toThrow(/No Fingerly context/)
+    expect(() => mount(Orphan, { target })).toThrow(/setupFingerly/)
   })
 })
 

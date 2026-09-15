@@ -5,7 +5,7 @@
  * the whole of it, because the *effects* of farbling land in signals that are
  * already collected - the storage quota, the device memory, the plugin count -
  * and reading any of them again here would only be two chances to disagree.
- * `@badele/core`'s `detect/shields` does the reading and the arithmetic.
+ * `@fingerly/core`'s `detect/shields` does the reading and the arithmetic.
  *
  * The reason to ask at all, rather than infer: Brave publishes `navigator.brave
  * .isBrave()` for sites that need to adapt to it, and an answer the browser
@@ -15,7 +15,7 @@
  * vote among the behavioural tells rather than as the answer.
  */
 
-import { SOURCE, UnsupportedSignal, type ShieldsSignal, type Source } from '@badele/core'
+import { SOURCE, UnsupportedSignal, type ShieldsSignal, type Source } from '@fingerly/core'
 
 import { compact } from '../util.js'
 

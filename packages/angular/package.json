@@ -1,8 +1,8 @@
 {
-  "name": "@badele/angular",
+  "name": "@fingerly/angular",
   "version": "0.0.0",
   "private": true,
-  "description": "Angular bindings for the Badele SDK",
+  "description": "Angular bindings for the Fingerly SDK",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -15,7 +15,7 @@
   "files": ["dist"],
   "sideEffects": false,
   "dependencies": {
-    "@badele/web-js": "workspace:*"
+    "@fingerly/web-js": "workspace:*"
   },
   "peerDependencies": {
     "@angular/core": ">=19"

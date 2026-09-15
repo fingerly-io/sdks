@@ -2,7 +2,7 @@
  * `useIdentify()` - the composable a page actually uses.
  */
 
-import type { IdentifyResult } from '@badele/web-js'
+import type { IdentifyResult } from '@fingerly/web-js'
 import {
   computed,
   onMounted,
@@ -12,7 +12,7 @@ import {
 } from 'vue'
 
 import { toReadonly, type ReadonlyState } from './plugin.js'
-import { useBadele } from './useBadele.js'
+import { useFingerly } from './useFingerly.js'
 
 export interface UseIdentifyOptions {
   /**
@@ -70,15 +70,15 @@ export interface UseIdentifyReturn extends ReadonlyState {
  * component sees.
  */
 export function useIdentify(options: UseIdentifyOptions = {}): UseIdentifyReturn {
-  const badele = useBadele()
-  const state = toReadonly(badele.state)
+  const fingerly = useFingerly()
+  const state = toReadonly(fingerly.state)
 
   const resolveTag = (override?: string): string | undefined =>
     override ?? toValue(options.tag)
 
   const identify: UseIdentifyReturn['identify'] = (callOptions = {}) => {
     const tag = resolveTag(callOptions.tag)
-    return badele.identify({
+    return fingerly.identify({
       ...(tag === undefined ? {} : { tag }),
       ...(callOptions.force === undefined ? {} : { force: callOptions.force }),
     })

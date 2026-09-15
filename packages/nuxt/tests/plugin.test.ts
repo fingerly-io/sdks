@@ -2,7 +2,7 @@
  * The runtime plugin, installed into a real Vue app.
  *
  * `#app` is aliased to a stub, so this is the plugin file that ships rather
- * than a copy of its body. `@badele/web-js` is mocked, because what is under
+ * than a copy of its body. `@fingerly/web-js` is mocked, because what is under
  * test is the wiring - does a component that Nuxt would auto-import
  * `useIdentify()` into reach a client configured from the runtime config - and
  * not whether a canvas hashes.
@@ -14,12 +14,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const identifyMock = vi.fn()
 const loadMock = vi.fn()
 
-vi.mock('@badele/web-js', () => ({
+vi.mock('@fingerly/web-js', () => ({
   load: (...args: unknown[]) => loadMock(...args),
   TransportError: class TransportError extends Error {},
 }))
 
-const { useIdentify } = await import('@badele/vue')
+const { useIdentify } = await import('@fingerly/vue')
 const { __setRuntimeConfig } = await import('./stubs/nuxt-app.js')
 const plugin = (await import('../src/runtime/plugin.js')).default
 
@@ -55,7 +55,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   identifyMock.mockResolvedValue(RESULT)
   loadMock.mockResolvedValue({ identify: identifyMock })
-  __setRuntimeConfig({ badele: { apiKey: 'pk_runtime' } })
+  __setRuntimeConfig({ fingerly: { apiKey: 'pk_runtime' } })
 })
 
 describe('the runtime plugin', () => {
@@ -70,7 +70,7 @@ describe('the runtime plugin', () => {
 
   it('builds the client from the runtime config', async () => {
     __setRuntimeConfig({
-      badele: { apiKey: 'pk_runtime', endpoint: 'https://badele.internal' },
+      fingerly: { apiKey: 'pk_runtime', endpoint: 'https://fingerly.internal' },
     })
 
     const { identify } = mountWithPlugin(() => useIdentify())
@@ -78,12 +78,12 @@ describe('the runtime plugin', () => {
 
     expect(loadMock).toHaveBeenCalledWith({
       apiKey: 'pk_runtime',
-      endpoint: 'https://badele.internal',
+      endpoint: 'https://fingerly.internal',
     })
   })
 
   it('passes submit through, so an app can score without sending', async () => {
-    __setRuntimeConfig({ badele: { apiKey: 'pk_runtime', submit: false } })
+    __setRuntimeConfig({ fingerly: { apiKey: 'pk_runtime', submit: false } })
     // What the client returns when it sent nothing, and what the composable
     // has to turn back into null - there is no receipt to fetch later.
     identifyMock.mockResolvedValue({ ...RESULT, requestId: '' })
@@ -122,11 +122,11 @@ describe('the runtime plugin', () => {
     // install would make every useIdentify() in the app fail with "no plugin
     // found", which points at wiring that is correct.
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-    __setRuntimeConfig({ badele: { apiKey: '' } })
+    __setRuntimeConfig({ fingerly: { apiKey: '' } })
 
     const { identify } = mountWithPlugin(() => useIdentify())
 
-    expect(warn.mock.calls[0]?.[0]).toMatch(/NUXT_PUBLIC_BADELE_API_KEY/)
+    expect(warn.mock.calls[0]?.[0]).toMatch(/NUXT_PUBLIC_FINGERLY_API_KEY/)
     expect(loadMock).not.toHaveBeenCalled()
 
     // And the failure lands where somebody is looking for it.
@@ -134,7 +134,7 @@ describe('the runtime plugin', () => {
     await expect(identify()).rejects.toThrow(/SDK key is required/)
   })
 
-  it('tolerates a runtime config with no badele block', () => {
+  it('tolerates a runtime config with no fingerly block', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     __setRuntimeConfig({})
 

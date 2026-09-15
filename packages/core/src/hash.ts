@@ -9,7 +9,7 @@
  *
  * # What this is not for
  *
- * The visitor identifier. Badele does not compute one in the page - see the
+ * The visitor identifier. Fingerly does not compute one in the page - see the
  * note on [[IdentifyResult]]. This function exists so that a *field* can be
  * compacted, not so that an identity can be minted client-side. Hashing the
  * whole report here would reintroduce exactly the problem that decision avoids.

@@ -15,7 +15,7 @@ import {
   type PluginsSignal,
   type Source,
   type VendorSignal,
-} from '@badele/core'
+} from '@fingerly/core'
 
 import { attempt, compact } from '../util.js'
 

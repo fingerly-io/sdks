@@ -1,8 +1,8 @@
 {
-  "name": "@badele/nuxt",
+  "name": "@fingerly/nuxt",
   "version": "0.0.0",
   "private": true,
-  "description": "Nuxt module wrapping @badele/vue",
+  "description": "Nuxt module wrapping @fingerly/vue",
   "type": "module",
   "main": "./dist/module.js",
   "types": "./dist/module.d.ts",
@@ -14,7 +14,7 @@
   },
   "files": ["dist"],
   "dependencies": {
-    "@badele/vue": "workspace:*",
+    "@fingerly/vue": "workspace:*",
     "@nuxt/kit": "^4.5.2"
   },
   "peerDependencies": {
@@ -28,7 +28,7 @@
     "demo": "nuxi dev playground"
   },
   "devDependencies": {
-    "@badele/web-js": "workspace:*",
+    "@fingerly/web-js": "workspace:*",
     "@nuxt/schema": "^4.5.2",
     "happy-dom": "^15.11.7",
     "nuxt": "^4.5.2",

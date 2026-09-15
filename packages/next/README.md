@@ -1,6 +1,6 @@
-# @badele/next
+# @fingerly/next
 
-Next.js integration. It wraps [`@badele/react`](../react/README.md) and adds
+Next.js integration. It wraps [`@fingerly/react`](../react/README.md) and adds
 the three things that are actually about Next: where the configuration comes
 from, where the client boundary sits, and how an identification reaches a
 Server Action.
@@ -9,7 +9,7 @@ Requires Next **15 or newer** and React **19** (App Router or Pages Router).
 Tested against Next 16.
 
 ```
-pnpm add @badele/next
+pnpm add @fingerly/next
 ```
 
 ## Configure
@@ -18,7 +18,7 @@ Read the key in a Server Component and pass it down:
 
 ```tsx
 // app/layout.tsx — a Server Component
-<BadeleProvider apiKey={process.env.BADELE_API_KEY}>{children}</BadeleProvider>
+<FingerlyProvider apiKey={process.env.FINGERLY_API_KEY}>{children}</FingerlyProvider>
 ```
 
 That is the arrangement that always works, and it is worth understanding why
@@ -27,13 +27,13 @@ variable name will do — no `NEXT_PUBLIC_` prefix needed — and the value reac
 the browser through the RSC payload, which is where a public SDK key was
 always going to end up.
 
-The provider will also read `NEXT_PUBLIC_BADELE_API_KEY` and
-`NEXT_PUBLIC_BADELE_ENDPOINT` itself, but that path has a condition on it:
+The provider will also read `NEXT_PUBLIC_FINGERLY_API_KEY` and
+`NEXT_PUBLIC_FINGERLY_ENDPOINT` itself, but that path has a condition on it:
 Next inlines `NEXT_PUBLIC_` variables **while compiling**, and it does not
 compile your dependencies. In a published build the read survives as a
 `process.env` lookup, and in a browser there is no `process` — the server
 render finds the key, hydration does not, and the page throws. It works if
-your app lists `@badele/next` in `transpilePackages`; the prop above needs no
+your app lists `@fingerly/next` in `transpilePackages`; the prop above needs no
 such condition, which is why it is the documented route.
 
 Either way the key is a **public** SDK key, scoped to the origins you list
@@ -44,13 +44,13 @@ an `Origin`, so the mistake either route invites cannot silently work.
 
 ```tsx
 // app/layout.tsx — still a Server Component
-import { BadeleProvider } from '@badele/next'
+import { FingerlyProvider } from '@fingerly/next'
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html>
       <body>
-        <BadeleProvider apiKey={process.env.BADELE_API_KEY}>{children}</BadeleProvider>
+        <FingerlyProvider apiKey={process.env.FINGERLY_API_KEY}>{children}</FingerlyProvider>
       </body>
     </html>
   )
@@ -65,11 +65,11 @@ Mounting it collects nothing. When to identify stays the page's decision.
 
 ## Identify
 
-The hooks are `@badele/react`'s, re-exported so you install one package:
+The hooks are `@fingerly/react`'s, re-exported so you install one package:
 
 ```tsx
 'use client'
-import { useIdentify, useVerdict } from '@badele/next'
+import { useIdentify, useVerdict } from '@fingerly/next'
 
 export function Checkout() {
   const { identify, isSuspicious, isLoading } = useIdentify()
@@ -93,14 +93,14 @@ travel with the submission:
 
 ```tsx
 // app/signup/page.tsx
-import { BadeleRequestId } from '@badele/next'
+import { FingerlyRequestId } from '@fingerly/next'
 import { signUp } from './actions'
 
 export default function Page() {
   return (
     <form action={signUp}>
       <input name="email" />
-      <BadeleRequestId />
+      <FingerlyRequestId />
       <button>Create account</button>
     </form>
   )
@@ -110,7 +110,7 @@ export default function Page() {
 ```ts
 // app/signup/actions.ts
 'use server'
-import { readRequestId } from '@badele/next/server'
+import { readRequestId } from '@fingerly/next/server'
 
 export async function signUp(formData: FormData) {
   const requestId = readRequestId(formData)
@@ -118,7 +118,7 @@ export async function signUp(formData: FormData) {
 }
 ```
 
-`<BadeleRequestId />` identifies on mount and renders a hidden field. It is in
+`<FingerlyRequestId />` identifies on mount and renders a hidden field. It is in
 the server-rendered HTML **empty** rather than absent, which is deliberate: a
 form submitted before the SDK finished, or with JavaScript disabled, is a
 normal event, and the server can tell it apart from a form that never carried a
@@ -132,15 +132,15 @@ server that joins or logs it unchecked is one hand-written `<input>` away from
 storing what the visitor typed.
 
 Both halves agree on the field name through one exported constant,
-`REQUEST_ID_FIELD`. Pass `name` to `<BadeleRequestId />` and the same `name` to
+`REQUEST_ID_FIELD`. Pass `name` to `<FingerlyRequestId />` and the same `name` to
 `readRequestId()` if you need a different one.
 
 ## The two entries, and why
 
 | Import | Runs | Contains |
 | --- | --- | --- |
-| `@badele/next` | the browser | provider, field, hooks — a `'use client'` module |
-| `@badele/next/server` | the server | `readRequestId`, `REQUEST_ID_FIELD` — no React |
+| `@fingerly/next` | the browser | provider, field, hooks — a `'use client'` module |
+| `@fingerly/next/server` | the server | `readRequestId`, `REQUEST_ID_FIELD` — no React |
 
 A Server Action that imported `readRequestId` from the main entry would get a
 client reference rather than a function: the import succeeds and the call fails
@@ -152,11 +152,11 @@ at runtime, which is the worst way to learn about a boundary. Hence the split.
 and a Server Action reading the field back:
 
 ```
-pnpm --filter @badele/next demo   # http://localhost:4178
+pnpm --filter @fingerly/next demo   # http://localhost:4178
 ```
 
 It collects and scores locally and submits nothing until you give it somewhere
-to submit: put `BADELE_API_KEY`, `BADELE_ENDPOINT` and `BADELE_SUBMIT=true` in
+to submit: put `FINGERLY_API_KEY`, `FINGERLY_ENDPOINT` and `FINGERLY_SUBMIT=true` in
 `demo/.env.local` (gitignored), with a key whose allowed origins include the
 port you are running it on. Then the identification produces a real
 `requestId`, the hidden field carries it, and the action prints the one it
@@ -178,4 +178,4 @@ that belongs on the server rather than in a client package.
 **It does not read events back.** It does not need to: `identify()` resolves
 with the server's verdict — `visitorId`, `suspectScore`, `suspectLevel` and the
 triggers behind them — so there is nothing to fetch afterwards. Reading stored
-events for reporting is `@badele/node`'s job.
+events for reporting is `@fingerly/node`'s job.

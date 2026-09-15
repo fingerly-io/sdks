@@ -4,7 +4,7 @@
  * `useIdentify()` - the hook a page actually uses.
  */
 
-import type { IdentifyResult } from '@badele/web-js'
+import type { IdentifyResult } from '@fingerly/web-js'
 import {
   use,
   useCallback,
@@ -15,8 +15,8 @@ import {
   useSyncExternalStore,
 } from 'react'
 
-import { useBadele } from './useBadele.js'
-import type { BadeleState } from './store.js'
+import { useFingerly } from './useFingerly.js'
+import type { FingerlyState } from './store.js'
 
 export interface UseIdentifyOptions {
   /**
@@ -57,7 +57,7 @@ export interface UseIdentifyOptions {
   tag?: string | (() => string | undefined)
 }
 
-export interface UseIdentifyReturn extends BadeleState {
+export interface UseIdentifyReturn extends FingerlyState {
   /** True once an identification has completed, successfully or not. */
   isReady: boolean
   /**
@@ -91,9 +91,9 @@ const resolveTag = (tag: UseIdentifyOptions['tag']): string | undefined =>
  * no second submission.
  */
 export function useIdentify(options: UseIdentifyOptions = {}): UseIdentifyReturn {
-  const badele = useBadele()
+  const fingerly = useFingerly()
 
-  const state = useSyncExternalStore(badele.subscribe, badele.getState, badele.getServerState)
+  const state = useSyncExternalStore(fingerly.subscribe, fingerly.getState, fingerly.getServerState)
 
   // The latest tag, kept where a callback can read it without being rebuilt
   // when it changes. Synced in an effect rather than assigned during render
@@ -108,12 +108,12 @@ export function useIdentify(options: UseIdentifyOptions = {}): UseIdentifyReturn
   const identify = useCallback<UseIdentifyReturn['identify']>(
     (callOptions = {}) => {
       const tag = callOptions.tag ?? resolveTag(tagRef.current)
-      return badele.identify({
+      return fingerly.identify({
         ...(tag === undefined ? {} : { tag }),
         ...(callOptions.force === undefined ? {} : { force: callOptions.force }),
       })
     },
-    [badele],
+    [fingerly],
   )
 
   const refresh = useCallback<UseIdentifyReturn['refresh']>(

@@ -7,7 +7,7 @@
  * await hardware, and are worth having only because the budget bounds them.
  */
 
-import type { Source } from '@badele/core'
+import type { Source } from '@fingerly/core'
 
 import { audioLatencySource, audioSource } from './audio.js'
 import {

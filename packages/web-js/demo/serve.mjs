@@ -50,5 +50,5 @@ createServer(async (request, response) => {
     response.writeHead(404).end('not found')
   }
 }).listen(port, () => {
-  console.log(`badele demo: http://localhost:${port}/`)
+  console.log(`fingerly demo: http://localhost:${port}/`)
 })

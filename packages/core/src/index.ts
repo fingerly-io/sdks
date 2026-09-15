@@ -1,13 +1,13 @@
 /**
- * @badele/core - the framework-agnostic kernel every Badele SDK is built on.
+ * @fingerly/core - the framework-agnostic kernel every Fingerly SDK is built on.
  *
- * It contains no browser code. The collectors live in `@badele/web-js`, and the
- * mobile SDKs bring their own; `@badele/node` depends on this package and must
+ * It contains no browser code. The collectors live in `@fingerly/web-js`, and the
+ * mobile SDKs bring their own; `@fingerly/node` depends on this package and must
  * not carry a DOM.
  */
 
-export { BadeleClient, SCHEMA_VERSION } from './client.js'
-export type { BadeleClientOptions, IdentifyOptions } from './client.js'
+export { FingerlyClient, SCHEMA_VERSION } from './client.js'
+export type { FingerlyClientOptions, IdentifyOptions } from './client.js'
 export { defaultEndpointForKey, regionFromKey } from './routing.js'
 export type { DataRegion } from './routing.js'
 

@@ -1,8 +1,8 @@
 {
-  "name": "@badele/next",
+  "name": "@fingerly/next",
   "version": "0.0.0",
   "private": true,
-  "description": "Next.js integration wrapping @badele/react",
+  "description": "Next.js integration wrapping @fingerly/react",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -22,8 +22,8 @@
   "files": ["dist"],
   "sideEffects": false,
   "dependencies": {
-    "@badele/node": "workspace:*",
-    "@badele/react": "workspace:*"
+    "@fingerly/node": "workspace:*",
+    "@fingerly/react": "workspace:*"
   },
   "peerDependencies": {
     "next": ">=15",
@@ -36,7 +36,7 @@
     "demo": "tsup && next dev demo --port 4178"
   },
   "devDependencies": {
-    "@badele/web-js": "workspace:*",
+    "@fingerly/web-js": "workspace:*",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "happy-dom": "^15.11.7",

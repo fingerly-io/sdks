@@ -14,13 +14,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const identifyMock = vi.fn()
 const loadMock = vi.fn()
 
-vi.mock('@badele/web-js', () => ({
+vi.mock('@fingerly/web-js', () => ({
   load: (...args: unknown[]) => loadMock(...args),
   TransportError: class TransportError extends Error {},
 }))
 
-const { BadeleProvider } = await import('../src/context.js')
-const { BadeleServerError } = await import('../src/store.js')
+const { FingerlyProvider } = await import('../src/context.js')
+const { FingerlyServerError } = await import('../src/store.js')
 const { useIdentify } = await import('../src/useIdentify.js')
 
 beforeEach(() => {
@@ -41,9 +41,9 @@ describe('under SSR', () => {
     }
 
     const html = renderToString(
-      <BadeleProvider apiKey="pk_test">
+      <FingerlyProvider apiKey="pk_test">
         <Page />
-      </BadeleProvider>,
+      </FingerlyProvider>,
     )
 
     // `immediate` runs in an effect, which a server render never reaches. The
@@ -64,9 +64,9 @@ describe('under SSR', () => {
     }
 
     const html = renderToString(
-      <BadeleProvider apiKey="pk_test">
+      <FingerlyProvider apiKey="pk_test">
         <Page />
-      </BadeleProvider>,
+      </FingerlyProvider>,
     )
 
     expect(html).toBe('<div>ready:false</div>')
@@ -87,14 +87,14 @@ describe('under SSR', () => {
     }
 
     renderToString(
-      <BadeleProvider apiKey="pk_test">
+      <FingerlyProvider apiKey="pk_test">
         <Page />
-      </BadeleProvider>,
+      </FingerlyProvider>,
     )
 
     await new Promise((resolve) => setTimeout(resolve, 0))
 
-    expect(captured).toBeInstanceOf(BadeleServerError)
+    expect(captured).toBeInstanceOf(FingerlyServerError)
     expect((captured as Error).message).toMatch(/cannot run during server-side rendering/)
     expect((captured as Error).message).toMatch(/immediate: true/)
   })

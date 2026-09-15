@@ -5,7 +5,7 @@
  * live outside a component: the file is compiled by the Svelte compiler in the
  * consuming app, so the fields below are reactive wherever they are read.
  * That is the whole reason this binding needs no store, no subscription and no
- * `$` prefix at the call site - a component reads `badele.verdicts` and
+ * `$` prefix at the call site - a component reads `fingerly.verdicts` and
  * re-renders when it changes.
  *
  * One state per app, not one per component. Identification is a *page-level*
@@ -17,15 +17,15 @@
 
 import {
   load,
-  type BadeleClient,
+  type FingerlyClient,
   type IdentifyResult,
   type IdentifyTrigger,
   type SignalReport,
   type Verdicts,
-} from '@badele/web-js'
+} from '@fingerly/web-js'
 
-/** Options for [[createBadele]] and [[setupBadele]]. */
-export interface BadeleOptions {
+/** Options for [[createFingerly]] and [[setupFingerly]]. */
+export interface FingerlyOptions {
   /** The SDK key from the dashboard. A public key is safe in a page. */
   apiKey: string
   /** Origin of the API. Defaults to production. */
@@ -45,12 +45,12 @@ export interface BadeleOptions {
 }
 
 /** What a component reads. Every field is reactive; none of them is settable. */
-export interface Badele {
+export interface Fingerly {
   readonly requestId: string | null
   /**
    * Who the server decided this is. Null under `submit: false`, and null
    * before the first identification - never empty-string, so a template can
-   * ask `badele.visitorId` without also asking whether it means anything.
+   * ask `fingerly.visitorId` without also asking whether it means anything.
    */
   readonly visitorId: string | null
   /** True when the server had never seen this visitor before. */
@@ -96,15 +96,15 @@ export interface Badele {
   /** Identify again from scratch, ignoring any previous result. */
   refresh(options?: { tag?: string }): Promise<IdentifyResult>
   /** The underlying client, built on first use. */
-  client(): Promise<BadeleClient>
+  client(): Promise<FingerlyClient>
 }
 
 /** Thrown when the SDK is asked to collect somewhere there is no browser. */
-export class BadeleServerError extends Error {
-  override readonly name = 'BadeleServerError'
+export class FingerlyServerError extends Error {
+  override readonly name = 'FingerlyServerError'
   constructor() {
     super(
-      'Badele collects signals from a browser and cannot run during server-side rendering. ' +
+      'Fingerly collects signals from a browser and cannot run during server-side rendering. ' +
         'Call identify() from an $effect, or pass { immediate: true } to useIdentify(), ' +
         'which already waits for the client.',
     )
@@ -118,7 +118,7 @@ export class BadeleServerError extends Error {
  * factory that fingerprinted as it ran would collect during a server render
  * and take the choice of *when* away from the page that knows.
  */
-export function createBadele(options: BadeleOptions): Badele {
+export function createFingerly(options: FingerlyOptions): Fingerly {
   let requestId = $state<string | null>(null)
   let visitorId = $state<string | null>(null)
   let visitorIsNew = $state(false)
@@ -142,11 +142,11 @@ export function createBadele(options: BadeleOptions): Badele {
       : Object.values(verdicts).some((verdict) => verdict.value && verdict.confidence !== 'low'),
   )
 
-  let clientPromise: Promise<BadeleClient> | undefined
+  let clientPromise: Promise<FingerlyClient> | undefined
   let current: Promise<IdentifyResult> | undefined
 
-  const client = (): Promise<BadeleClient> => {
-    if (typeof window === 'undefined') return Promise.reject(new BadeleServerError())
+  const client = (): Promise<FingerlyClient> => {
+    if (typeof window === 'undefined') return Promise.reject(new FingerlyServerError())
     // Built once and memoised. `load()` is cheap today but is the documented
     // place for future warm-up work, and warming up per component would undo
     // it.
@@ -159,8 +159,8 @@ export function createBadele(options: BadeleOptions): Badele {
     return clientPromise
   }
 
-  const identify: Badele['identify'] = (identifyOptions = {}) => {
-    if (typeof window === 'undefined') return Promise.reject(new BadeleServerError())
+  const identify: Fingerly['identify'] = (identifyOptions = {}) => {
+    if (typeof window === 'undefined') return Promise.reject(new FingerlyServerError())
 
     // One promise for the page, in flight or already settled, which is what
     // makes `useIdentify({ immediate: true })` safe in as many components as
@@ -176,8 +176,8 @@ export function createBadele(options: BadeleOptions): Badele {
     error = null
 
     const run = client()
-      .then((badele) =>
-        badele.identify({
+      .then((fingerly) =>
+        fingerly.identify({
           ...(identifyOptions.tag === undefined ? {} : { tag: identifyOptions.tag }),
           ...(options.submit === undefined ? {} : { submit: options.submit }),
         }),
@@ -216,7 +216,7 @@ export function createBadele(options: BadeleOptions): Badele {
     return run
   }
 
-  const refresh: Badele['refresh'] = (refreshOptions = {}) =>
+  const refresh: Fingerly['refresh'] = (refreshOptions = {}) =>
     identify({ ...refreshOptions, force: true })
 
   // Getters rather than fields: reading through one is what subscribes the

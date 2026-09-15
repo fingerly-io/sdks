@@ -1,7 +1,7 @@
 /**
  * The binding, in a real application injector.
  *
- * `@badele/web-js`'s `load()` is mocked, because what is under test is the
+ * `@fingerly/web-js`'s `load()` is mocked, because what is under test is the
  * Angular layer - providers, injection context, signals, the render hook - and
  * not whether a canvas hashes. The browser SDK has its own tests for that.
  *
@@ -17,14 +17,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const identifyMock = vi.fn()
 const loadMock = vi.fn()
 
-vi.mock('@badele/web-js', () => ({
+vi.mock('@fingerly/web-js', () => ({
   load: (...args: unknown[]) => loadMock(...args),
   TransportError: class TransportError extends Error {},
 }))
 
-const { provideBadele } = await import('../src/provide.js')
-const { injectBadele, injectIdentify, injectVerdict } = await import('../src/inject.js')
-const { createBadele } = await import('../src/state.js')
+const { provideFingerly } = await import('../src/provide.js')
+const { injectFingerly, injectIdentify, injectVerdict } = await import('../src/inject.js')
+const { createFingerly } = await import('../src/state.js')
 
 const verdict = (value: boolean, confidence: 'low' | 'medium' | 'high', reasons: string[] = []) => ({
   value,
@@ -55,8 +55,8 @@ const RESULT = {
 }
 
 /** Configure an application with the SDK provided, as an app's config would. */
-function application(options: Parameters<typeof provideBadele>[0]) {
-  TestBed.configureTestingModule({ providers: [provideBadele(options)] })
+function application(options: Parameters<typeof provideFingerly>[0]) {
+  TestBed.configureTestingModule({ providers: [provideFingerly(options)] })
 }
 
 /** What Angular does after the first render, and what the browser then does. */
@@ -72,10 +72,10 @@ beforeEach(() => {
   loadMock.mockResolvedValue({ identify: identifyMock })
 })
 
-describe('provideBadele', () => {
+describe('provideFingerly', () => {
   it('collects nothing when the application starts', () => {
     application({ apiKey: 'pk_test' })
-    TestBed.runInInjectionContext(() => injectBadele())
+    TestBed.runInInjectionContext(() => injectFingerly())
 
     // Providing makes the client reachable and no more. A provider that
     // fingerprinted as the injector built it would collect during every server
@@ -86,9 +86,9 @@ describe('provideBadele', () => {
 
   it('passes the endpoint through, and omits it when unset', async () => {
     application({ apiKey: 'pk_test', endpoint: 'http://localhost:8099' })
-    const badele = TestBed.runInInjectionContext(() => injectBadele())
+    const fingerly = TestBed.runInInjectionContext(() => injectFingerly())
 
-    await badele.identify()
+    await fingerly.identify()
 
     expect(loadMock).toHaveBeenCalledWith({ apiKey: 'pk_test', endpoint: 'http://localhost:8099' })
   })
@@ -96,8 +96,8 @@ describe('provideBadele', () => {
   it('builds the state once for the whole application', async () => {
     application({ apiKey: 'pk_test' })
 
-    const first = TestBed.runInInjectionContext(() => injectBadele())
-    const second = TestBed.runInInjectionContext(() => injectBadele())
+    const first = TestBed.runInInjectionContext(() => injectFingerly())
+    const second = TestBed.runInInjectionContext(() => injectFingerly())
 
     // The same object, not two with the same values: one identification per
     // page is a property of the injector, not of a cache.
@@ -110,55 +110,55 @@ describe('provideBadele', () => {
   })
 })
 
-describe('injectBadele', () => {
+describe('injectFingerly', () => {
   it('explains itself when nothing provided it', () => {
     TestBed.configureTestingModule({ providers: [] })
 
-    expect(() => TestBed.runInInjectionContext(() => injectBadele())).toThrow(
-      /No Badele provider found/,
+    expect(() => TestBed.runInInjectionContext(() => injectFingerly())).toThrow(
+      /No Fingerly provider found/,
     )
-    expect(() => TestBed.runInInjectionContext(() => injectBadele())).toThrow(/provideBadele/)
+    expect(() => TestBed.runInInjectionContext(() => injectFingerly())).toThrow(/provideFingerly/)
   })
 })
 
 describe('injectIdentify', () => {
   it('collects after the first render when immediate is set', async () => {
     application({ apiKey: 'pk_test' })
-    const badele = TestBed.runInInjectionContext(() => injectIdentify({ immediate: true }))
+    const fingerly = TestBed.runInInjectionContext(() => injectIdentify({ immediate: true }))
 
     // Nothing yet: afterNextRender has not run, which is also why a server
     // render collects nothing.
-    expect(badele.isReady()).toBe(false)
+    expect(fingerly.isReady()).toBe(false)
     expect(identifyMock).not.toHaveBeenCalled()
 
     await render()
 
-    expect(badele.isReady()).toBe(true)
-    expect(badele.requestId()).toBe('req_1')
-    expect(badele.isSuspicious()).toBe(true)
-    expect(badele.isLoading()).toBe(false)
-    expect(badele.error()).toBeNull()
+    expect(fingerly.isReady()).toBe(true)
+    expect(fingerly.requestId()).toBe('req_1')
+    expect(fingerly.isSuspicious()).toBe(true)
+    expect(fingerly.isLoading()).toBe(false)
+    expect(fingerly.error()).toBeNull()
   })
 
   it('surfaces everything the server decided', async () => {
     application({ apiKey: 'pk_test' })
-    const badele = TestBed.runInInjectionContext(() => injectIdentify({ immediate: true }))
+    const fingerly = TestBed.runInInjectionContext(() => injectIdentify({ immediate: true }))
 
     await render()
 
-    expect(badele.visitorId()).toBe('vis_1')
-    expect(badele.visitorIsNew()).toBe(false)
-    expect(badele.visitorConfidence()).toBe(93)
-    expect(badele.identifiable()).toBe(true)
-    expect(badele.duplicate()).toBe(false)
-    expect(badele.state()).toBe('scored')
-    expect(badele.suspectScore()).toBe(41)
-    expect(badele.suspectLevel()).toBe('medium')
-    expect(badele.triggers()).toHaveLength(1)
-    expect(badele.triggers()[0]?.signal).toBe('patched-natives')
+    expect(fingerly.visitorId()).toBe('vis_1')
+    expect(fingerly.visitorIsNew()).toBe(false)
+    expect(fingerly.visitorConfidence()).toBe(93)
+    expect(fingerly.identifiable()).toBe(true)
+    expect(fingerly.duplicate()).toBe(false)
+    expect(fingerly.state()).toBe('scored')
+    expect(fingerly.suspectScore()).toBe(41)
+    expect(fingerly.suspectLevel()).toBe('medium')
+    expect(fingerly.triggers()).toHaveLength(1)
+    expect(fingerly.triggers()[0]?.signal).toBe('patched-natives')
     // Empty on the wire means "nothing to say", and null is how this binding
     // says that - so a template can write `reason() ?? fallback`.
-    expect(badele.reason()).toBeNull()
+    expect(fingerly.reason()).toBeNull()
   })
 
   it('reports an unscored check as null, not zero', async () => {
@@ -175,14 +175,14 @@ describe('injectIdentify', () => {
       triggers: [],
     })
     application({ apiKey: 'pk_test' })
-    const badele = TestBed.runInInjectionContext(() => injectIdentify({ immediate: true }))
+    const fingerly = TestBed.runInInjectionContext(() => injectIdentify({ immediate: true }))
 
     await render()
 
-    expect(badele.suspectScore()).toBeNull()
-    expect(badele.suspectLevel()).toBeNull()
-    expect(badele.visitorId()).toBeNull()
-    expect(badele.identifiable()).toBe(false)
+    expect(fingerly.suspectScore()).toBeNull()
+    expect(fingerly.suspectLevel()).toBeNull()
+    expect(fingerly.visitorId()).toBeNull()
+    expect(fingerly.identifiable()).toBe(false)
   })
 
   it('shares one identification across every component that asks', async () => {
@@ -199,20 +199,20 @@ describe('injectIdentify', () => {
 
   it('reuses a finished identification rather than repeating it', async () => {
     application({ apiKey: 'pk_test' })
-    const badele = TestBed.runInInjectionContext(() => injectIdentify())
+    const fingerly = TestBed.runInInjectionContext(() => injectIdentify())
 
-    await badele.identify()
-    await badele.identify()
+    await fingerly.identify()
+    await fingerly.identify()
 
     expect(identifyMock).toHaveBeenCalledTimes(1)
   })
 
   it('starts a fresh one on refresh()', async () => {
     application({ apiKey: 'pk_test' })
-    const badele = TestBed.runInInjectionContext(() => injectIdentify())
+    const fingerly = TestBed.runInInjectionContext(() => injectIdentify())
 
-    await badele.identify()
-    await badele.refresh()
+    await fingerly.identify()
+    await fingerly.refresh()
 
     expect(identifyMock).toHaveBeenCalledTimes(2)
   })
@@ -220,10 +220,10 @@ describe('injectIdentify', () => {
   it('reads a tag signal at submission time, not at construction time', async () => {
     application({ apiKey: 'pk_test' })
     const orderId = signal('order_1')
-    const badele = TestBed.runInInjectionContext(() => injectIdentify({ tag: orderId }))
+    const fingerly = TestBed.runInInjectionContext(() => injectIdentify({ tag: orderId }))
 
     orderId.set('order_2')
-    await badele.identify()
+    await fingerly.identify()
 
     expect(identifyMock).toHaveBeenCalledWith({ tag: 'order_2' })
   })
@@ -231,25 +231,25 @@ describe('injectIdentify', () => {
   it('records a failure without leaving an unhandled rejection', async () => {
     identifyMock.mockRejectedValue(new Error('collector exploded'))
     application({ apiKey: 'pk_test' })
-    const badele = TestBed.runInInjectionContext(() => injectIdentify({ immediate: true }))
+    const fingerly = TestBed.runInInjectionContext(() => injectIdentify({ immediate: true }))
 
     await render()
 
-    expect(badele.error()?.message).toBe('collector exploded')
-    expect(badele.isReady()).toBe(true)
-    expect(badele.isLoading()).toBe(false)
+    expect(fingerly.error()?.message).toBe('collector exploded')
+    expect(fingerly.isReady()).toBe(true)
+    expect(fingerly.isLoading()).toBe(false)
   })
 
   it('retries after a failure rather than serving the rejection forever', async () => {
     identifyMock.mockRejectedValueOnce(new Error('collector exploded'))
     application({ apiKey: 'pk_test' })
-    const badele = TestBed.runInInjectionContext(() => injectIdentify())
+    const fingerly = TestBed.runInInjectionContext(() => injectIdentify())
 
-    await badele.identify().catch(() => undefined)
-    await badele.identify()
+    await fingerly.identify().catch(() => undefined)
+    await fingerly.identify()
 
     expect(identifyMock).toHaveBeenCalledTimes(2)
-    expect(badele.requestId()).toBe('req_1')
+    expect(fingerly.requestId()).toBe('req_1')
   })
 
   it('leaves requestId null when submit is off, and still shares the run', async () => {
@@ -270,13 +270,13 @@ describe('injectIdentify', () => {
 describe('injectVerdict', () => {
   it('reports one verdict and its reasons', async () => {
     application({ apiKey: 'pk_test' })
-    const { incognito, badele } = TestBed.runInInjectionContext(() => ({
-      badele: injectIdentify({ immediate: true }),
+    const { incognito, fingerly } = TestBed.runInInjectionContext(() => ({
+      fingerly: injectIdentify({ immediate: true }),
       incognito: injectVerdict('incognito'),
     }))
     await render()
 
-    expect(badele.isReady()).toBe(true)
+    expect(fingerly.isReady()).toBe(true)
     expect(incognito.matched()).toBe(true)
     expect(incognito.confidence()).toBe('medium')
     expect(incognito.reasons()).toEqual(['firefox-private-origin-filesystem-refused'])
@@ -325,12 +325,12 @@ describe('injectVerdict', () => {
 
 describe('the state itself', () => {
   it('hands out signals that a component cannot write to', () => {
-    const badele = createBadele({ apiKey: 'pk_test' })
+    const fingerly = createFingerly({ apiKey: 'pk_test' })
 
     // The writable signals stay in the factory's closure. The state is shared,
     // so a component that could set() it would be changing what every other
     // component sees.
-    expect('set' in badele.requestId).toBe(false)
-    expect('update' in badele.isLoading).toBe(false)
+    expect('set' in fingerly.requestId).toBe(false)
+    expect('update' in fingerly.isLoading).toBe(false)
   })
 })

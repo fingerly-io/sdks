@@ -1,7 +1,7 @@
 <!doctype html>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>badele - shield probe</title>
+<title>fingerly - shield probe</title>
 
 <!--
   A bench for the probes that privacy browsers interfere with.
@@ -26,7 +26,7 @@
         border: 1px solid color-mix(in srgb, currentColor 20%, transparent); border-radius: 6px; }
 </style>
 
-<script src="../dist/badele.global.js"></script>
+<script src="../dist/fingerly.global.js"></script>
 
 <h1>Shield probe</h1>
 <p>Run this in a normal window and a private window, in each browser. Copy both.</p>
@@ -69,9 +69,9 @@
       context.fillStyle = '#f60'
       context.fillRect(12, 4, 62, 20)
       context.fillStyle = '#069'
-      context.fillText('badele,org <canvas> 1.0', 4, 21)
+      context.fillText('fingerly,org <canvas> 1.0', 4, 21)
       context.fillStyle = 'rgba(102, 204, 0, 0.7)'
-      context.fillText('badele,org <canvas> 1.0', 6, 25)
+      context.fillText('fingerly,org <canvas> 1.0', 6, 25)
       return canvas.toDataURL()
     }
     const first = draw()
@@ -310,7 +310,7 @@
       // historically reported a bare total.
       usage_details_after_write: await probe(async () => {
         const db = await new Promise((resolve, reject) => {
-          const request = indexedDB.open('__badele_probe__', 1)
+          const request = indexedDB.open('__fingerly_probe__', 1)
           request.onupgradeneeded = () => request.result.createObjectStore('s')
           request.onsuccess = () => resolve(request.result)
           request.onerror = () => reject(request.error)
@@ -324,7 +324,7 @@
         })
         const after = await nav.storage.estimate()
         db.close()
-        indexedDB.deleteDatabase('__badele_probe__')
+        indexedDB.deleteDatabase('__fingerly_probe__')
         return { usage: after.usage, details: after.usageDetails || null, quota: after.quota }
       }),
 
@@ -334,7 +334,7 @@
       // written from a single reading is the mistake this whole exercise is about.
       indexeddb_write_ms: await probe(async () => {
         const db = await new Promise((resolve, reject) => {
-          const request = indexedDB.open('__badele_timing__', 1)
+          const request = indexedDB.open('__fingerly_timing__', 1)
           request.onupgradeneeded = () => request.result.createObjectStore('s')
           request.onsuccess = () => resolve(request.result)
           request.onerror = () => reject(request.error)
@@ -349,7 +349,7 @@
         })
         const elapsed = performance.now() - started
         db.close()
-        indexedDB.deleteDatabase('__badele_timing__')
+        indexedDB.deleteDatabase('__fingerly_timing__')
         return Math.round(elapsed)
       }),
 
@@ -440,9 +440,9 @@
    * that agrees with the source proves nothing about the source.
    */
   async function sdkView() {
-    if (typeof Badele === 'undefined') return { error: 'bundle not loaded' }
+    if (typeof Fingerly === 'undefined') return { error: 'bundle not loaded' }
     try {
-      const client = await Badele.load({ apiKey: 'demo' })
+      const client = await Fingerly.load({ apiKey: 'demo' })
       const result = await client.identify({ submit: false })
       const sources = result.report && result.report.sources
       const pick = (id) => {

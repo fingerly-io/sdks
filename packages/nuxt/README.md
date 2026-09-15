@@ -1,13 +1,13 @@
-# @badele/nuxt
+# @fingerly/nuxt
 
-The Badele SDK as a Nuxt module. It wraps [`@badele/vue`](../vue/README.md) and
+The Fingerly SDK as a Nuxt module. It wraps [`@fingerly/vue`](../vue/README.md) and
 adds the three things that are about Nuxt: where the configuration comes from,
 who installs the plugin, and auto-imported composables.
 
 Requires Nuxt **3 or newer**. Tested against Nuxt 4.
 
 ```
-pnpm add @badele/nuxt
+pnpm add @fingerly/nuxt
 ```
 
 ## Add the module
@@ -15,8 +15,8 @@ pnpm add @badele/nuxt
 ```ts
 // nuxt.config.ts
 export default defineNuxtConfig({
-  modules: ['@badele/nuxt'],
-  badele: {
+  modules: ['@fingerly/nuxt'],
+  fingerly: {
     apiKey: 'pk_live_…',
   },
 })
@@ -25,7 +25,7 @@ export default defineNuxtConfig({
 Or leave the key out of the config and set it in the environment:
 
 ```
-NUXT_PUBLIC_BADELE_API_KEY=pk_live_…
+NUXT_PUBLIC_FINGERLY_API_KEY=pk_live_…
 ```
 
 The environment wins, and that is the point. Nuxt reads `runtimeConfig.public`
@@ -38,8 +38,8 @@ The key is a **public** SDK key, scoped to the origins you list against it,
 which is what makes it safe in a page. A **secret** key is refused by the API
 whenever a request carries an `Origin`.
 
-The module also publishes `badele.endpoint` and `badele.submit`, overridable
-the same way with `NUXT_PUBLIC_BADELE_ENDPOINT` and `NUXT_PUBLIC_BADELE_SUBMIT`.
+The module also publishes `fingerly.endpoint` and `fingerly.submit`, overridable
+the same way with `NUXT_PUBLIC_FINGERLY_ENDPOINT` and `NUXT_PUBLIC_FINGERLY_SUBMIT`.
 
 ## Use it
 
@@ -56,7 +56,7 @@ const { matched, reasons } = useVerdict('incognito')
 </template>
 ```
 
-`useIdentify` · `useVerdict` · `useBadele` — the same three from `@badele/vue`,
+`useIdentify` · `useVerdict` · `useFingerly` — the same three from `@fingerly/vue`,
 unchanged. Their full surface is in that
 [package's README](../vue/README.md): `immediate`, `refresh`, a correlation
 `tag`, confidence floors, `isSuspicious`.
@@ -72,7 +72,7 @@ page can call `useIdentify()` in `setup()` during the server render, render its
 A client-only plugin would instead make the composable throw during the server
 render Nuxt does first, which is the failure this arrangement exists to avoid.
 
-Calling `identify()` directly on the server rejects with `BadeleServerError`
+Calling `identify()` directly on the server rejects with `FingerlyServerError`
 and a message saying what to do instead.
 
 ## A missing key is a runtime problem, not a build one
@@ -82,8 +82,8 @@ the module cannot fail the build over an empty one. The plugin warns instead,
 naming the variable, and installs anyway:
 
 ```
-[badele] No SDK key. Set NUXT_PUBLIC_BADELE_API_KEY in the environment, or
-badele.apiKey in nuxt.config.ts. Identification will fail until one is set.
+[fingerly] No SDK key. Set NUXT_PUBLIC_FINGERLY_API_KEY in the environment, or
+fingerly.apiKey in nuxt.config.ts. Identification will fail until one is set.
 ```
 
 Installing anyway is the point. Throwing would take an app down over a fraud
@@ -98,7 +98,7 @@ at the moment somebody is looking for it.
 `playground/` is a real Nuxt app with the module loaded from `src/`:
 
 ```
-pnpm --filter @badele/nuxt playground
+pnpm --filter @fingerly/nuxt playground
 ```
 
 Open it twice — an ordinary window and a private one — and watch the incognito

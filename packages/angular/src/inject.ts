@@ -14,26 +14,26 @@ import {
   Injector,
   type Signal,
 } from '@angular/core'
-import type { Confidence, Verdict, Verdicts } from '@badele/web-js'
+import type { Confidence, Verdict, Verdicts } from '@fingerly/web-js'
 
-import { BADELE } from './provide.js'
-import type { Badele } from './state.js'
+import { FINGERLY } from './provide.js'
+import type { Fingerly } from './state.js'
 
 export type VerdictName = keyof Verdicts
 
 /** The shared state. Throws, with an explanation, if nothing provided it. */
-export function injectBadele(): Badele {
-  const badele = inject(BADELE, { optional: true })
+export function injectFingerly(): Fingerly {
+  const fingerly = inject(FINGERLY, { optional: true })
 
-  if (!badele) {
+  if (!fingerly) {
     throw new Error(
-      'No Badele provider found. Add one where the application is bootstrapped:\n\n' +
-        "  import { provideBadele } from '@badele/angular'\n" +
-        "  bootstrapApplication(App, { providers: [provideBadele({ apiKey: 'pk_live_…' })] })",
+      'No Fingerly provider found. Add one where the application is bootstrapped:\n\n' +
+        "  import { provideFingerly } from '@fingerly/angular'\n" +
+        "  bootstrapApplication(App, { providers: [provideFingerly({ apiKey: 'pk_live_…' })] })",
     )
   }
 
-  return badele
+  return fingerly
 }
 
 export interface InjectIdentifyOptions {
@@ -65,15 +65,15 @@ export interface InjectIdentifyOptions {
  *
  * ```ts
  * @Component({
- *   template: `@if (badele.isSuspicious()) { <p>Unusual session</p> }`,
+ *   template: `@if (fingerly.isSuspicious()) { <p>Unusual session</p> }`,
  * })
  * export class Checkout {
- *   readonly badele = injectIdentify({ immediate: true })
+ *   readonly fingerly = injectIdentify({ immediate: true })
  * }
  * ```
  */
-export function injectIdentify(options: InjectIdentifyOptions = {}): Badele {
-  const badele = injectBadele()
+export function injectIdentify(options: InjectIdentifyOptions = {}): Fingerly {
+  const fingerly = injectFingerly()
   const injector = inject(Injector)
 
   const resolveTag = (override?: string): string | undefined =>
@@ -83,21 +83,21 @@ export function injectIdentify(options: InjectIdentifyOptions = {}): Badele {
   // this component makes and not only to the one `immediate` starts. Every
   // signal below is the shared one; what is per-component here is the tag,
   // and nothing else.
-  const identify: Badele['identify'] = (callOptions = {}) => {
+  const identify: Fingerly['identify'] = (callOptions = {}) => {
     const tag = resolveTag(callOptions.tag)
-    return badele.identify({
+    return fingerly.identify({
       ...(tag === undefined ? {} : { tag }),
       ...(callOptions.force === undefined ? {} : { force: callOptions.force }),
     })
   }
 
-  const refresh: Badele['refresh'] = (callOptions = {}) => identify({ ...callOptions, force: true })
+  const refresh: Fingerly['refresh'] = (callOptions = {}) => identify({ ...callOptions, force: true })
 
   if (options.immediate) {
     afterNextRender(
       () => {
         // The rejection is swallowed rather than left to become an unhandled
-        // one: the failure is already in `badele.error()`, which is where a
+        // one: the failure is already in `fingerly.error()`, which is where a
         // component that opted into `immediate` will look for it. A caller who
         // wants to await the outcome calls identify() themselves.
         void identify().catch(() => undefined)
@@ -106,7 +106,7 @@ export function injectIdentify(options: InjectIdentifyOptions = {}): Badele {
     )
   }
 
-  return { ...badele, identify, refresh }
+  return { ...fingerly, identify, refresh }
 }
 
 export interface InjectVerdictResult {
@@ -145,7 +145,7 @@ export function injectVerdict(
   name: VerdictName | Signal<VerdictName> | (() => VerdictName),
   options: { min?: Confidence | Signal<Confidence> | (() => Confidence) } = {},
 ): InjectVerdictResult {
-  const badele = injectBadele()
+  const fingerly = injectFingerly()
 
   const which = computed(() => (typeof name === 'function' ? name() : name))
   const floor = computed(() =>
@@ -153,7 +153,7 @@ export function injectVerdict(
   )
 
   const verdict = computed<Verdict | null>(() => {
-    const all = badele.verdicts()
+    const all = fingerly.verdicts()
     return all ? (all[which()] as Verdict) : null
   })
 

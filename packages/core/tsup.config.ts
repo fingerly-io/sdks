@@ -8,6 +8,6 @@ export default defineConfig({
   treeshake: true,
   // No `platform: 'browser'`. This package must run unchanged in a page, in
   // Node and in a React Native bundle, which is the whole reason the collectors
-  // live in @badele/web-js instead of here.
+  // live in @fingerly/web-js instead of here.
   target: 'es2020',
 })

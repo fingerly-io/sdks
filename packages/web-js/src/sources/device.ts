@@ -20,7 +20,7 @@ import {
   type SpeechSignal,
   type TouchSignal,
   type TimezoneSignal,
-} from '@badele/core'
+} from '@fingerly/core'
 
 import { attempt, compact, requireWindow } from '../util.js'
 

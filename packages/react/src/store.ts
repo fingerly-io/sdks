@@ -17,21 +17,21 @@
 import {
   type IdentifyTrigger,
   load,
-  type BadeleClient,
+  type FingerlyClient,
   type IdentifyResult,
   type SignalReport,
   type Verdicts,
-} from '@badele/web-js'
+} from '@fingerly/web-js'
 
-/** Options for [[createBadeleStore]] and for `<BadeleProvider>`. */
-export interface BadeleReactOptions {
+/** Options for [[createFingerlyStore]] and for `<FingerlyProvider>`. */
+export interface FingerlyReactOptions {
   /** The SDK key from the dashboard. A public key is safe in a page. */
   apiKey: string
   /** Origin of the API. Defaults to production. */
   endpoint?: string
   /** Ordered first-party ingestion endpoints. */
   endpoints?: string | readonly string[]
-  /** Try the regional Badele API only after custom endpoints fail. */
+  /** Try the regional Fingerly API only after custom endpoints fail. */
   fallbackToDefaultEndpoint?: boolean
   /**
    * Collect and score without submitting anything.
@@ -46,7 +46,7 @@ export interface BadeleReactOptions {
 }
 
 /** The result of the page's one identification, as components see it. */
-export interface BadeleState {
+export interface FingerlyState {
   requestId: string | null
 
   /**
@@ -84,7 +84,7 @@ export interface BadeleState {
  * `getState()` that built a fresh object per call would re-render forever -
  * the loop React reports as "The result of getSnapshot should be cached".
  */
-const INITIAL: BadeleState = Object.freeze({
+const INITIAL: FingerlyState = Object.freeze({
   requestId: null,
   visitorId: null,
   visitorIsNew: false,
@@ -104,17 +104,17 @@ const INITIAL: BadeleState = Object.freeze({
   isLoading: false,
 })
 
-/** What `useBadele()` returns, and what the provider puts in context. */
-export interface BadeleStore {
-  readonly options: BadeleReactOptions
+/** What `useFingerly()` returns, and what the provider puts in context. */
+export interface FingerlyStore {
+  readonly options: FingerlyReactOptions
   /** Register for state changes; returns the unsubscribe. */
   subscribe(listener: () => void): () => void
   /** The current state. Stable by identity until something changes. */
-  getState(): BadeleState
+  getState(): FingerlyState
   /** The state a server render sees: the initial one, always. */
-  getServerState(): BadeleState
+  getServerState(): FingerlyState
   /** The underlying client, built on first use. */
-  client(): Promise<BadeleClient>
+  client(): Promise<FingerlyClient>
   /**
    * Identify, at most once unless asked otherwise.
    *
@@ -131,11 +131,11 @@ export interface BadeleStore {
 }
 
 /** Thrown when the SDK is asked to collect somewhere there is no browser. */
-export class BadeleServerError extends Error {
-  override readonly name = 'BadeleServerError'
+export class FingerlyServerError extends Error {
+  override readonly name = 'FingerlyServerError'
   constructor() {
     super(
-      'Badele collects signals from a browser and cannot run during server-side rendering. ' +
+      'Fingerly collects signals from a browser and cannot run during server-side rendering. ' +
         'Call identify() from an effect, or pass { immediate: true } to useIdentify(), ' +
         'which already waits for the client.',
     )
@@ -150,11 +150,11 @@ export class BadeleServerError extends Error {
  * choice of *when* away from the page that knows, and would do it during a
  * render rather than after one.
  */
-export function createBadeleStore(options: BadeleReactOptions): BadeleStore {
-  let state: BadeleState = INITIAL
+export function createFingerlyStore(options: FingerlyReactOptions): FingerlyStore {
+  let state: FingerlyState = INITIAL
   const listeners = new Set<() => void>()
 
-  const setState = (patch: Partial<BadeleState>): void => {
+  const setState = (patch: Partial<FingerlyState>): void => {
     state = { ...state, ...patch }
     // A plain loop over a copy: a listener that unsubscribes as it runs - a
     // component unmounting in response to the verdict - must not perturb the
@@ -162,11 +162,11 @@ export function createBadeleStore(options: BadeleReactOptions): BadeleStore {
     for (const listener of [...listeners]) listener()
   }
 
-  let clientPromise: Promise<BadeleClient> | undefined
+  let clientPromise: Promise<FingerlyClient> | undefined
   let current: Promise<IdentifyResult> | undefined
 
-  const client = (): Promise<BadeleClient> => {
-    if (typeof window === 'undefined') return Promise.reject(new BadeleServerError())
+  const client = (): Promise<FingerlyClient> => {
+    if (typeof window === 'undefined') return Promise.reject(new FingerlyServerError())
     // Built once and memoised. `load()` is cheap today but is the documented
     // place for future warm-up work, and warming up per component would undo
     // it.
@@ -179,8 +179,8 @@ export function createBadeleStore(options: BadeleReactOptions): BadeleStore {
     return clientPromise
   }
 
-  const identify: BadeleStore['identify'] = (identifyOptions = {}) => {
-    if (typeof window === 'undefined') return Promise.reject(new BadeleServerError())
+  const identify: FingerlyStore['identify'] = (identifyOptions = {}) => {
+    if (typeof window === 'undefined') return Promise.reject(new FingerlyServerError())
 
     // One promise for the page, in flight or already settled. This is what
     // makes `useIdentify({ immediate: true })` safe in as many components as
@@ -203,8 +203,8 @@ export function createBadeleStore(options: BadeleReactOptions): BadeleStore {
     queueMicrotask(() => setState({ isLoading: true, error: null }))
 
     const run = client()
-      .then((badele) =>
-        badele.identify({
+      .then((fingerly) =>
+        fingerly.identify({
           ...(identifyOptions.tag === undefined ? {} : { tag: identifyOptions.tag }),
           ...(options.submit === undefined ? {} : { submit: options.submit }),
         }),

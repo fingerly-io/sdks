@@ -2,7 +2,7 @@
 
 import { useActionState } from 'react'
 
-import { BadeleRequestId, useIdentify, useVerdict, type VerdictName } from '@badele/next'
+import { FingerlyRequestId, useIdentify, useVerdict, type VerdictName } from '@fingerly/next'
 import { submit } from './actions'
 
 const NAMES: VerdictName[] = ['incognito', 'shields', 'tor', 'emulator', 'automation', 'farm']
@@ -48,24 +48,24 @@ function Verdict({ name }: { name: VerdictName }) {
 }
 
 export default function Page() {
-  const badele = useIdentify({ immediate: true, tag: 'next-demo' })
+  const fingerly = useIdentify({ immediate: true, tag: 'next-demo' })
   const [result, action, pending] = useActionState(submit, null)
 
   return (
     <>
-      <h1 style={{ fontSize: 16, margin: '0 0 16px' }}>Badele — Next binding</h1>
+      <h1 style={{ fontSize: 16, margin: '0 0 16px' }}>Fingerly — Next binding</h1>
 
       <div style={card}>
         <h3 style={{ fontSize: 11, margin: '0 0 8px', color: '#8b93a7', textTransform: 'uppercase' }}>
           state
         </h3>
-        <Row label="isReady" value={badele.isReady} />
-        <Row label="isSuspicious" value={badele.isSuspicious} hit={badele.isSuspicious} />
-        <Row label="requestId" value={badele.requestId ?? '— (submit: false)'} />
-        <Row label="sources" value={badele.report ? Object.keys(badele.report.sources).length : '—'} />
-        <Row label="elapsed_ms" value={badele.report?.elapsed_ms ?? '—'} />
-        <Row label="engine" value={badele.report?.integrity.engine.observed ?? '—'} />
-        {badele.error && <Row label="error" value={badele.error.message} hit />}
+        <Row label="isReady" value={fingerly.isReady} />
+        <Row label="isSuspicious" value={fingerly.isSuspicious} hit={fingerly.isSuspicious} />
+        <Row label="requestId" value={fingerly.requestId ?? '— (submit: false)'} />
+        <Row label="sources" value={fingerly.report ? Object.keys(fingerly.report.sources).length : '—'} />
+        <Row label="elapsed_ms" value={fingerly.report?.elapsed_ms ?? '—'} />
+        <Row label="engine" value={fingerly.report?.integrity.engine.observed ?? '—'} />
+        {fingerly.error && <Row label="error" value={fingerly.error.message} hit />}
       </div>
 
       {/*
@@ -91,7 +91,7 @@ export default function Page() {
             marginRight: 8,
           }}
         />
-        <BadeleRequestId />
+        <FingerlyRequestId />
         <button
           type="submit"
           disabled={pending}

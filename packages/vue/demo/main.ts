@@ -1,7 +1,7 @@
 /**
  * The Vue binding, driving the real SDK in a real browser.
  *
- * The unit tests mock `@badele/web-js`, which is right for testing the Vue
+ * The unit tests mock `@fingerly/web-js`, which is right for testing the Vue
  * layer and proves nothing about the two fitting together. This does the
  * opposite: no mocks, the real collectors, and the composables used exactly as
  * the README documents them.
@@ -12,7 +12,7 @@
 
 import { createApp, defineComponent, h } from 'vue'
 
-import { createBadele, useIdentify, useVerdict, type VerdictName } from '../src/index.js'
+import { createFingerly, useIdentify, useVerdict, type VerdictName } from '../src/index.js'
 
 const row = (label: string, value: unknown, className = '') =>
   h('div', { class: `row ${className}` }, [
@@ -55,7 +55,7 @@ const App = defineComponent({
 
     return () =>
       h('div', [
-        h('h1', 'Badele — Vue binding'),
+        h('h1', 'Fingerly — Vue binding'),
         h('div', { class: 'bar' }, [
           h('button', { onClick: () => void identify().catch(() => undefined) }, 'identify()'),
           h('button', { onClick: () => void refresh().catch(() => undefined) }, 'refresh()'),
@@ -87,11 +87,11 @@ const App = defineComponent({
 const app = createApp(App)
 
 // submit: false - the demo collects and scores locally, and sends nothing.
-app.use(createBadele({ apiKey: 'pk_demo', submit: false }))
+app.use(createFingerly({ apiKey: 'pk_demo', submit: false }))
 app.mount('#app')
 
 // Read back by the browser check. The context carries the shared state, so a
 // diagnostic can see exactly what every component is seeing.
-;(window as unknown as { __badeleApp: unknown }).__badeleApp = app
-;(window as unknown as { __badele: unknown }).__badele =
-  app.config.globalProperties.$badele
+;(window as unknown as { __fingerlyApp: unknown }).__fingerlyApp = app
+;(window as unknown as { __fingerly: unknown }).__fingerly =
+  app.config.globalProperties.$fingerly

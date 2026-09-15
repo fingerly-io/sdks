@@ -1,5 +1,5 @@
 {
-  "name": "@badele/contract",
+  "name": "@fingerly/contract",
   "version": "0.0.0",
   "private": true,
   "description": "API contract (OpenAPI spec + generated types) synced from the server repo",

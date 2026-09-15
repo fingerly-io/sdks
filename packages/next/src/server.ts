@@ -1,5 +1,5 @@
 /**
- * `@badele/next/server` - the half that runs where there is no browser.
+ * `@fingerly/next/server` - the half that runs where there is no browser.
  *
  * A separate entry, and it has to be. Everything in the main entry is a
  * `'use client'` module, and a Server Action that imported from there would
@@ -10,8 +10,8 @@
  */
 
 import { REQUEST_ID_FIELD } from './field-name.js'
-export { createProxy as createBadeleProxy } from '@badele/node'
-export type { ProxyOptions as BadeleProxyOptions } from '@badele/node'
+export { createProxy as createFingerlyProxy } from '@fingerly/node'
+export type { ProxyOptions as FingerlyProxyOptions } from '@fingerly/node'
 
 export { REQUEST_ID_FIELD }
 
@@ -20,7 +20,7 @@ export { REQUEST_ID_FIELD }
  *
  * The field arrives from a page, which means it arrives from whoever is
  * driving the browser - it is form input like any other, and a server that
- * logs or joins on it unchecked is one `<input name="badele_request_id">` away
+ * logs or joins on it unchecked is one `<input name="fingerly_request_id">` away
  * from storing whatever the visitor typed. A real one is a short opaque token,
  * so anything longer is not a truncation case, it is a different thing
  * arriving.
@@ -31,11 +31,11 @@ const MAX_LENGTH = 128
 const SHAPE = /^[A-Za-z0-9_-]+$/
 
 /**
- * Read the `requestId` a `<BadeleRequestId />` field carried into an action.
+ * Read the `requestId` a `<FingerlyRequestId />` field carried into an action.
  *
  * ```ts
  * 'use server'
- * import { readRequestId } from '@badele/next/server'
+ * import { readRequestId } from '@fingerly/next/server'
  *
  * export async function signUp(formData: FormData) {
  *   const requestId = readRequestId(formData)

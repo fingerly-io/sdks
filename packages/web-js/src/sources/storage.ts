@@ -3,7 +3,7 @@
  *
  * There is no single incognito tell. Each engine closes the last leak and opens
  * a new one, so this runs a narrow probe per engine and reports each answer
- * separately - the verdict is assembled in `@badele/core`'s `detect/incognito`,
+ * separately - the verdict is assembled in `@fingerly/core`'s `detect/incognito`,
  * where the engine gate lives.
  *
  * That split is deliberate. `detectincognitojs` returns one boolean, which
@@ -11,7 +11,7 @@
  * verdict defensible when a customer asks why a user was challenged.
  */
 
-import { SOURCE, UnsupportedSignal, type Source, type StorageSignal } from '@badele/core'
+import { SOURCE, UnsupportedSignal, type Source, type StorageSignal } from '@fingerly/core'
 
 import { attempt, compact, requireWindow } from '../util.js'
 
@@ -26,7 +26,7 @@ function storageWorks(area: 'localStorage' | 'sessionStorage'): boolean {
   try {
     const store = window[area]
     if (!store) return false
-    const key = '__badele_probe__'
+    const key = '__fingerly_probe__'
     store.setItem(key, '1')
     store.removeItem(key)
     return true

@@ -64,7 +64,7 @@ export interface SourceContext {
  * data. A source in that position must detect the condition and decline, which
  * is what [[SourceContext.completed]] is for.
  *
- * `tests/no-permission-prompts.test.ts` in `@badele/web-js` enforces the list.
+ * `tests/no-permission-prompts.test.ts` in `@fingerly/web-js` enforces the list.
  */
 export interface Source<T = unknown> {
   readonly id: string

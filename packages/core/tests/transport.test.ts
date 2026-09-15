@@ -92,10 +92,10 @@ describe('HttpTransport retry idempotency', () => {
     }) as typeof fetch
 
     await new HttpTransport({
-      apiKey: 'bd_pk_eu_production_example', fetchImpl,
+      apiKey: 'fly_pk_eu_production_example', fetchImpl,
     }).submit(submission())
 
-    expect(requested).toEqual(['https://eu.api.badele.io/api/v1/identify'])
+    expect(requested).toEqual(['https://eu.api.fingerly.io/api/v1/identify'])
   })
 
   it('fails over in order with the same body and idempotency key', async () => {
@@ -108,7 +108,7 @@ describe('HttpTransport retry idempotency', () => {
     }) as typeof fetch
 
     await new HttpTransport({
-      apiKey: 'bd_pk_eu_production_example',
+      apiKey: 'fly_pk_eu_production_example',
       endpoints: '/neutral-route',
       fallbackToDefaultEndpoint: true,
       maxAttempts: 2,
@@ -117,7 +117,7 @@ describe('HttpTransport retry idempotency', () => {
 
     expect(calls.map((call) => call.url)).toEqual([
       '/neutral-route/api/v1/identify',
-      'https://eu.api.badele.io/api/v1/identify',
+      'https://eu.api.fingerly.io/api/v1/identify',
     ])
     expect(calls[1]?.init?.body).toBe(calls[0]?.init?.body)
     expect(header(calls[1]?.init, 'Idempotency-Key')).toBe(header(calls[0]?.init, 'Idempotency-Key'))
@@ -131,7 +131,7 @@ describe('HttpTransport retry idempotency', () => {
     }) as typeof fetch
 
     await expect(new HttpTransport({
-      apiKey: 'bd_pk_us_production_example', endpoints: '/neutral-route', maxAttempts: 2, fetchImpl,
+      apiKey: 'fly_pk_us_production_example', endpoints: '/neutral-route', maxAttempts: 2, fetchImpl,
     }).submit(submission())).rejects.toBeInstanceOf(TransportError)
 
     expect(requested).toEqual([

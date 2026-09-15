@@ -1,7 +1,7 @@
 /**
  * The React binding, driving the real SDK in a real browser.
  *
- * The unit tests mock `@badele/web-js`, which is right for testing the React
+ * The unit tests mock `@fingerly/web-js`, which is right for testing the React
  * layer and proves nothing about the two fitting together. This does the
  * opposite: no mocks, the real collectors, and the hooks used exactly as the
  * README documents them.
@@ -13,7 +13,7 @@
 import { StrictMode, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
 
-import { BadeleProvider, useIdentify, useVerdict, type VerdictName } from '../src/index.js'
+import { FingerlyProvider, useIdentify, useVerdict, type VerdictName } from '../src/index.js'
 
 const NAMES: VerdictName[] = ['incognito', 'shields', 'tor', 'emulator', 'automation', 'farm']
 
@@ -83,13 +83,13 @@ function Report() {
 function App() {
   return (
     <>
-      <h1>Badele — React binding</h1>
+      <h1>Fingerly — React binding</h1>
       {/* submit: false - the demo collects and scores locally, and sends nothing. */}
-      <BadeleProvider apiKey="pk_demo" submit={false}>
+      <FingerlyProvider apiKey="pk_demo" submit={false}>
         <Suspense fallback={<p className="status">collecting…</p>}>
           <Report />
         </Suspense>
-      </BadeleProvider>
+      </FingerlyProvider>
     </>
   )
 }

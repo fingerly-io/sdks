@@ -2,7 +2,7 @@
  * Small helpers every collector needs.
  */
 
-import { BlockedSignal, UnsupportedSignal } from '@badele/core'
+import { BlockedSignal, UnsupportedSignal } from '@fingerly/core'
 
 /**
  * A version of `T` whose optional fields may be explicitly undefined.

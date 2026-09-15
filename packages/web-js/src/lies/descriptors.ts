@@ -10,7 +10,7 @@
  * Neither trace can be removed without removing the spoof.
  */
 
-import type { Lie } from '@badele/core'
+import type { Lie } from '@fingerly/core'
 
 import { attempt } from '../util.js'
 

@@ -4,12 +4,12 @@
  * Carrying the identification into a Server Action.
  */
 
-import { useIdentify } from '@badele/react'
+import { useIdentify } from '@fingerly/react'
 import type { ReactNode } from 'react'
 
 import { REQUEST_ID_FIELD } from './field-name.js'
 
-export interface BadeleRequestIdProps {
+export interface FingerlyRequestIdProps {
   /** Overrides the field name. Read it back with the same value. */
   name?: string
   /**
@@ -30,7 +30,7 @@ export interface BadeleRequestIdProps {
  * ```tsx
  * <form action={signUp}>
  *   <input name="email" />
- *   <BadeleRequestId />
+ *   <FingerlyRequestId />
  *   <button>Create account</button>
  * </form>
  * ```
@@ -40,9 +40,9 @@ export interface BadeleRequestIdProps {
  * keeps working without JavaScript having hydrated - the field is in the HTML
  * and empty rather than absent, which the server can tell apart.
  *
- * Read it back with `readRequestId(formData)` from `@badele/next/server`.
+ * Read it back with `readRequestId(formData)` from `@fingerly/next/server`.
  */
-export function BadeleRequestId({ name, immediate = true }: BadeleRequestIdProps = {}): ReactNode {
+export function FingerlyRequestId({ name, immediate = true }: FingerlyRequestIdProps = {}): ReactNode {
   const { requestId } = useIdentify({ immediate })
 
   return (

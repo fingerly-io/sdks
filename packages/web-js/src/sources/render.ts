@@ -23,7 +23,7 @@ import {
   type SourceContext,
   type TimingSignal,
   type WebGLSignal,
-} from '@badele/core'
+} from '@fingerly/core'
 
 import { asBlockedIfRefused, attempt, compact, requireWindow } from '../util.js'
 
@@ -76,11 +76,11 @@ function renderText(): string {
   // different font on most systems, so the composite width reveals more of the
   // font stack than a Latin string alone would.
   ctx.font = '11pt "Times New Roman"'
-  ctx.fillText('Badele <canvas> 1.0 \u{1F512}Ж中', 2, 15)
+  ctx.fillText('Fingerly <canvas> 1.0 \u{1F512}Ж中', 2, 15)
 
   ctx.font = '18pt Arial'
   ctx.fillStyle = 'rgba(102, 204, 0, 0.7)'
-  ctx.fillText('Badele <canvas> 1.0', 4, 45)
+  ctx.fillText('Fingerly <canvas> 1.0', 4, 45)
 
   return canvas.toDataURL()
 }

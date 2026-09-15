@@ -1,3 +1,3 @@
-// The canonical SDK contract lives in the standalone @badele/types package.
-// This re-export preserves every existing @badele/core and relative type import.
-export type * from '@badele/types'
+// The canonical SDK contract lives in the standalone @fingerly/types package.
+// This re-export preserves every existing @fingerly/core and relative type import.
+export type * from '@fingerly/types'

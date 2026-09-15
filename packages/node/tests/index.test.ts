@@ -13,61 +13,61 @@ describe('verifyWebhook', () => {
 })
 
 describe('event client', () => {
-  it('keeps regionless legacy keys on the compatibility endpoint', async () => {
+  it('uses the default endpoint for an unrecognized key', async () => {
     let target = ''
     const client = load({
-      secretKey: 'legacy-secret',
+      secretKey: 'not-a-fingerly-key',
       fetchImpl: async (input) => {
         target = String(input)
         return Response.json({ rows: [], page: 1, page_size: 50 })
       },
     })
     await client.events.list()
-    expect(target).toBe('https://api.badele.io/api/v1/events')
+    expect(target).toBe('https://api.fingerly.io/api/v1/events')
   })
 
   it('scopes reads through the secret key and encodes filters', async () => {
     let seen: { url: string; key: string | null } | undefined
-    const client = load({ secretKey: 'sk_test', endpoint: 'https://badele.test', fetchImpl: async (input, init) => {
+    const client = load({ secretKey: 'sk_test', endpoint: 'https://fingerly.test', fetchImpl: async (input, init) => {
       seen = { url: String(input), key: new Headers(init?.headers).get('x-api-key') }
       return Response.json({ rows: [], page: 1, page_size: 20 })
     } })
     await client.events.list({ limit: 20, level: 'high' })
-    expect(seen).toEqual({ url: 'https://badele.test/api/v1/events?limit=20&level=high', key: 'sk_test' })
+    expect(seen).toEqual({ url: 'https://fingerly.test/api/v1/events?limit=20&level=high', key: 'sk_test' })
   })
 })
 
 describe('same-origin proxy', () => {
   it('forwards trusted visitor metadata and only accepted SDK paths', async () => {
     let upstream: Request | undefined
-    const proxy = createProxy({ proxyKey: 'bd_px_eu_production_proxy', clientIp: () => '203.0.113.10', fetchImpl: async (input, init) => {
+    const proxy = createProxy({ proxyKey: 'fly_px_eu_production_proxy', clientIp: () => '203.0.113.10', fetchImpl: async (input, init) => {
       upstream = new Request(input, init)
       return Response.json({ request_id: 'one' })
     } })
-    const response = await proxy(new Request('https://shop.test/api/badele/api/v1/identify', {
-      method: 'POST', headers: { origin: 'https://shop.test', 'user-agent': 'Firefox', 'x-api-key': 'bd_pk_eu_production_public' }, body: '{}',
+    const response = await proxy(new Request('https://shop.test/api/fingerly/api/v1/identify', {
+      method: 'POST', headers: { origin: 'https://shop.test', 'user-agent': 'Firefox', 'x-api-key': 'fly_pk_eu_production_public' }, body: '{}',
     }))
     expect(response.status).toBe(200)
-    expect(upstream?.url).toBe('https://eu.api.badele.io/api/v1/identify')
-    expect(upstream?.headers.get('x-badele-client-ip')).toBe('203.0.113.10')
-    expect(upstream?.headers.get('x-badele-origin')).toBe('https://shop.test')
-    expect(upstream?.headers.get('x-api-key')).toBe('bd_pk_eu_production_public')
-    expect(upstream?.headers.get('x-badele-proxy-key')).toBe('bd_px_eu_production_proxy')
+    expect(upstream?.url).toBe('https://eu.api.fingerly.io/api/v1/identify')
+    expect(upstream?.headers.get('x-fingerly-client-ip')).toBe('203.0.113.10')
+    expect(upstream?.headers.get('x-fingerly-origin')).toBe('https://shop.test')
+    expect(upstream?.headers.get('x-api-key')).toBe('fly_pk_eu_production_public')
+    expect(upstream?.headers.get('x-fingerly-proxy-key')).toBe('fly_px_eu_production_proxy')
     expect(upstream?.headers.get('cookie')).toBeNull()
     expect(response.headers.get('cache-control')).toBe('no-store')
 
-    expect((await proxy(new Request('https://shop.test/api/badele/admin', { method: 'POST' }))).status).toBe(404)
+    expect((await proxy(new Request('https://shop.test/api/fingerly/admin', { method: 'POST' }))).status).toBe(404)
   })
 
   it('rejects missing public keys and oversized bodies before forwarding', async () => {
     let calls = 0
     const proxy = createProxy({
-      proxyKey: 'bd_px_eu_development_proxy', maxBodyBytes: 2, clientIp: () => '203.0.113.10',
+      proxyKey: 'fly_px_eu_development_proxy', maxBodyBytes: 2, clientIp: () => '203.0.113.10',
       fetchImpl: async () => { calls++; return Response.json({}) },
     })
-    expect((await proxy(new Request('https://shop.test/api/badele/api/v1/identify', { method: 'POST', body: '{}' }))).status).toBe(401)
-    expect((await proxy(new Request('https://shop.test/api/badele/api/v1/identify', {
-      method: 'POST', headers: { 'x-api-key': 'bd_pk_eu_development_public' }, body: 'long',
+    expect((await proxy(new Request('https://shop.test/api/fingerly/api/v1/identify', { method: 'POST', body: '{}' }))).status).toBe(401)
+    expect((await proxy(new Request('https://shop.test/api/fingerly/api/v1/identify', {
+      method: 'POST', headers: { 'x-api-key': 'fly_pk_eu_development_public' }, body: 'long',
     }))).status).toBe(413)
     expect(calls).toBe(0)
   })

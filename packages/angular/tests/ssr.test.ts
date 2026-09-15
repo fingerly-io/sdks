@@ -13,12 +13,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const identifyMock = vi.fn()
 const loadMock = vi.fn()
 
-vi.mock('@badele/web-js', () => ({
+vi.mock('@fingerly/web-js', () => ({
   load: (...args: unknown[]) => loadMock(...args),
   TransportError: class TransportError extends Error {},
 }))
 
-const { createBadele, BadeleServerError } = await import('../src/state.js')
+const { createFingerly, FingerlyServerError } = await import('../src/state.js')
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -32,22 +32,22 @@ describe('under SSR', () => {
   })
 
   it('builds the state without touching the browser', () => {
-    const badele = createBadele({ apiKey: 'pk_test' })
+    const fingerly = createFingerly({ apiKey: 'pk_test' })
 
     // The application injector builds this during a server render, so it has
     // to be inert there: the page renders its "not yet identified" state and
     // the browser picks it up on hydration.
-    expect(badele.isReady()).toBe(false)
-    expect(badele.isSuspicious()).toBe(false)
+    expect(fingerly.isReady()).toBe(false)
+    expect(fingerly.isSuspicious()).toBe(false)
     expect(loadMock).not.toHaveBeenCalled()
   })
 
   it('rejects a direct identify() with a message that says what to do', async () => {
-    const badele = createBadele({ apiKey: 'pk_test' })
+    const fingerly = createFingerly({ apiKey: 'pk_test' })
 
-    await expect(badele.identify()).rejects.toBeInstanceOf(BadeleServerError)
-    await expect(badele.identify()).rejects.toThrow(/cannot run during server-side rendering/)
-    await expect(badele.identify()).rejects.toThrow(/immediate: true/)
+    await expect(fingerly.identify()).rejects.toBeInstanceOf(FingerlyServerError)
+    await expect(fingerly.identify()).rejects.toThrow(/cannot run during server-side rendering/)
+    await expect(fingerly.identify()).rejects.toThrow(/immediate: true/)
     expect(identifyMock).not.toHaveBeenCalled()
   })
 })

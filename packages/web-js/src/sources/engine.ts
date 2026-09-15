@@ -20,7 +20,7 @@ import {
   type ErrorsSignal,
   type MathSignal,
   type Source,
-} from '@badele/core'
+} from '@fingerly/core'
 
 import { attempt, compact } from '../util.js'
 

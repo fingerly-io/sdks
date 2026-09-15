@@ -14,19 +14,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const identifyMock = vi.fn()
 const loadMock = vi.fn()
 
-vi.mock('@badele/web-js', () => ({
+vi.mock('@fingerly/web-js', () => ({
   load: (...args: unknown[]) => loadMock(...args),
   TransportError: class TransportError extends Error {},
 }))
 
-const { BadeleProvider } = await import('../src/provider.js')
-const { BadeleRequestId } = await import('../src/field.js')
+const { FingerlyProvider } = await import('../src/provider.js')
+const { FingerlyRequestId } = await import('../src/field.js')
 
 beforeEach(() => {
   vi.clearAllMocks()
   identifyMock.mockResolvedValue({ requestId: 'req_1', verdicts: {}, report: {} })
   loadMock.mockResolvedValue({ identify: identifyMock })
-  ;(process.env as Record<string, string | undefined>).NEXT_PUBLIC_BADELE_API_KEY = 'pk_from_env'
+  ;(process.env as Record<string, string | undefined>).NEXT_PUBLIC_FINGERLY_API_KEY = 'pk_from_env'
 })
 
 describe('under SSR', () => {
@@ -36,17 +36,17 @@ describe('under SSR', () => {
 
   it('renders the provider and the field without collecting anything', () => {
     const html = renderToString(
-      <BadeleProvider>
+      <FingerlyProvider>
         <form>
-          <BadeleRequestId />
+          <FingerlyRequestId />
         </form>
-      </BadeleProvider>,
+      </FingerlyProvider>,
     )
 
     // The field is in the server-rendered HTML and empty. That is the
     // difference between a form that submits early and one that never had a
     // field: the server can tell them apart.
-    expect(html).toContain(`name="badele_request_id"`)
+    expect(html).toContain(`name="fingerly_request_id"`)
     expect(html).toContain('type="hidden"')
     expect(loadMock).not.toHaveBeenCalled()
     expect(identifyMock).not.toHaveBeenCalled()
@@ -56,14 +56,14 @@ describe('under SSR', () => {
     // The same variable, read the same way, in both renders - a provider that
     // found a key on the server and none after hydration would identify only
     // for visitors who never reloaded.
-    delete (process.env as Record<string, string | undefined>).NEXT_PUBLIC_BADELE_API_KEY
+    delete (process.env as Record<string, string | undefined>).NEXT_PUBLIC_FINGERLY_API_KEY
 
     expect(() =>
       renderToString(
-        <BadeleProvider>
+        <FingerlyProvider>
           <span />
-        </BadeleProvider>,
+        </FingerlyProvider>,
       ),
-    ).toThrow(/NEXT_PUBLIC_BADELE_API_KEY/)
+    ).toThrow(/NEXT_PUBLIC_FINGERLY_API_KEY/)
   })
 })

@@ -2,7 +2,7 @@
 
 Written for the integrator, and for the privacy notice they have to write.
 
-If you are embedding a badele SDK, you are the controller for the data it
+If you are embedding a fingerly SDK, you are the controller for the data it
 collects about your visitors and we are your processor. That means the notice,
 the legal basis and the consent are yours to get right — and you cannot do any
 of it without knowing exactly what the code reads. This document is that list.
@@ -65,7 +65,7 @@ The SDK does **not** write cookies, localStorage, sessionStorage or IndexedDB
 entries of its own. It reads whether those APIs work as a signal; it does not
 persist an identifier on the device.
 
-This matters for your notice: there is no badele cookie to list. The
+This matters for your notice: there is no fingerly cookie to list. The
 identifier is minted server-side and is not stored on the visitor's device.
 It does not remove the ePrivacy Art. 5(3) question — *reading* device
 characteristics is in scope regardless of whether anything is written — but it

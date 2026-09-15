@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * @badele/react - React bindings for the Badele SDK.
+ * @fingerly/react - React bindings for the Fingerly SDK.
  *
  * A provider that holds one client and one shared identification, and hooks
  * that read it. See the README for the whole surface with examples.
@@ -13,13 +13,13 @@
  * build because this package does not tree shake - see tsup.config.ts.
  */
 
-export { BadeleContext, BadeleProvider } from './context.js'
-export type { BadeleProviderProps } from './context.js'
+export { FingerlyContext, FingerlyProvider } from './context.js'
+export type { FingerlyProviderProps } from './context.js'
 
-export { BadeleServerError, createBadeleStore } from './store.js'
-export type { BadeleReactOptions, BadeleState, BadeleStore } from './store.js'
+export { FingerlyServerError, createFingerlyStore } from './store.js'
+export type { FingerlyReactOptions, FingerlyState, FingerlyStore } from './store.js'
 
-export { useBadele } from './useBadele.js'
+export { useFingerly } from './useFingerly.js'
 export { useIdentify } from './useIdentify.js'
 export type { UseIdentifyOptions, UseIdentifyReturn } from './useIdentify.js'
 export { useVerdict } from './useVerdict.js'
@@ -28,7 +28,7 @@ export type { UseVerdictReturn, VerdictName } from './useVerdict.js'
 // Re-exported so a component can name what it receives without also declaring
 // a dependency on the browser SDK.
 export type {
-  BadeleWebEvent,
+  FingerlyWebEvent,
   Confidence,
   IdentifyResult,
   IdentifyTrigger,
@@ -39,5 +39,5 @@ export type {
   SignalStatus,
   Verdict,
   Verdicts,
-} from '@badele/web-js'
-export { TransportError } from '@badele/web-js'
+} from '@fingerly/web-js'
+export { TransportError } from '@fingerly/web-js'

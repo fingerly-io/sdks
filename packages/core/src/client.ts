@@ -3,7 +3,7 @@
  *
  * It knows how to run a source set under a budget, turn the outcomes into a
  * report, and submit it. It does not know what a source is or where one comes
- * from - `@badele/web-js` supplies the browser set, the mobile SDKs will supply
+ * from - `@fingerly/web-js` supplies the browser set, the mobile SDKs will supply
  * theirs - which is what keeps this file free of anything platform-specific.
  */
 
@@ -32,14 +32,14 @@ import { SDK_VERSION } from './version.js'
  */
 export const SCHEMA_VERSION = 1
 
-export interface BadeleClientOptions {
+export interface FingerlyClientOptions {
   /** The SDK key, from the dashboard. A public key is safe in a page. */
   apiKey: string
   /** Origin of the API. Defaults to production. */
   endpoint?: string
   /** Ordered first-party ingestion endpoints. */
   endpoints?: string | readonly string[]
-  /** Explicitly use the regional Badele API after custom endpoints fail. */
+  /** Explicitly use the regional Fingerly API after custom endpoints fail. */
   fallbackToDefaultEndpoint?: boolean
   /** Which platform this SDK reports as. Set by the wrapping package. */
   platform?: SdkPlatform
@@ -80,12 +80,12 @@ const EMPTY_INTEGRITY: IntegrityReport = {
   engine: {},
 }
 
-export class BadeleClient {
-  private readonly options: BadeleClientOptions
+export class FingerlyClient {
+  private readonly options: FingerlyClientOptions
   private readonly transport: Transport
   private readonly platform: SdkPlatform
 
-  constructor(options: BadeleClientOptions) {
+  constructor(options: FingerlyClientOptions) {
     this.options = options
     this.platform = options.platform ?? 'web'
     this.transport =

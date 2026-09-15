@@ -11,16 +11,16 @@ export default defineConfig([
     target: 'es2020',
   },
   {
-    // The script-tag build. Bundles @badele/core rather than externalising it,
+    // The script-tag build. Bundles @fingerly/core rather than externalising it,
     // because a page dropping in one <script> has no module resolution to do
     // the linking - which is the entire reason this build exists.
-    entry: { badele: 'src/global.ts' },
+    entry: { fingerly: 'src/global.ts' },
     format: ['iife'],
-    globalName: 'Badele',
+    globalName: 'Fingerly',
     outExtension: () => ({ js: '.global.js' }),
     platform: 'browser',
     target: 'es2020',
-    noExternal: ['@badele/core'],
+    noExternal: ['@fingerly/core'],
     minify: true,
   },
 ])

@@ -16,7 +16,7 @@ importers:
 
   mobile/lynx:
     dependencies:
-      '@badele/types':
+      '@fingerly/types':
         specifier: workspace:*
         version: link:../../packages/types
     devDependencies:
@@ -32,7 +32,7 @@ importers:
 
   mobile/react-native:
     dependencies:
-      '@badele/types':
+      '@fingerly/types':
         specifier: workspace:*
         version: link:../../packages/types
       react-native:
@@ -51,7 +51,7 @@ importers:
 
   packages/angular:
     dependencies:
-      '@badele/web-js':
+      '@fingerly/web-js':
         specifier: workspace:*
         version: link:../web-js
     devDependencies:
@@ -85,7 +85,7 @@ importers:
 
   packages/core:
     dependencies:
-      '@badele/types':
+      '@fingerly/types':
         specifier: workspace:*
         version: link:../types
     devDependencies:
@@ -101,14 +101,14 @@ importers:
 
   packages/next:
     dependencies:
-      '@badele/node':
+      '@fingerly/node':
         specifier: workspace:*
         version: link:../node
-      '@badele/react':
+      '@fingerly/react':
         specifier: workspace:*
         version: link:../react
     devDependencies:
-      '@badele/web-js':
+      '@fingerly/web-js':
         specifier: workspace:*
         version: link:../web-js
       '@types/react':
@@ -156,14 +156,14 @@ importers:
 
   packages/nuxt:
     dependencies:
-      '@badele/vue':
+      '@fingerly/vue':
         specifier: workspace:*
         version: link:../vue
       '@nuxt/kit':
         specifier: ^4.5.2
         version: 4.5.2(magic-string@1.2.3)(magicast@0.5.4)(rolldown@1.2.6)(unplugin@3.3.0(esbuild@0.27.7)(rolldown@1.2.6)(rollup@4.63.0)(vite@5.4.21(@types/node@26.4.0)(lightningcss@1.33.0)(terser@5.51.2)))
     devDependencies:
-      '@badele/web-js':
+      '@fingerly/web-js':
         specifier: workspace:*
         version: link:../web-js
       '@nuxt/schema':
@@ -190,7 +190,7 @@ importers:
 
   packages/react:
     dependencies:
-      '@badele/web-js':
+      '@fingerly/web-js':
         specifier: workspace:*
         version: link:../web-js
     devDependencies:
@@ -221,7 +221,7 @@ importers:
 
   packages/svelte:
     dependencies:
-      '@badele/web-js':
+      '@fingerly/web-js':
         specifier: workspace:*
         version: link:../web-js
     devDependencies:
@@ -255,7 +255,7 @@ importers:
 
   packages/vue:
     dependencies:
-      '@badele/web-js':
+      '@fingerly/web-js':
         specifier: workspace:*
         version: link:../web-js
     devDependencies:
@@ -277,7 +277,7 @@ importers:
 
   packages/web-js:
     dependencies:
-      '@badele/core':
+      '@fingerly/core':
         specifier: workspace:*
         version: link:../core
     devDependencies:

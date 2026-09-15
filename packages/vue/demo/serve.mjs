@@ -7,7 +7,7 @@
  * from disk is not one, so the report would be missing exactly the signals
  * worth looking at. `localhost` counts as secure.
  *
- * Port 4174 rather than 4173, so this and the `@badele/web-js` demo can be
+ * Port 4174 rather than 4173, so this and the `@fingerly/web-js` demo can be
  * open beside each other and compared.
  */
 
@@ -53,5 +53,5 @@ createServer(async (request, response) => {
     response.writeHead(404).end('not found')
   }
 }).listen(port, () => {
-  console.log(`badele vue demo: http://localhost:${port}/`)
+  console.log(`fingerly vue demo: http://localhost:${port}/`)
 })

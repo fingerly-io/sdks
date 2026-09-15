@@ -5,7 +5,7 @@
  * all - which is the same property that lets it run again on the server.
  */
 
-import type { SignalOutcome } from '@badele/core'
+import type { SignalOutcome } from '@fingerly/core'
 import { describe, expect, it } from 'vitest'
 
 import { findContradictions } from '../src/lies/contradictions.js'

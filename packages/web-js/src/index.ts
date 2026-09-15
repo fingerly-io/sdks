@@ -1,16 +1,16 @@
 /**
- * @badele/web-js - the browser SDK.
+ * @fingerly/web-js - the browser SDK.
  *
- * Wires the browser source set and the tamper layer into `@badele/core`'s
+ * Wires the browser source set and the tamper layer into `@fingerly/core`'s
  * client. Everything platform-specific is in this package; everything about
  * scheduling, transport and scoring is in the kernel, which is what lets the
  * same detectors run again on the server over a stored report.
  *
  * ```ts
- * import { load } from '@badele/web-js'
+ * import { load } from '@fingerly/web-js'
  *
- * const badele = await load({ apiKey: 'pk_live_...' })
- * const { visitorId, visitorIsNew, suspectScore, verdicts } = await badele.identify()
+ * const fingerly = await load({ apiKey: 'pk_live_...' })
+ * const { visitorId, visitorIsNew, suspectScore, verdicts } = await fingerly.identify()
  *
  * // The server's answer, in the same round trip.
  * if (suspectScore !== null && suspectScore >= 30) {
@@ -25,18 +25,18 @@
  * ```
  */
 
-import { BadeleClient, type BadeleClientOptions } from '@badele/core'
+import { FingerlyClient, type FingerlyClientOptions } from '@fingerly/core'
 
 import { inspectIntegrity } from './lies/index.js'
 import { browserSources } from './sources/index.js'
 
-export interface BadeleOptions
-  extends Omit<BadeleClientOptions, 'sources' | 'integrity' | 'platform'> {
+export interface FingerlyOptions
+  extends Omit<FingerlyClientOptions, 'sources' | 'integrity' | 'platform'> {
   /**
    * Replace the source set. Intended for tests and for a caller who has a
    * reason to run a subset; the default is every browser source.
    */
-  sources?: BadeleClientOptions['sources']
+  sources?: FingerlyClientOptions['sources']
 }
 
 /**
@@ -48,9 +48,9 @@ export interface BadeleOptions
  * ready, and changing `load()` from sync to async later would break every
  * integration at once.
  */
-export function load(options: BadeleOptions): Promise<BadeleClient> {
+export function load(options: FingerlyOptions): Promise<FingerlyClient> {
   return Promise.resolve(
-    new BadeleClient({
+    new FingerlyClient({
       ...options,
       platform: 'web',
       sources: options.sources ?? browserSources,
@@ -62,11 +62,11 @@ export function load(options: BadeleOptions): Promise<BadeleClient> {
 export { browserSources } from './sources/index.js'
 export { inspectIntegrity } from './lies/index.js'
 
-// Re-exported so a page that only installs @badele/web-js can name the types it
+// Re-exported so a page that only installs @fingerly/web-js can name the types it
 // receives without also depending on the kernel directly.
 export type {
-  BadeleEvent,
-  BadeleWebEvent,
+  FingerlyEvent,
+  FingerlyWebEvent,
   Confidence,
   IdentifyOptions,
   IdentifyResult,
@@ -78,5 +78,5 @@ export type {
   SignalStatus,
   Verdict,
   Verdicts,
-} from '@badele/core'
-export { BadeleClient, SOURCE, TransportError } from '@badele/core'
+} from '@fingerly/core'
+export { FingerlyClient, SOURCE, TransportError } from '@fingerly/core'

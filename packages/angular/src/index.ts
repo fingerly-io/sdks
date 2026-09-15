@@ -1,7 +1,7 @@
 /**
- * @badele/angular - Angular bindings for the Badele SDK.
+ * @fingerly/angular - Angular bindings for the Fingerly SDK.
  *
- * `provideBadele()` in the application's providers, then `injectIdentify()` or
+ * `provideFingerly()` in the application's providers, then `injectIdentify()` or
  * `injectVerdict()` wherever a component needs an answer. One identification
  * per application injector, exposed as signals.
  *
@@ -10,18 +10,18 @@
  * token with a factory rather than an `@Injectable` class.
  */
 
-export { BADELE, BADELE_OPTIONS, provideBadele } from './provide.js'
+export { FINGERLY, FINGERLY_OPTIONS, provideFingerly } from './provide.js'
 
-export { BadeleServerError, createBadele } from './state.js'
-export type { Badele, BadeleOptions } from './state.js'
+export { FingerlyServerError, createFingerly } from './state.js'
+export type { Fingerly, FingerlyOptions } from './state.js'
 
-export { injectBadele, injectIdentify, injectVerdict } from './inject.js'
+export { injectFingerly, injectIdentify, injectVerdict } from './inject.js'
 export type { InjectIdentifyOptions, InjectVerdictResult, VerdictName } from './inject.js'
 
 // Re-exported so a component can name what it receives without also declaring
 // a dependency on the browser SDK.
 export type {
-  BadeleWebEvent,
+  FingerlyWebEvent,
   Confidence,
   IdentifyResult,
   IntegrityReport,
@@ -31,5 +31,5 @@ export type {
   SignalStatus,
   Verdict,
   Verdicts,
-} from '@badele/web-js'
-export { TransportError } from '@badele/web-js'
+} from '@fingerly/web-js'
+export { TransportError } from '@fingerly/web-js'

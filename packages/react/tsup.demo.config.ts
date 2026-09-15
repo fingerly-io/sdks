@@ -21,7 +21,7 @@ export default defineConfig({
   outExtension: () => ({ js: '.js' }),
   platform: 'browser',
   target: 'es2020',
-  noExternal: ['react', 'react-dom', '@badele/web-js', '@badele/core'],
+  noExternal: ['react', 'react-dom', '@fingerly/web-js', '@fingerly/core'],
   // React reads this to pick its development or production build. Left
   // undefined, the bundled copy throws on the first render.
   define: { 'process.env.NODE_ENV': '"development"' },

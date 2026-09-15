@@ -18,7 +18,7 @@ import {
   type FontPreferencesSignal,
   type FontsSignal,
   type Source,
-} from '@badele/core'
+} from '@fingerly/core'
 
 import { compact } from '../util.js'
 

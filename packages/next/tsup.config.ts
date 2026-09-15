@@ -9,11 +9,11 @@ export default defineConfig({
   format: ['esm', 'cjs'],
   dts: true,
   clean: true,
-  // No `treeshake`, for the same reason as @badele/react: it runs the output
+  // No `treeshake`, for the same reason as @fingerly/react: it runs the output
   // back through rollup, which merges modules and drops every module-level
   // directive - "use client" included.
   target: 'es2020',
-  // Peers, and @badele/react is a dependency the app resolves for itself: two
+  // Peers, and @fingerly/react is a dependency the app resolves for itself: two
   // copies of it would be two providers and two shared identifications.
-  external: ['react', '@badele/react'],
+  external: ['react', '@fingerly/react'],
 })

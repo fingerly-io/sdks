@@ -1,23 +1,23 @@
-# @badele/angular
+# @fingerly/angular
 
-Angular bindings for the Badele SDK. One identification per application
+Angular bindings for the Fingerly SDK. One identification per application
 injector, exposed as signals.
 
 Requires Angular **19 or newer** (signals, `afterNextRender`, standalone
 bootstrap). Tested against Angular 22.
 
 ```
-pnpm add @badele/angular
+pnpm add @fingerly/angular
 ```
 
 ## Provide it
 
 ```ts
 // app.config.ts
-import { provideBadele } from '@badele/angular'
+import { provideFingerly } from '@fingerly/angular'
 
 export const appConfig: ApplicationConfig = {
-  providers: [provideBadele({ apiKey: 'pk_live_…' })],
+  providers: [provideFingerly({ apiKey: 'pk_live_…' })],
 }
 ```
 
@@ -39,19 +39,19 @@ injects it, and it collects only when asked.
 ```ts
 @Component({
   template: `
-    <button (click)="submit()" [disabled]="badele.isLoading()">
-      {{ badele.isLoading() ? 'Checking…' : 'Continue' }}
+    <button (click)="submit()" [disabled]="fingerly.isLoading()">
+      {{ fingerly.isLoading() ? 'Checking…' : 'Continue' }}
     </button>
-    @if (badele.error(); as failure) { <p>{{ failure.message }}</p> }
+    @if (fingerly.error(); as failure) { <p>{{ failure.message }}</p> }
   `,
 })
 export class Checkout {
-  readonly badele = injectIdentify()
+  readonly fingerly = injectIdentify()
 
   async submit() {
-    await this.badele.identify()
+    await this.fingerly.identify()
 
-    if (this.badele.isSuspicious()) {
+    if (this.fingerly.isSuspicious()) {
       // step up to MFA, hold for review, add friction
     }
   }
@@ -66,7 +66,7 @@ event.
 ### On render instead
 
 ```ts
-readonly badele = injectIdentify({ immediate: true })
+readonly fingerly = injectIdentify({ immediate: true })
 ```
 
 `immediate` runs in `afterNextRender`, which is what makes it **safe under
@@ -86,14 +86,14 @@ asking whether the visitor is suspicious produce **one** submission, one
 
 ```ts
 // Header, CheckoutForm, RiskBanner — all three:
-readonly badele = injectIdentify({ immediate: true })
+readonly fingerly = injectIdentify({ immediate: true })
 // → one network request, one shared answer
 ```
 
 To deliberately identify again — a long-lived app reaching a second checkout:
 
 ```ts
-await this.badele.refresh() // ignores the cached result and collects afresh
+await this.fingerly.refresh() // ignores the cached result and collects afresh
 ```
 
 ## A single verdict
@@ -144,7 +144,7 @@ at construction:
 
 ```ts
 readonly orderId = input.required<string>()
-readonly badele = injectIdentify({ tag: () => `checkout:${this.orderId()}` })
+readonly fingerly = injectIdentify({ tag: () => `checkout:${this.orderId()}` })
 ```
 
 ## Collect without submitting
@@ -152,7 +152,7 @@ readonly badele = injectIdentify({ tag: () => `checkout:${this.orderId()}` })
 For an app that wants the local verdicts and nothing else:
 
 ```ts
-provideBadele({ apiKey: 'pk_live_…', submit: false })
+provideFingerly({ apiKey: 'pk_live_…', submit: false })
 ```
 
 Everything the server decides comes back empty: no `requestId`, no `visitorId`,
@@ -162,7 +162,7 @@ than a gap — nothing was sent, so nobody scored it, and a `0` would read as
 
 ## Where these can be called
 
-`injectBadele`, `injectIdentify` and `injectVerdict` use Angular's `inject()`,
+`injectFingerly`, `injectIdentify` and `injectVerdict` use Angular's `inject()`,
 so like everything that does, they run in an **injection context**: a field
 initialiser, a constructor, or inside `runInInjectionContext`. That is why they
 are named `inject…` rather than the `use…` the Vue, React and Svelte bindings
@@ -171,30 +171,30 @@ use — the name is the rule.
 ## What you get back
 
 ```ts
-const badele = injectIdentify()
+const fingerly = injectIdentify()
 
-badele.requestId()         // string | null       — identifies this submission
-badele.visitorId()         // string | null       — who the server decided this is
-badele.visitorIsNew()      // boolean             — never seen before
-badele.visitorConfidence() // number              — 0 to 100
-badele.identifiable()      // boolean             — false when the signals were too thin
-badele.duplicate()         // boolean             — answered before; this is the first answer
-badele.state()             // string | null       — the server's disposition
-badele.reason()            // string | null       — why, when state needs explaining
-badele.suspectScore()      // number | null       — null when nothing scored it
-badele.suspectLevel()      // string | null       — low, medium, high
-badele.triggers()          // IdentifyTrigger[]   — what the server scored on
-badele.verdicts()          // Verdicts | null     — the five local verdicts
-badele.report()            // SignalReport | null — every source, with status and timing
-badele.error()             // Error | null
-badele.isLoading()    // boolean
-badele.isReady()      // boolean             — finished, successfully or not
-badele.isSuspicious() // boolean             — any verdict at medium+
-badele.identify()     // Promise<IdentifyResult>
-badele.refresh()      // Promise<IdentifyResult>
+fingerly.requestId()         // string | null       — identifies this submission
+fingerly.visitorId()         // string | null       — who the server decided this is
+fingerly.visitorIsNew()      // boolean             — never seen before
+fingerly.visitorConfidence() // number              — 0 to 100
+fingerly.identifiable()      // boolean             — false when the signals were too thin
+fingerly.duplicate()         // boolean             — answered before; this is the first answer
+fingerly.state()             // string | null       — the server's disposition
+fingerly.reason()            // string | null       — why, when state needs explaining
+fingerly.suspectScore()      // number | null       — null when nothing scored it
+fingerly.suspectLevel()      // string | null       — low, medium, high
+fingerly.triggers()          // IdentifyTrigger[]   — what the server scored on
+fingerly.verdicts()          // Verdicts | null     — the five local verdicts
+fingerly.report()            // SignalReport | null — every source, with status and timing
+fingerly.error()             // Error | null
+fingerly.isLoading()    // boolean
+fingerly.isReady()      // boolean             — finished, successfully or not
+fingerly.isSuspicious() // boolean             — any verdict at medium+
+fingerly.identify()     // Promise<IdentifyResult>
+fingerly.refresh()      // Promise<IdentifyResult>
 ```
 
-Signals, not observables: a template reads `badele.isSuspicious()` and
+Signals, not observables: a template reads `fingerly.isSuspicious()` and
 re-renders, with no subscription to manage and nothing to unsubscribe from, and
 it works in a zoneless application. They are read-only — the writable signals
 stay inside the factory, because the state is shared and a component that could
@@ -213,7 +213,7 @@ the decision.
 
 No permission prompt, no picker, no dialog, on any browser. Reading a
 permission's *state* prompts nobody and is used freely; requesting is banned
-outright and enforced by a test in `@badele/web-js`. The one API that prompts on
+outright and enforced by a test in `@fingerly/web-js`. The one API that prompts on
 some browsers — canvas readback, which raises a doorhanger in Tor Browser — is
 skipped when the SDK measures a clamped clock.
 
@@ -225,14 +225,14 @@ You can drop this into a checkout without it ever interrupting the checkout.
 
 ```ts
 try {
-  await this.badele.identify()
+  await this.fingerly.identify()
 } catch (error) {
   // your own handling
 }
 ```
 
 ```html
-@if (badele.error(); as failure) { <p>{{ failure.message }}</p> }
+@if (fingerly.error(); as failure) { <p>{{ failure.message }}</p> }
 ```
 
 A failed identification is forgotten rather than remembered, so the next call
@@ -243,7 +243,7 @@ key is wrong, or was used from an origin it does not list) and `402` (the
 organisation is not accepting traffic) — both are your configuration rather than
 the visitor's.
 
-Calling `identify()` during a server render rejects with `BadeleServerError`
+Calling `identify()` during a server render rejects with `FingerlyServerError`
 and a message saying what to do instead. Use `{ immediate: true }`, which
 already waits for the browser.
 
@@ -261,7 +261,7 @@ SDK — no mocks — in an application compiled just-in-time in the page, so it
 needs no second build system.
 
 ```
-pnpm --filter @badele/angular playground   # http://localhost:4177
+pnpm --filter @fingerly/angular playground   # http://localhost:4177
 ```
 
 Open it twice — an ordinary window and a private one — and watch the incognito

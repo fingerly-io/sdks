@@ -6,7 +6,7 @@
  * with a decision in it - see [[resolvePublicConfig]] on why what wins.
  */
 
-/** The `badele` block in `nuxt.config.ts`. */
+/** The `fingerly` block in `nuxt.config.ts`. */
 export interface ModuleOptions {
   /** The SDK key from the dashboard. A public key is safe in a page. */
   apiKey?: string
@@ -27,15 +27,15 @@ export interface ModuleOptions {
 }
 
 /**
- * The shape published at `runtimeConfig.public.badele`.
+ * The shape published at `runtimeConfig.public.fingerly`.
  *
  * Every key is present even when nothing set it, and that is not tidiness.
  * Nuxt only lets the environment override keys that already exist in the
- * runtime config, so a `submit` omitted here is a `NUXT_PUBLIC_BADELE_SUBMIT`
+ * runtime config, so a `submit` omitted here is a `NUXT_PUBLIC_FINGERLY_SUBMIT`
  * that silently does nothing. The empty string is the "not set" value, which
  * the plugin reads as "use the default".
  */
-export interface BadelePublicConfig {
+export interface FingerlyPublicConfig {
   apiKey: string
   endpoint: string
   endpoints: string[]
@@ -48,7 +48,7 @@ export interface BadelePublicConfig {
  *
  * The runtime config wins, and that is the whole point of the function. Nuxt
  * reads `runtimeConfig.public` when the server *starts*, so
- * `NUXT_PUBLIC_BADELE_API_KEY` in the deployment environment overrides the
+ * `NUXT_PUBLIC_FINGERLY_API_KEY` in the deployment environment overrides the
  * built bundle - one build promoted through staging and production, keyed
  * differently in each, with no rebuild. A module that let its build-time
  * option win would quietly take that away.
@@ -59,8 +59,8 @@ export interface BadelePublicConfig {
  */
 export function resolvePublicConfig(
   options: ModuleOptions,
-  existing: Partial<BadelePublicConfig> | undefined,
-): BadelePublicConfig {
+  existing: Partial<FingerlyPublicConfig> | undefined,
+): FingerlyPublicConfig {
   const pick = <T>(fromConfig: T | undefined, fromOptions: T | undefined): T | undefined =>
     fromConfig !== undefined && fromConfig !== '' ? fromConfig : fromOptions
 

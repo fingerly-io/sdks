@@ -1,8 +1,8 @@
 {
-  "name": "@badele/core",
+  "name": "@fingerly/core",
   "version": "0.0.0",
   "private": true,
-  "description": "Framework-agnostic device/event core shared by every Badele SDK",
+  "description": "Framework-agnostic device/event core shared by every Fingerly SDK",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -22,7 +22,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@badele/types": "workspace:*"
+    "@fingerly/types": "workspace:*"
   },
   "devDependencies": {
     "tsup": "^8.3.5",

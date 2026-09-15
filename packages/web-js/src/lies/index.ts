@@ -8,7 +8,7 @@
  * by a slow source, which is precisely the outcome an attacker would arrange.
  */
 
-import { SOURCE, valueOf, type EngineSignal, type IntegrityReport, type SignalOutcome } from '@badele/core'
+import { SOURCE, valueOf, type EngineSignal, type IntegrityReport, type SignalOutcome } from '@fingerly/core'
 
 import { windowOrNull } from '../util.js'
 import { findContradictions } from './contradictions.js'

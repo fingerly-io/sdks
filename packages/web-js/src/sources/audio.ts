@@ -20,7 +20,7 @@ import {
   type AudioSignal,
   type Source,
   type SourceContext,
-} from '@badele/core'
+} from '@fingerly/core'
 
 import { attempt, compact } from '../util.js'
 

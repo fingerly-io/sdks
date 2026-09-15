@@ -1,6 +1,6 @@
-# badele/sdks
+# fingerly/sdks
 
-Client SDKs for the Badele fraud detection/prevention platform. This repository
+Client SDKs for the Fingerly fraud detection/prevention platform. This repository
 is the integration workspace: independently versioned SDK repositories are
 mounted here as git submodules, alongside the pnpm workspace and Turborepo.
 
@@ -30,7 +30,7 @@ repo relates to `server` and `panels`.
 - `mobile/android` — the native Android SDK (Kotlin). Implemented; see its
   [README](mobile/android/README.md). One dependency (coroutines), no JNI, and
   two install-time permissions that prompt nobody. Publishes an AAR as
-  `io.badele:badele`, which is what the three bridges depend on.
+  `io.fingerly:fingerly`, which is what the three bridges depend on.
 - `mobile/react-native`, `mobile/flutter`, `mobile/lynx` — standalone bridges to the native SDKs, not
   second implementations. All three are thin on purpose: almost every signal worth
   having on a phone is unreachable from JavaScript or Dart, so a cross-platform
@@ -45,7 +45,7 @@ repo relates to `server` and `panels`.
 Clone recursively so the native SDKs, bridges, and shared contracts are present:
 
 ```
-git clone --recurse-submodules git@github.com:badele-io/sdks.git
+git clone --recurse-submodules git@github.com:fingerly-io/sdks.git
 git submodule update --init --recursive
 ```
 
@@ -55,14 +55,14 @@ pnpm build
 pnpm test
 pnpm lint
 
-pnpm --filter @badele/web-js demo   # http://localhost:4173
+pnpm --filter @fingerly/web-js demo   # http://localhost:4173
 ```
 
 The iOS SDK is a separate toolchain and is not driven by Turborepo:
 
 ```
 cd mobile/ios
-xcodebuild test -scheme Badele -destination 'platform=iOS Simulator,name=iPhone 16e'
+xcodebuild test -scheme Fingerly -destination 'platform=iOS Simulator,name=iPhone 16e'
 ./Example/run.sh                    # builds, installs and launches on a booted simulator
 ```
 
@@ -110,7 +110,7 @@ sources are in the map.
 That is what lets the server have one reader (`server/domain/risk/report.go`)
 and one set of rules. The canonical TypeScript shape lives in
 `packages/types/src/index.ts`; `packages/core` re-exports it, while
-`mobile/ios/Sources/Badele/Core/Types.swift`
+`mobile/ios/Sources/Fingerly/Core/Types.swift`
 and `mobile/android/.../core/Types.kt` are literal ports of it, field for field,
 because both ends were already written.
 
@@ -135,10 +135,10 @@ answer them — so the SDK states them and the server records them.
 ## Using it
 
 ```ts
-import { load } from '@badele/web-js'
+import { load } from '@fingerly/web-js'
 
-const badele = await load({ apiKey: 'pk_live_…' })
-const result = await badele.identify({ tag: 'checkout' })
+const fingerly = await load({ apiKey: 'fly_pk_eu_production_…' })
+const result = await fingerly.identify({ tag: 'checkout' })
 const { requestId, visitorId, suspectScore, verdicts } = result
 
 if (verdicts.automation.value && verdicts.automation.confidence === 'high') {
@@ -150,11 +150,12 @@ if (verdicts.automation.value && verdicts.automation.confidence === 'high') {
 const deferred = await result.deferred
 ```
 
-Region-bound keys route themselves: `bd_pk_us_…` uses
-`https://us.api.badele.io` and `bd_pk_eu_…` uses the isolated EU endpoint when
-that region launches. Regionless legacy keys retain `https://api.badele.io`.
+Region-bound keys route themselves: `fly_pk_us_…` uses
+`https://us.api.fingerly.io` and `fly_pk_eu_…` uses the isolated EU endpoint when
+that region launches. Unrecognized keys fall back to `https://api.fingerly.io`
+and are still rejected by server authentication.
 The optional `endpoint`/`endpoints` setting always wins, which is how a customer
-uses the Badele same-origin proxy on their own domain; it does not change the
+uses the Fingerly same-origin proxy on their own domain; it does not change the
 region bound into the credential or let traffic cross into another data plane.
 
 `identify()` collects, scores locally, and submits to `POST /api/v1/identify`,

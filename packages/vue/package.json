@@ -1,8 +1,8 @@
 {
-  "name": "@badele/vue",
+  "name": "@fingerly/vue",
   "version": "0.0.0",
   "private": true,
-  "description": "Vue bindings for the Badele SDK",
+  "description": "Vue bindings for the Fingerly SDK",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -17,7 +17,7 @@
   "files": ["dist"],
   "sideEffects": false,
   "dependencies": {
-    "@badele/web-js": "workspace:*"
+    "@fingerly/web-js": "workspace:*"
   },
   "peerDependencies": {
     "vue": ">=3.3"

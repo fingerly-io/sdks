@@ -1,20 +1,20 @@
-# @badele/node
+# @fingerly/node
 
 Use a secret SDK key only. This package reads stored events, verifies outbound
 webhooks, and can proxy browser submissions through your own origin.
 
 ```ts
-import { load, verifyWebhook } from '@badele/node'
+import { load, verifyWebhook } from '@fingerly/node'
 
-const badele = load({ secretKey: process.env.BADELE_SECRET_KEY! })
-const page = await badele.events.list({ limit: 50, level: 'high' })
-const event = await badele.events.get(page.rows[0].request_id)
+const fingerly = load({ secretKey: process.env.FINGERLY_SECRET_KEY! })
+const page = await fingerly.events.list({ limit: 50, level: 'high' })
+const event = await fingerly.events.get(page.rows[0].request_id)
 
 const valid = verifyWebhook({
-  secret: process.env.BADELE_WEBHOOK_SECRET!,
+  secret: process.env.FINGERLY_WEBHOOK_SECRET!,
   payload: rawBody,
-  timestamp: request.headers.get('x-badele-timestamp'),
-  signature: request.headers.get('x-badele-signature'),
+  timestamp: request.headers.get('x-fingerly-timestamp'),
+  signature: request.headers.get('x-fingerly-signature'),
 })
 ```
 
@@ -26,16 +26,16 @@ on purpose: resolve it from the header written by infrastructure you actually
 trust, never from the left-most forwarded value supplied by the public request.
 
 ```ts
-import { createProxy } from '@badele/node'
+import { createProxy } from '@fingerly/node'
 
 export const POST = createProxy({
-  secretKey: process.env.BADELE_SECRET_KEY!,
-  prefix: '/api/badele',
+  secretKey: process.env.FINGERLY_SECRET_KEY!,
+  prefix: '/api/fingerly',
   clientIp: (request) => request.headers.get('cf-connecting-ip')!,
 })
 ```
 
-Configure the browser SDK with `endpoint: '/api/badele'`. The proxy forwards
+Configure the browser SDK with `endpoint: '/api/fingerly'`. The proxy forwards
 only identify and deferred-supplement paths. The API accepts visitor metadata
 headers only from authenticated secret keys, so public SDK keys cannot spoof
 them.

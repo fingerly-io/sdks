@@ -15,12 +15,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const identifyMock = vi.fn()
 const loadMock = vi.fn()
 
-vi.mock('@badele/web-js', () => ({
+vi.mock('@fingerly/web-js', () => ({
   load: (...args: unknown[]) => loadMock(...args),
   TransportError: class TransportError extends Error {},
 }))
 
-const { createBadele, BadeleServerError } = await import('../src/plugin.js')
+const { createFingerly, FingerlyServerError } = await import('../src/plugin.js')
 const { useIdentify } = await import('../src/useIdentify.js')
 
 beforeEach(() => {
@@ -43,7 +43,7 @@ describe('under SSR', () => {
     })
 
     const app = createSSRApp(Page)
-    app.use(createBadele({ apiKey: 'pk_test' }))
+    app.use(createFingerly({ apiKey: 'pk_test' }))
 
     const html = await renderToString(app)
 
@@ -69,12 +69,12 @@ describe('under SSR', () => {
             return () => h('div')
           },
         }),
-      ).use(createBadele({ apiKey: 'pk_test' })),
+      ).use(createFingerly({ apiKey: 'pk_test' })),
     )
 
     await new Promise((resolve) => setTimeout(resolve, 0))
 
-    expect(captured).toBeInstanceOf(BadeleServerError)
+    expect(captured).toBeInstanceOf(FingerlyServerError)
     expect((captured as Error).message).toMatch(/cannot run during server-side rendering/)
     expect((captured as Error).message).toMatch(/immediate: true/)
   })

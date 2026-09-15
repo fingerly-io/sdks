@@ -4,7 +4,7 @@
  * The provider, configured the way a Next app configures things.
  */
 
-import { BadeleProvider as ReactBadeleProvider } from '@badele/react'
+import { FingerlyProvider as ReactFingerlyProvider } from '@fingerly/react'
 import type { ReactNode } from 'react'
 
 /**
@@ -16,14 +16,14 @@ import type { ReactNode } from 'react'
  */
 declare const process: { env: Record<string, string | undefined> } | undefined
 
-export interface BadeleNextProviderProps {
-  /** Overrides `NEXT_PUBLIC_BADELE_API_KEY`. */
+export interface FingerlyNextProviderProps {
+  /** Overrides `NEXT_PUBLIC_FINGERLY_API_KEY`. */
   apiKey?: string
-  /** Overrides `NEXT_PUBLIC_BADELE_ENDPOINT`. Defaults to production. */
+  /** Overrides `NEXT_PUBLIC_FINGERLY_ENDPOINT`. Defaults to production. */
   endpoint?: string
-  /** Ordered first-party endpoints; overrides NEXT_PUBLIC_BADELE_ENDPOINTS. */
+  /** Ordered first-party endpoints; overrides NEXT_PUBLIC_FINGERLY_ENDPOINTS. */
   endpoints?: string | readonly string[]
-  /** Opt into the regional Badele endpoint after custom endpoints fail. */
+  /** Opt into the regional Fingerly endpoint after custom endpoints fail. */
   fallbackToDefaultEndpoint?: boolean
   /** Collect and score without submitting anything. */
   submit?: boolean
@@ -48,18 +48,18 @@ function fromEnvironment(): { apiKey?: string; endpoint?: string; endpoints?: st
   //
   // That is not hypothetical - it is what the first version of this file did.
   // The server render found the key (a real `process.env` lives there) and
-  // hydration threw "No Badele key", so the page rendered and then died.
+  // hydration threw "No Fingerly key", so the page rendered and then died.
   const apiKey =
-    typeof process === 'undefined' ? undefined : process.env.NEXT_PUBLIC_BADELE_API_KEY
+    typeof process === 'undefined' ? undefined : process.env.NEXT_PUBLIC_FINGERLY_API_KEY
   const endpoint =
-    typeof process === 'undefined' ? undefined : process.env.NEXT_PUBLIC_BADELE_ENDPOINT
+    typeof process === 'undefined' ? undefined : process.env.NEXT_PUBLIC_FINGERLY_ENDPOINT
   const endpointsRaw =
-    typeof process === 'undefined' ? undefined : process.env.NEXT_PUBLIC_BADELE_ENDPOINTS
+    typeof process === 'undefined' ? undefined : process.env.NEXT_PUBLIC_FINGERLY_ENDPOINTS
   let endpoints: string[] | undefined
   if (endpointsRaw) {
     const parsed: unknown = JSON.parse(endpointsRaw)
     if (!Array.isArray(parsed) || parsed.length === 0 || parsed.some((value) => typeof value !== 'string')) {
-      throw new Error('NEXT_PUBLIC_BADELE_ENDPOINTS must be a non-empty JSON array of strings')
+      throw new Error('NEXT_PUBLIC_FINGERLY_ENDPOINTS must be a non-empty JSON array of strings')
     }
     endpoints = parsed
   }
@@ -80,13 +80,13 @@ function fromEnvironment(): { apiKey?: string; endpoint?: string; endpoints?: st
  * export default function RootLayout({ children }) {
  *   return (
  *     <html><body>
- *       <BadeleProvider>{children}</BadeleProvider>
+ *       <FingerlyProvider>{children}</FingerlyProvider>
  *     </body></html>
  *   )
  * }
  * ```
  *
- * The key comes from `NEXT_PUBLIC_BADELE_API_KEY` unless a prop overrides it.
+ * The key comes from `NEXT_PUBLIC_FINGERLY_API_KEY` unless a prop overrides it.
  * `NEXT_PUBLIC_` is the right prefix and not a compromise: this is a public
  * SDK key, scoped to the origins listed against it, and it is *meant* to be
  * readable in the page. A secret key is refused by the API whenever a request
@@ -94,7 +94,7 @@ function fromEnvironment(): { apiKey?: string; endpoint?: string; endpoints?: st
  *
  * Nothing is collected on mount. When to identify stays the page's decision.
  */
-export function BadeleProvider(props: BadeleNextProviderProps): ReactNode {
+export function FingerlyProvider(props: FingerlyNextProviderProps): ReactNode {
   const environment = fromEnvironment()
   const apiKey = props.apiKey ?? environment.apiKey
   const endpoints = props.endpoints ?? environment.endpoints
@@ -102,19 +102,19 @@ export function BadeleProvider(props: BadeleNextProviderProps): ReactNode {
 
   if (!apiKey) {
     throw new Error(
-      'No Badele key. Pass one from a Server Component, which is the arrangement that ' +
+      'No Fingerly key. Pass one from a Server Component, which is the arrangement that ' +
         'always works:\n\n' +
         '  // app/layout.tsx\n' +
-        '  <BadeleProvider apiKey={process.env.BADELE_API_KEY}>\n\n' +
+        '  <FingerlyProvider apiKey={process.env.FINGERLY_API_KEY}>\n\n' +
         'Reading it here instead works only where this package is compiled by your app - ' +
-        "an app that lists it in `transpilePackages` and sets NEXT_PUBLIC_BADELE_API_KEY. A published " +
+        "an app that lists it in `transpilePackages` and sets NEXT_PUBLIC_FINGERLY_API_KEY. A published " +
         'build cannot rely on that: Next inlines NEXT_PUBLIC_ variables while compiling, and ' +
         'a dependency it does not compile keeps a `process.env` lookup that is undefined in a browser.',
     )
   }
 
   return (
-    <ReactBadeleProvider
+    <ReactFingerlyProvider
       apiKey={apiKey}
       {...(endpoint === undefined ? {} : { endpoint })}
       {...(endpoints === undefined ? {} : { endpoints })}
@@ -122,6 +122,6 @@ export function BadeleProvider(props: BadeleNextProviderProps): ReactNode {
       {...(props.submit === undefined ? {} : { submit: props.submit })}
     >
       {props.children}
-    </ReactBadeleProvider>
+    </ReactFingerlyProvider>
   )
 }
