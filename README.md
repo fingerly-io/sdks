@@ -34,6 +34,14 @@ repo relates to `server` and `panels`.
   and nothing outside the standard library. The proxy is a single
   `http.Handler`, because `net/http` is the one standard every Go router takes,
   so it needs no adapters.
+- `server/java` — server-side JVM SDK for stored-event reads, webhook
+  verification, and a same-origin proxy, mirroring the Node SDK's architecture.
+  Maintained in the standalone private `sdk-java` repository. Java 11 bytecode
+  built on a 17 toolchain; `jackson-databind` is the only runtime dependency.
+  Publishes four artifacts, because Java has three server standards in active
+  use: `fingerly-server` plus a `-jakarta`, `-javax` and `-webflux` adapter,
+  each taking its server API as `provided`. The WebFlux one offloads the
+  blocking forward off the event loop.
 - `client/web/vue` — Vue 3 plugin and composables ([README](client/web/vue/README.md)).
   One shared identification per app, readonly reactive state, SSR-safe.
 - `client/web/{react,svelte,angular,nuxt,next}` — implemented framework bindings,

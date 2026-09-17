@@ -28,3 +28,6 @@
 [submodule "server/go"]
 	path = server/go
 	url = git@github.com:fingerly-io/fingerly-go.git
+[submodule "server/java"]
+	path = server/java
+	url = git@github.com:fingerly-io/sdk-java.git
