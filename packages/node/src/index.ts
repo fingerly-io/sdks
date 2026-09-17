@@ -1,102 +1,159 @@
-import { createHmac, timingSafeEqual } from 'node:crypto'
+import { createHmac, timingSafeEqual } from "node:crypto";
 
-const endpointForKey = (key: string): string => {
-  const match = /^fly_(?:pk|sk|px)_(eu|us)_(?:production|staging|development)_/.exec(key)
-  return match?.[1] === 'us'
-    ? 'https://us.api.fingerly.io'
-    : match?.[1] === 'eu'
-      ? 'https://eu.api.fingerly.io'
-      : 'https://api.fingerly.io'
-}
+import {
+  credential as credentialInfo,
+  endpointForKey,
+  endpoint as normalizeEndpoint,
+} from "./credentials.js";
+import { deadline, pause, positive, FingerlyAPIError } from "./http.js";
+export { FingerlyAPIError, FingerlyTimeoutError } from "./http.js";
+export type { APIErrorMetadata } from "./http.js";
 
-export interface EventTrigger { signal: string; weight: number; confidence?: string }
-export interface Event {
-  request_id: string
-  visitor_id: string
-  occurred_at: string
-  state: string
-  environment: string
-  platform: string
-  sdk_platform: string
-  sdk_version: string
-  origin?: string
-  url_host?: string
-  url_path?: string
-  tag?: string
-  ip_address: string
-  country_code?: string
-  country_name?: string
-  asn?: string
-  asn_name?: string
-  anonymity_network?: string
-  agent?: string
-  agent_version?: string
-  os?: string
-  device_kind?: string
-  visitor_kind?: string
-  suspect_score: number | null
-  suspect_level?: string
-  triggers: EventTrigger[]
-  has_document: boolean
-  document?: unknown
-  deferred_signals?: Record<string, unknown>
-}
+import type { components } from "./generated/contract.js";
+export type EventTrigger = components["schemas"]["EventTriggerOut"];
+// Keep the stable SDK type names and nullable score semantics. Archive contents
+// deliberately remain opaque rather than becoming a second public contract.
+export type Event = Omit<
+  components["schemas"]["SDKEventOut"],
+  "suspect_score" | "document" | "deferred_signals"
+> & {
+  suspect_score: number | null;
+  document?: unknown;
+  deferred_signals?: Record<string, unknown>;
+};
 
 export interface EventListOptions {
-  from?: Date | string
-  to?: Date | string
-  page?: number
-  limit?: number
-  visitor?: string
-  level?: 'low' | 'medium' | 'high'
-  signal?: AbortSignal
+  from?: Date | string;
+  to?: Date | string;
+  page?: number;
+  limit?: number;
+  visitor?: string;
+  level?: "low" | "medium" | "high";
+  signal?: AbortSignal;
 }
-export interface EventPage { rows: Event[]; page: number; page_size: number }
-export interface FingerlyOptions { secretKey: string; endpoint?: string; fetchImpl?: typeof fetch }
-
-export class FingerlyAPIError extends Error {
-  override readonly name = 'FingerlyAPIError'
-  constructor(message: string, readonly status: number) { super(message) }
+export type EventPage = Omit<components["schemas"]["SDKEventsOut"], "rows"> & {
+  rows: Event[];
+};
+export interface FingerlyOptions {
+  secretKey: string;
+  endpoint?: string;
+  fetchImpl?: typeof fetch;
+  timeoutMs?: number;
+}
+export interface WaitForOptions {
+  timeoutMs?: number;
+  intervalMs?: number;
+  signal?: AbortSignal;
 }
 
-function instant(value: Date | string): string { return value instanceof Date ? value.toISOString() : value }
+function instant(value: Date | string): string {
+  return value instanceof Date ? value.toISOString() : value;
+}
 
 export function load(options: FingerlyOptions) {
-  if (!options.secretKey) throw new TypeError('A Fingerly secret key is required')
-  const endpoint = (options.endpoint ?? endpointForKey(options.secretKey)).replace(/\/+$/, '')
-  const request = async <T>(path: string, signal?: AbortSignal): Promise<T> => {
-    const response = await (options.fetchImpl ?? globalThis.fetch)(endpoint + path, {
-      headers: { 'x-api-key': options.secretKey, accept: 'application/json' },
-      ...(signal === undefined ? {} : { signal }),
-    })
-    if (!response.ok) throw new FingerlyAPIError(`Fingerly API returned HTTP ${response.status}`, response.status)
-    return response.json() as Promise<T>
-  }
+  const regionalEndpoint = endpointForKey(options.secretKey, "sk");
+  const endpoint = normalizeEndpoint(options.endpoint ?? regionalEndpoint);
+  const timeoutMs = positive(options.timeoutMs ?? 5_000, "timeoutMs");
+  const request = <T>(path: string, signal?: AbortSignal): Promise<T> =>
+    deadline(timeoutMs, signal, "request", async (bounded) => {
+      const response = await (options.fetchImpl ?? globalThis.fetch)(
+        endpoint + path,
+        {
+          headers: {
+            "x-api-key": options.secretKey,
+            accept: "application/json",
+          },
+          redirect: "manual",
+          signal: bounded,
+        },
+      );
+      if (!response.ok) {
+        // Only expose the structured, documented error fields; never raw bodies.
+        let body: {
+          error?: { code?: unknown; details?: unknown };
+          request_id?: unknown;
+        } = {};
+        try {
+          body = await response.json();
+        } catch {
+          /* Non-JSON errors still carry their HTTP status. */
+        }
+        const metadata: import("./http.js").APIErrorMetadata = {};
+        if (typeof body?.error?.code === "string")
+          metadata.code = body.error.code
+            .split(options.secretKey)
+            .join("[redacted]");
+        if (body?.error?.details !== undefined)
+          metadata.details = JSON.parse(
+            JSON.stringify(body.error.details)
+              .split(options.secretKey)
+              .join("[redacted]"),
+          );
+        if (typeof body?.request_id === "string")
+          metadata.requestId = body.request_id
+            .split(options.secretKey)
+            .join("[redacted]");
+        throw new FingerlyAPIError(
+          `Fingerly API returned HTTP ${response.status}`,
+          response.status,
+          metadata,
+        );
+      }
+      return (await response.json()) as T;
+    });
+  const get = (requestId: string, signal?: AbortSignal) =>
+    request<Event>(`/api/v1/events/${encodeURIComponent(requestId)}`, signal);
   return {
     events: {
       list: (query: EventListOptions = {}) => {
-        const params = new URLSearchParams()
-        if (query.from !== undefined) params.set('from', instant(query.from))
-        if (query.to !== undefined) params.set('to', instant(query.to))
-        if (query.page !== undefined) params.set('page', String(query.page))
-        if (query.limit !== undefined) params.set('limit', String(query.limit))
-        if (query.visitor !== undefined) params.set('visitor', query.visitor)
-        if (query.level !== undefined) params.set('level', query.level)
-        const suffix = params.size === 0 ? '' : `?${params}`
-        return request<EventPage>(`/api/v1/events${suffix}`, query.signal)
+        const params = new URLSearchParams();
+        if (query.from !== undefined) params.set("from", instant(query.from));
+        if (query.to !== undefined) params.set("to", instant(query.to));
+        if (query.page !== undefined) params.set("page", String(query.page));
+        if (query.limit !== undefined) params.set("limit", String(query.limit));
+        if (query.visitor !== undefined) params.set("visitor", query.visitor);
+        if (query.level !== undefined) params.set("level", query.level);
+        const suffix = params.size === 0 ? "" : `?${params}`;
+        return request<EventPage>(`/api/v1/events${suffix}`, query.signal);
       },
-      get: (requestId: string, signal?: AbortSignal) => request<Event>(`/api/v1/events/${encodeURIComponent(requestId)}`, signal),
+      get,
+      waitFor: (
+        requestId: string,
+        wait: WaitForOptions = {},
+      ): Promise<Event> => {
+        const interval = positive(wait.intervalMs ?? 250, "intervalMs");
+        return deadline(
+          wait.timeoutMs ?? 10_000,
+          wait.signal,
+          "event_wait",
+          async (signal) => {
+            for (;;) {
+              try {
+                return await get(requestId, signal);
+              } catch (error) {
+                if (!(
+                  error instanceof FingerlyAPIError &&
+                  error.status === 404 &&
+                  error.code === "event_not_found"
+                ))
+                  throw error;
+              }
+              await pause(interval, signal);
+            }
+          },
+        );
+      },
     },
-  }
+  };
 }
 
 export interface VerifyWebhookOptions {
-  secret: string
-  payload: string | Uint8Array
-  signature: string | null | undefined
-  timestamp: string | null | undefined
-  toleranceSeconds?: number
-  now?: Date
+  secret: string;
+  payload: string | Uint8Array;
+  signature: string | null | undefined;
+  timestamp: string | null | undefined;
+  toleranceSeconds?: number;
+  now?: Date;
 }
 
 /**
@@ -106,75 +163,163 @@ export interface VerifyWebhookOptions {
  * signature per secret, comma-separated, and a match on any of them is valid.
  */
 export function verifyWebhook(options: VerifyWebhookOptions): boolean {
-  const tolerance = options.toleranceSeconds ?? 300
-  const seconds = Number(options.timestamp)
-  if (!options.secret || !options.signature || !Number.isSafeInteger(seconds)) return false
-  const now = Math.floor((options.now ?? new Date()).getTime() / 1000)
-  if (Math.abs(now - seconds) > tolerance) return false
-  const body = Buffer.from(options.payload)
-  const expected = Buffer.from(createHmac('sha256', options.secret).update(`${options.timestamp}.`).update(body).digest('hex'))
-  return options.signature.split(',').some((candidate) => {
-    const value = candidate.trim()
-    if (!value.startsWith('sha256=')) return false
-    const actual = Buffer.from(value.slice('sha256='.length))
-    return expected.length === actual.length && timingSafeEqual(expected, actual)
-  })
+  const tolerance = options.toleranceSeconds ?? 300;
+  const seconds = Number(options.timestamp);
+  if (
+    !options.secret ||
+    !options.signature ||
+    !options.timestamp ||
+    !/^\d+$/.test(options.timestamp) ||
+    !Number.isSafeInteger(seconds) ||
+    !Number.isFinite(tolerance) ||
+    tolerance < 0
+  )
+    return false;
+  const now = Math.floor((options.now ?? new Date()).getTime() / 1000);
+  if (Math.abs(now - seconds) > tolerance) return false;
+  const body = Buffer.from(options.payload);
+  const expected = Buffer.from(
+    createHmac("sha256", options.secret)
+      .update(`${options.timestamp}.`)
+      .update(body)
+      .digest("hex"),
+  );
+  return options.signature.split(",").some((candidate) => {
+    const value = candidate.trim();
+    if (!/^sha256=[a-f0-9]{64}$/.test(value)) return false;
+    const actual = Buffer.from(value.slice("sha256=".length));
+    return (
+      expected.length === actual.length && timingSafeEqual(expected, actual)
+    );
+  });
 }
 
 export interface ProxyOptions {
   /** Write-only credential created for customer-owned proxy infrastructure. */
-  proxyKey?: string
+  proxyKey?: string;
   /** @deprecated Use proxyKey. Secret read keys will be refused in the next major version. */
-  secretKey?: string
-  upstream?: string
-  prefix?: string
-  maxBodyBytes?: number
-  timeoutMs?: number
+  secretKey?: string;
+  upstream?: string;
+  prefix?: string;
+  maxBodyBytes?: number;
+  timeoutMs?: number;
   /** Resolve the visitor address only from infrastructure your app trusts. */
-  clientIp(request: Request): string | Promise<string>
-  fetchImpl?: typeof fetch
+  clientIp(request: Request): string | Promise<string>;
+  fetchImpl?: typeof fetch;
 }
 
 /** Framework-neutral same-origin proxy for identify and supplement POSTs. */
-export function createProxy(options: ProxyOptions): (request: Request) => Promise<Response> {
-  if (!options.proxyKey && !options.secretKey) throw new TypeError('A Fingerly proxy key is required')
-  if (options.proxyKey && options.secretKey) throw new TypeError('Pass proxyKey or deprecated secretKey, not both')
-  const credential = options.proxyKey ?? options.secretKey!
-  const upstream = (options.upstream ?? endpointForKey(credential)).replace(/\/+$/, '')
-  const prefix = (options.prefix ?? '/api/fingerly').replace(/\/+$/, '')
-  const maxBodyBytes = options.maxBodyBytes ?? 1_048_576
-  const timeoutMs = options.timeoutMs ?? 5_000
+export function createProxy(
+  options: ProxyOptions,
+): (request: Request) => Promise<Response> {
+  if (!options.proxyKey && !options.secretKey)
+    throw new TypeError("A Fingerly proxy key is required");
+  if (options.proxyKey && options.secretKey)
+    throw new TypeError("Pass proxyKey or deprecated secretKey, not both");
+  const credential = options.proxyKey ?? options.secretKey!;
+  const expected = options.proxyKey ? "px" : "sk";
+  const proxyCredential = credentialInfo(credential, expected);
+  const upstream = normalizeEndpoint(
+    options.upstream ?? endpointForKey(credential, expected),
+  );
+  const prefix = (options.prefix ?? "/api/fingerly").replace(/\/+$/, "");
+  const maxBodyBytes = positive(
+    options.maxBodyBytes ?? 1_048_576,
+    "maxBodyBytes",
+  );
+  const timeoutMs = positive(options.timeoutMs ?? 5_000, "timeoutMs");
+  if (!prefix.startsWith("/") || prefix.includes("?") || prefix.includes("#"))
+    throw new TypeError("prefix must be an absolute URL path");
+  if (typeof options.clientIp !== "function")
+    throw new TypeError("clientIp is required");
   return async (request: Request) => {
-    if (request.method !== 'POST') return new Response('Method Not Allowed', { status: 405, headers: { allow: 'POST' } })
-    const incoming = new URL(request.url)
-    if (!incoming.pathname.startsWith(prefix + '/api/v1/')) return new Response('Not Found', { status: 404 })
-    const tail = incoming.pathname.slice(prefix.length)
-    if (tail !== '/api/v1/identify' && !/^\/api\/v1\/events\/[^/]+\/supplement$/.test(tail)) return new Response('Not Found', { status: 404 })
-    const publicKey = request.headers.get('x-api-key')
-    if (options.proxyKey && !publicKey) return new Response('Unauthorized', { status: 401 })
-    const body = await request.arrayBuffer()
-    if (body.byteLength > maxBodyBytes) return new Response('Payload Too Large', { status: 413 })
-    const headers = new Headers({
-      'content-type': request.headers.get('content-type') ?? 'application/json',
-      'x-api-key': options.proxyKey ? publicKey! : credential,
-      'x-fingerly-client-ip': await options.clientIp(request),
-      'x-fingerly-origin': request.headers.get('origin') ?? incoming.origin,
-      'x-fingerly-user-agent': request.headers.get('user-agent') ?? '',
-    })
-    if (options.proxyKey) headers.set('x-fingerly-proxy-key', options.proxyKey)
-    const idempotency = request.headers.get('idempotency-key')
-    if (idempotency) headers.set('idempotency-key', idempotency)
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), timeoutMs)
-    try {
-      const response = await (options.fetchImpl ?? globalThis.fetch)(upstream + tail, {
-        method: 'POST', headers, body, redirect: 'manual', signal: controller.signal,
-      })
-      const responseHeaders = new Headers(response.headers)
-      responseHeaders.set('cache-control', 'no-store')
-      return new Response(response.body, { status: response.status, statusText: response.statusText, headers: responseHeaders })
-    } finally {
-      clearTimeout(timer)
+    if (request.method !== "POST")
+      return new Response("Method Not Allowed", {
+        status: 405,
+        headers: { allow: "POST" },
+      });
+    const incoming = new URL(request.url);
+    if (!incoming.pathname.startsWith(prefix + "/api/v1/"))
+      return new Response("Not Found", { status: 404 });
+    const tail = incoming.pathname.slice(prefix.length);
+    if (
+      tail !== "/api/v1/identify" &&
+      !/^\/api\/v1\/events\/[^/]+\/supplement$/.test(tail)
+    )
+      return new Response("Not Found", { status: 404 });
+    const publicKey = request.headers.get("x-api-key");
+    if (options.proxyKey) {
+      try {
+        const presented = credentialInfo(publicKey ?? "", "pk");
+        if (
+          presented.region !== proxyCredential.region ||
+          presented.environment !== proxyCredential.environment
+        )
+          return new Response("Unauthorized", { status: 401 });
+      } catch {
+        return new Response("Unauthorized", { status: 401 });
+      }
     }
-  }
+    if (Number(request.headers.get("content-length")) > maxBodyBytes)
+      return new Response("Payload Too Large", { status: 413 });
+    return deadline(timeoutMs, request.signal, "request", async (bounded) => {
+      const reader = request.body?.getReader();
+      const cancel = () => {
+        void reader?.cancel(bounded.reason).catch(() => {});
+      };
+      bounded.addEventListener("abort", cancel, { once: true });
+      const chunks: Uint8Array[] = [];
+      let length = 0;
+      try {
+        if (reader)
+          for (;;) {
+            const chunk = await reader.read();
+            if (chunk.done) break;
+            length += chunk.value.byteLength;
+            if (length > maxBodyBytes) {
+              await reader.cancel();
+              return new Response("Payload Too Large", { status: 413 });
+            }
+            chunks.push(chunk.value);
+          }
+      } finally {
+        bounded.removeEventListener("abort", cancel);
+        reader?.releaseLock();
+      }
+      const body = Buffer.concat(chunks);
+      const headers = new Headers({
+        "content-type":
+          request.headers.get("content-type") ?? "application/json",
+        "x-api-key": options.proxyKey ? publicKey! : credential,
+        "x-fingerly-client-ip": await options.clientIp(request),
+        "x-fingerly-origin": request.headers.get("origin") ?? incoming.origin,
+        "x-fingerly-user-agent": request.headers.get("user-agent") ?? "",
+      });
+      if (options.proxyKey)
+        headers.set("x-fingerly-proxy-key", options.proxyKey);
+      const idempotency = request.headers.get("idempotency-key");
+      if (idempotency) headers.set("idempotency-key", idempotency);
+      const response = await (options.fetchImpl ?? globalThis.fetch)(
+        upstream + tail,
+        {
+          method: "POST",
+          headers,
+          body,
+          redirect: "manual",
+          signal: bounded,
+        },
+      );
+      const responseHeaders = new Headers(response.headers);
+      responseHeaders.set("cache-control", "no-store");
+      const bytes = await response.arrayBuffer();
+      return new Response(
+        [204, 205, 304].includes(response.status) ? null : bytes,
+        {
+          status: response.status,
+          statusText: response.statusText,
+          headers: responseHeaders,
+        },
+      );
+    });
+  };
 }
