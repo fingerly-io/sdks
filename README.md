@@ -20,6 +20,12 @@ repo relates to `server` and `panels`.
 - `server/node` — server-side Node SDK for stored-event reads, webhook
   verification, and a framework-neutral same-origin proxy. Maintained in the
   standalone private `sdk-node` repository; it has no runtime dependencies.
+- `server/python` — server-side Python SDK for stored-event reads and webhook
+  verification, mirroring the Node SDK's architecture. Ships a synchronous and
+  an asyncio client over one shared transport; Python 3.9+, one dependency
+  (`httpx`). No proxy: that handler is written against web `Request`/`Response`,
+  which Python has no single equivalent of. Not yet extracted to its own
+  repository, so it lives in this workspace rather than as a submodule.
 - `client/web/vue` — Vue 3 plugin and composables ([README](client/web/vue/README.md)).
   One shared identification per app, readonly reactive state, SSR-safe.
 - `client/web/{react,svelte,angular,nuxt,next}` — implemented framework bindings,

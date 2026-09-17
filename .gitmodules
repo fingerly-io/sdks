@@ -22,3 +22,6 @@
 [submodule "server/node"]
 	path = server/node
 	url = git@github.com:fingerly-io/sdk-node.git
+[submodule "server/python"]
+	path = server/python
+	url = git@github.com:fingerly-io/sdk-python.git
