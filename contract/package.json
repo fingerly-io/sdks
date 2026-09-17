@@ -4,6 +4,8 @@
   "private": true,
   "description": "API contract (OpenAPI spec + generated types) synced from the server repo",
   "scripts": {
-    "sync": "true"
+    "sync": "node sync.mjs",
+    "check": "node sync.mjs --check",
+    "check:docs": "node sync.mjs --check --docs-check"
   }
 }
