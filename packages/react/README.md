@@ -18,7 +18,7 @@ import { createRoot } from 'react-dom/client'
 import { FingerlyProvider } from '@fingerly/react'
 
 createRoot(document.getElementById('root')!).render(
-  <FingerlyProvider apiKey="pk_live_…">
+  <FingerlyProvider apiKey="fly_pk_us_production_…">
     <App />
   </FingerlyProvider>,
 )
@@ -166,13 +166,46 @@ const { identify } = useIdentify({ tag: () => `checkout:${params.orderId}` })
 For a page that wants the local verdicts and nothing else:
 
 ```tsx
-<FingerlyProvider apiKey="pk_live_…" submit={false}>
+<FingerlyProvider apiKey="fly_pk_us_production_…" submit={false}>
 ```
 
 Everything the server decides comes back empty: no `requestId`, no `visitorId`,
 and `suspectScore` is `null` rather than `0`. That is the honest answer rather
 than a gap — nothing was sent, so nobody scored it, and a `0` would read as
 "scored, found nothing".
+
+## Waiting for consent
+
+If identifying a visitor needs their consent first, pass what your consent tool
+says now. Until it is `granted` nothing is collected and nothing is sent:
+`useIdentify({ immediate: true })` and `suspend` wait, and the client is not
+even built.
+
+```tsx
+<FingerlyProvider apiKey="fly_pk_us_production_…" consent={accepted ? 'granted' : 'pending'}>
+```
+
+Changing the prop to `granted` starts the identification that was waiting, once,
+on the same store. A consent tool that reports through a callback can set it on
+the store, or on the client, instead:
+
+```tsx
+const fingerly = useFingerly()
+fingerly.setConsent('granted')             // from the consent tool's callback
+
+const client = await fingerly.client()
+client.setConsent('denied')                // the same, on the client itself
+```
+
+- `consent`: `'granted'` (the default), `'pending'` or `'denied'`. A provider
+  prop, and an option to `createFingerlyStore()`.
+- `setConsent(state)`: on the store from `useFingerly()`, and on the client.
+  Synchronous, and setting the current value again does nothing.
+- `consent` in `useIdentify()`: the current state, for rendering a banner.
+
+`pending` and `denied` behave the same. Withdrawing consent while an
+identification is running stops it before it submits, and it fails with a
+`ConsentError`.
 
 ## Server rendering, and one store per request
 
@@ -183,7 +216,7 @@ better served by building the store per request and handing it in:
 ```tsx
 import { FingerlyProvider, createFingerlyStore } from '@fingerly/react'
 
-const store = createFingerlyStore({ apiKey: 'pk_live_…' })   // once per request
+const store = createFingerlyStore({ apiKey: 'fly_pk_us_production_…' })   // once per request
 <FingerlyProvider store={store}><App /></FingerlyProvider>
 ```
 
@@ -209,6 +242,7 @@ const {
   verdicts,          // Verdicts | null     — the five local verdicts
   report,            // SignalReport | null — every source, with status and timing
   error,             // Error | null
+  consent,           // ConsentState        (granted, pending or denied)
   isLoading,    // boolean
   isReady,      // boolean             — finished, successfully or not
   isSuspicious, // boolean             — any verdict at medium+
@@ -266,6 +300,11 @@ tries again instead of being handed the same rejection.
 key is wrong, or was used from an origin it does not list) and `402` (the
 organisation is not accepting traffic) — both are your configuration rather than
 the visitor's.
+
+`ConsentError` means consent is not `granted`. It carries `code:
+'consent_required'` and the `state`, and lands in `error` like any other
+failure. `{ immediate: true }` waits for consent rather than producing one, so
+it only sees this error when consent is withdrawn while it runs.
 
 Calling `identify()` during SSR rejects with `FingerlyServerError` and a message
 saying what to do instead. Use `{ immediate: true }`, which already waits for

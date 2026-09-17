@@ -41,5 +41,6 @@ export function toVueOptions(config: Partial<FingerlyPublicConfig> | undefined):
       ? {}
       : { fallbackToDefaultEndpoint: config.fallbackToDefaultEndpoint }),
     ...(config?.submit === undefined ? {} : { submit: config.submit }),
+    ...(config?.consent === undefined || (config.consent as string) === '' ? {} : { consent: config.consent }),
   }
 }

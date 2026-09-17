@@ -23,6 +23,7 @@ export type { InjectIdentifyOptions, InjectVerdictResult, VerdictName } from './
 export type {
   FingerlyWebEvent,
   Confidence,
+  ConsentState,
   IdentifyResult,
   IntegrityReport,
   Lie,
@@ -32,4 +33,4 @@ export type {
   Verdict,
   Verdicts,
 } from '@fingerly/web-js'
-export { TransportError } from '@fingerly/web-js'
+export { ConsentError, TransportError } from '@fingerly/web-js'

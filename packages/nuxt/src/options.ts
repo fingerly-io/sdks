@@ -6,6 +6,8 @@
  * with a decision in it - see [[resolvePublicConfig]] on why what wins.
  */
 
+import type { ConsentState } from '@fingerly/vue'
+
 /** The `fingerly` block in `nuxt.config.ts`. */
 export interface ModuleOptions {
   /** The SDK key from the dashboard. A public key is safe in a page. */
@@ -24,6 +26,15 @@ export interface ModuleOptions {
    * found nothing".
    */
   submit?: boolean
+  /**
+   * The consent the app starts with. Defaults to `granted`.
+   *
+   * Set `pending` when identification waits on a consent banner, then call
+   * `useFingerly().setConsent('granted')` from wherever the banner is
+   * answered. Until then `useIdentify({ immediate: true })` waits and nothing
+   * is collected or sent.
+   */
+  consent?: ConsentState
 }
 
 /**
@@ -41,6 +52,7 @@ export interface FingerlyPublicConfig {
   endpoints: string[]
   fallbackToDefaultEndpoint: boolean
   submit: boolean
+  consent: ConsentState
 }
 
 /**
@@ -70,5 +82,6 @@ export function resolvePublicConfig(
     endpoints: existing?.endpoints ?? options.endpoints ?? [],
     fallbackToDefaultEndpoint: existing?.fallbackToDefaultEndpoint ?? options.fallbackToDefaultEndpoint ?? false,
     submit: existing?.submit ?? options.submit ?? true,
+    consent: pick(existing?.consent, options.consent) ?? 'granted',
   }
 }

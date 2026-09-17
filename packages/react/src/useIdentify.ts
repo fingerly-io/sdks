@@ -31,6 +31,9 @@ export interface UseIdentifyOptions {
    * It runs in an effect, which is what makes it server-safe: effects do not
    * run during SSR, so a Next.js page using this renders on the server and
    * collects on the client without a guard of its own.
+   *
+   * It waits for consent. While `consent` is `pending` or `denied` nothing is
+   * started, and the identification begins once it becomes `granted`.
    */
   immediate?: boolean
   /**
@@ -45,6 +48,10 @@ export interface UseIdentifyOptions {
    * Client-only by construction: on the server there is no browser to collect
    * from, so it renders the unidentified state exactly as `immediate` does
    * and suspends after hydration instead.
+   *
+   * Consent-gated the same way as `immediate`: while consent is not granted it
+   * renders the unidentified state rather than suspending, and suspends once
+   * consent is granted.
    */
   suspend?: boolean
   /**
@@ -122,20 +129,24 @@ export function useIdentify(options: UseIdentifyOptions = {}): UseIdentifyReturn
   )
 
   const { immediate = false, suspend = false } = options
+  const consented = state.consent === 'granted'
 
   useEffect(() => {
-    if (!immediate) return
+    // Keyed on consent as well, so a banner accepted after mount starts the
+    // identification that was waiting for it. Once: the store memoises the
+    // run, so consent flipping back and forth afterwards submits nothing more.
+    if (!immediate || !consented) return
     // The rejection is swallowed here rather than left to become an unhandled
     // one: the failure is already in `error`, which is where a component that
     // opted into `immediate` will look for it. A caller who wants to await the
     // outcome calls identify() themselves.
     void identify().catch(() => undefined)
-  }, [immediate, identify])
+  }, [immediate, consented, identify])
 
   // Suspending reads the same memoised promise the store hands everyone else,
   // which is what makes this legal: `use()` recognises a pending value by the
   // promise's identity, and a fresh promise per render would suspend forever.
-  if (suspend && typeof window !== 'undefined' && state.report === null) {
+  if (suspend && consented && typeof window !== 'undefined' && state.report === null) {
     use(identify())
   }
 

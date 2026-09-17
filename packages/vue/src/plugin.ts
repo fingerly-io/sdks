@@ -11,6 +11,7 @@
 
 import {
   load,
+  type ConsentState,
   type FingerlyClient,
   type IdentifyResult,
   type IdentifyTrigger,
@@ -48,6 +49,15 @@ export interface FingerlyVueOptions {
    * found nothing".
    */
   submit?: boolean
+  /**
+   * Whether the visitor has agreed to be identified. Defaults to `granted`.
+   *
+   * Pass `pending` when identification waits on a consent banner, then call
+   * [[FingerlyContext.setConsent]] when it is answered. Until then nothing is
+   * collected or sent: `useIdentify({ immediate: true })` waits, and a manual
+   * `identify()` fails with a `ConsentError` in `error`.
+   */
+  consent?: ConsentState
 }
 
 /** The shared, reactive result of the app's one identification. */
@@ -67,6 +77,8 @@ export interface FingerlyState {
   report: ShallowRef<SignalReport | null>
   error: ShallowRef<Error | null>
   isLoading: Ref<boolean>
+  /** As last set through the plugin or the client. Automatic identification waits for `granted`. */
+  consent: ShallowRef<ConsentState>
 }
 
 /** What the plugin provides. Reach it with `useFingerly()`. */
@@ -75,6 +87,15 @@ export interface FingerlyContext {
   readonly state: FingerlyState
   /** The underlying client, built on first use. */
   client(): Promise<FingerlyClient>
+  /**
+   * Record the visitor's consent, as the consent tool reports it.
+   *
+   * Usable before the client exists - during SSR, or before anything has
+   * identified - and forwarded to it once it does. Setting `granted` is what
+   * starts any `useIdentify({ immediate: true })` that was waiting for it.
+   * The client's own `setConsent()` does the same.
+   */
+  setConsent(state: ConsentState): void
   /**
    * Identify, at most once unless asked otherwise.
    *
@@ -105,7 +126,7 @@ export class FingerlyServerError extends Error {
   }
 }
 
-function createState(): FingerlyState {
+function createState(consent: ConsentState): FingerlyState {
   return {
     // shallowRef throughout: a SignalReport is a large frozen-in-practice
     // object that is replaced wholesale, never edited field by field. Deep
@@ -125,6 +146,7 @@ function createState(): FingerlyState {
     report: shallowRef<SignalReport | null>(null),
     error: shallowRef<Error | null>(null),
     isLoading: ref(false),
+    consent: shallowRef(consent),
   }
 }
 
@@ -141,11 +163,16 @@ function createState(): FingerlyState {
  * the page that knows.
  */
 export function createFingerly(options: FingerlyVueOptions): Plugin {
-  const state = createState()
+  const state = createState(options.consent ?? 'granted')
 
   let clientPromise: Promise<FingerlyClient> | undefined
+  let loaded: FingerlyClient | undefined
   let inFlight: Promise<IdentifyResult> | undefined
   let completed: IdentifyResult | undefined
+
+  const mirrorConsent = (consent: ConsentState): void => {
+    state.consent.value = consent
+  }
 
   const client = (): Promise<FingerlyClient> => {
     if (typeof window === 'undefined') return Promise.reject(new FingerlyServerError())
@@ -156,8 +183,25 @@ export function createFingerly(options: FingerlyVueOptions): Plugin {
       ...(options.endpoint === undefined ? {} : { endpoint: options.endpoint }),
       ...(options.endpoints === undefined ? {} : { endpoints: options.endpoints }),
       ...(options.fallbackToDefaultEndpoint === undefined ? {} : { fallbackToDefaultEndpoint: options.fallbackToDefaultEndpoint }),
+      consent: state.consent.value,
+    }).then((fingerly) => {
+      // Caught up before anything can identify through it: setConsent() may
+      // have been called while load() was settling.
+      if (fingerly.consent !== state.consent.value) fingerly.setConsent(state.consent.value)
+      // And followed from here on, so a consent tool holding the client itself
+      // moves this state - and whatever is waiting on it - as well.
+      fingerly.onConsentChange(mirrorConsent)
+      loaded = fingerly
+      return fingerly
     })
     return clientPromise
+  }
+
+  const setConsent: FingerlyContext['setConsent'] = (consent) => {
+    // The client first, so it validates the value and has it before a watcher
+    // reacting to the state below asks it to identify.
+    loaded?.setConsent(consent)
+    mirrorConsent(consent)
   }
 
   const identify: FingerlyContext['identify'] = (identifyOptions = {}) => {
@@ -224,7 +268,7 @@ export function createFingerly(options: FingerlyVueOptions): Plugin {
     return run
   }
 
-  const context: FingerlyContext = { options, state, client, identify }
+  const context: FingerlyContext = { options, state, client, setConsent, identify }
 
   return {
     install(app: App) {
@@ -255,6 +299,7 @@ export type ReadonlyState = {
   report: Readonly<ShallowRef<DeepReadonly<SignalReport> | null>>
   error: Readonly<ShallowRef<Error | null>>
   isLoading: Readonly<Ref<boolean>>
+  consent: Readonly<ShallowRef<ConsentState>>
 }
 
 export function toReadonly(state: FingerlyState): ReadonlyState {
@@ -278,6 +323,7 @@ export function toReadonly(state: FingerlyState): ReadonlyState {
     report: readonly(state.report) as ReadonlyState['report'],
     error: readonly(state.error) as ReadonlyState['error'],
     isLoading: readonly(state.isLoading),
+    consent: readonly(state.consent),
   }
 }
 

@@ -15,6 +15,7 @@
  */
 
 import {
+  type ConsentState,
   type IdentifyTrigger,
   load,
   type FingerlyClient,
@@ -43,6 +44,15 @@ export interface FingerlyReactOptions {
    * found nothing".
    */
   submit?: boolean
+  /**
+   * Whether the visitor has agreed to be identified. Defaults to `granted`.
+   *
+   * Pass `pending` when identification waits on a consent banner, then call
+   * [[FingerlyStore.setConsent]] when it is answered. Until then nothing is
+   * collected or sent: `useIdentify({ immediate: true })` waits, and a manual
+   * `identify()` fails with a `ConsentError` in `error`.
+   */
+  consent?: ConsentState
 }
 
 /** The result of the page's one identification, as components see it. */
@@ -74,13 +84,18 @@ export interface FingerlyState {
   report: SignalReport | null
   error: Error | null
   isLoading: boolean
+  /**
+   * Whether the visitor has agreed to be identified, as last set through the
+   * store or the client. Automatic identification waits for `granted`.
+   */
+  consent: ConsentState
 }
 
 /**
  * The state before anything has been collected.
  *
- * One frozen object, shared by every store and handed back unchanged as the
- * server snapshot. `useSyncExternalStore` compares snapshots by identity, so a
+ * One frozen object, shared by every store that does not configure `consent`
+ * and handed back unchanged as the server snapshot. `useSyncExternalStore` compares snapshots by identity, so a
  * `getState()` that built a fresh object per call would re-render forever -
  * the loop React reports as "The result of getSnapshot should be cached".
  */
@@ -102,6 +117,7 @@ const INITIAL: FingerlyState = Object.freeze({
   report: null,
   error: null,
   isLoading: false,
+  consent: 'granted',
 })
 
 /** What `useFingerly()` returns, and what the provider puts in context. */
@@ -115,6 +131,15 @@ export interface FingerlyStore {
   getServerState(): FingerlyState
   /** The underlying client, built on first use. */
   client(): Promise<FingerlyClient>
+  /**
+   * Record the visitor's consent, as the consent tool reports it.
+   *
+   * Usable before the client exists - on the server, or before anything has
+   * identified - and forwarded to it once it does. Setting `granted` is what
+   * starts any `useIdentify({ immediate: true })` that was waiting for it.
+   * The client's own `setConsent()` does the same.
+   */
+  setConsent(state: ConsentState): void
   /**
    * Identify, at most once unless asked otherwise.
    *
@@ -151,7 +176,14 @@ export class FingerlyServerError extends Error {
  * render rather than after one.
  */
 export function createFingerlyStore(options: FingerlyReactOptions): FingerlyStore {
-  let state: FingerlyState = INITIAL
+  // The configured consent is part of the initial state, and so of the server
+  // snapshot too: a component rendering its banner from `consent` must render
+  // the same thing on both sides of hydration.
+  const initial: FingerlyState =
+    options.consent === undefined || options.consent === INITIAL.consent
+      ? INITIAL
+      : Object.freeze({ ...INITIAL, consent: options.consent })
+  let state: FingerlyState = initial
   const listeners = new Set<() => void>()
 
   const setState = (patch: Partial<FingerlyState>): void => {
@@ -163,7 +195,12 @@ export function createFingerlyStore(options: FingerlyReactOptions): FingerlyStor
   }
 
   let clientPromise: Promise<FingerlyClient> | undefined
+  let loaded: FingerlyClient | undefined
   let current: Promise<IdentifyResult> | undefined
+
+  const mirrorConsent = (consent: ConsentState): void => {
+    if (state.consent !== consent) setState({ consent })
+  }
 
   const client = (): Promise<FingerlyClient> => {
     if (typeof window === 'undefined') return Promise.reject(new FingerlyServerError())
@@ -175,8 +212,25 @@ export function createFingerlyStore(options: FingerlyReactOptions): FingerlyStor
       ...(options.endpoint === undefined ? {} : { endpoint: options.endpoint }),
       ...(options.endpoints === undefined ? {} : { endpoints: options.endpoints }),
       ...(options.fallbackToDefaultEndpoint === undefined ? {} : { fallbackToDefaultEndpoint: options.fallbackToDefaultEndpoint }),
+      consent: state.consent,
+    }).then((fingerly) => {
+      // Caught up before anything can identify through it: setConsent() may
+      // have been called while load() was settling.
+      if (fingerly.consent !== state.consent) fingerly.setConsent(state.consent)
+      // And followed from here on, so a consent tool holding the client itself
+      // moves this state - and whatever is waiting on it - as well.
+      fingerly.onConsentChange(mirrorConsent)
+      loaded = fingerly
+      return fingerly
     })
     return clientPromise
+  }
+
+  const setConsent: FingerlyStore['setConsent'] = (consent) => {
+    // The client first, so it validates the value and has it before any
+    // component reacting to the state below asks it to identify.
+    loaded?.setConsent(consent)
+    mirrorConsent(consent)
   }
 
   const identify: FingerlyStore['identify'] = (identifyOptions = {}) => {
@@ -256,8 +310,9 @@ export function createFingerlyStore(options: FingerlyReactOptions): FingerlyStor
       }
     },
     getState: () => state,
-    getServerState: () => INITIAL,
+    getServerState: () => initial,
     client,
+    setConsent,
     identify,
   }
 }

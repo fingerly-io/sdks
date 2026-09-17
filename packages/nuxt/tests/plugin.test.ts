@@ -17,9 +17,29 @@ const loadMock = vi.fn()
 vi.mock('@fingerly/web-js', () => ({
   load: (...args: unknown[]) => loadMock(...args),
   TransportError: class TransportError extends Error {},
+  ConsentError: class ConsentError extends Error {},
 }))
 
-const { useIdentify } = await import('@fingerly/vue')
+/** The part of a client the Vue plugin talks to, with consent that notifies as the real one does. */
+function fakeClient(options: { consent?: string } = {}) {
+  const listeners = new Set<(state: string) => void>()
+  const client = {
+    consent: options.consent ?? 'granted',
+    identify: identifyMock,
+    setConsent: (state: string) => {
+      if (state === client.consent) return
+      client.consent = state
+      for (const listener of [...listeners]) listener(state)
+    },
+    onConsentChange: (listener: (state: string) => void) => {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    },
+  }
+  return client
+}
+
+const { useFingerly, useIdentify } = await import('@fingerly/vue')
 const { __setRuntimeConfig } = await import('./stubs/nuxt-app.js')
 const plugin = (await import('../src/runtime/plugin.js')).default
 
@@ -54,7 +74,7 @@ function mountWithPlugin<T>(use: () => T): T {
 beforeEach(() => {
   vi.clearAllMocks()
   identifyMock.mockResolvedValue(RESULT)
-  loadMock.mockResolvedValue({ identify: identifyMock })
+  loadMock.mockImplementation(async (options: { consent?: string }) => fakeClient(options))
   __setRuntimeConfig({ fingerly: { apiKey: 'pk_runtime' } })
 })
 
@@ -79,7 +99,27 @@ describe('the runtime plugin', () => {
     expect(loadMock).toHaveBeenCalledWith({
       apiKey: 'pk_runtime',
       endpoint: 'https://fingerly.internal',
+      consent: 'granted',
     })
+  })
+
+  it('takes consent from the runtime config, and identifies on mount only once it is granted', async () => {
+    __setRuntimeConfig({ fingerly: { apiKey: 'pk_runtime', consent: 'pending' } })
+
+    const { identify, fingerly } = mountWithPlugin(() => ({
+      identify: useIdentify({ immediate: true }),
+      fingerly: useFingerly(),
+    }))
+    await Promise.resolve()
+
+    expect(loadMock).not.toHaveBeenCalled()
+    expect(identify.consent.value).toBe('pending')
+
+    fingerly.setConsent('granted')
+    await vi.waitFor(() => expect(identify.requestId.value).toBe('req_1'))
+
+    expect(loadMock).toHaveBeenCalledWith({ apiKey: 'pk_runtime', consent: 'granted' })
+    expect(identifyMock).toHaveBeenCalledTimes(1)
   })
 
   it('passes submit through, so an app can score without sending', async () => {

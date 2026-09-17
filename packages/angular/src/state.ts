@@ -16,6 +16,7 @@
 import { computed, signal, type Signal } from '@angular/core'
 import {
   load,
+  type ConsentState,
   type FingerlyClient,
   type IdentifyResult,
   type IdentifyTrigger,
@@ -41,6 +42,15 @@ export interface FingerlyOptions {
    * found nothing".
    */
   submit?: boolean
+  /**
+   * Whether the visitor has agreed to be identified. Defaults to `granted`.
+   *
+   * Pass `pending` when identification waits on a consent banner, then call
+   * [[Fingerly.setConsent]] when it is answered. Until then nothing is
+   * collected or sent: `injectIdentify({ immediate: true })` waits, and a
+   * manual `identify()` fails with a `ConsentError` in `error`.
+   */
+  consent?: ConsentState
 }
 
 /** What a component injects. Every field is a signal; none of them is writable. */
@@ -90,6 +100,20 @@ export interface Fingerly {
    * directly - this is the "should I even look?" flag, not a policy.
    */
   readonly isSuspicious: Signal<boolean>
+  /**
+   * Whether the visitor has agreed to be identified, as last set here or on
+   * the client. Automatic identification waits for `granted`.
+   */
+  readonly consent: Signal<ConsentState>
+  /**
+   * Record the visitor's consent, as the consent tool reports it.
+   *
+   * Usable before the client exists - during SSR, or before anything has
+   * identified - and forwarded to it once it does. Setting `granted` is what
+   * starts any `injectIdentify({ immediate: true })` that was waiting for it.
+   * The client's own `setConsent()` does the same.
+   */
+  setConsent(state: ConsentState): void
   /** Collect, score and submit. Reuses a completed run unless `force`. */
   identify(options?: { tag?: string; force?: boolean }): Promise<IdentifyResult>
   /** Identify again from scratch, ignoring any previous result. */
@@ -134,6 +158,7 @@ export function createFingerly(options: FingerlyOptions): Fingerly {
   const report = signal<SignalReport | null>(null)
   const error = signal<Error | null>(null)
   const isLoading = signal(false)
+  const consent = signal<ConsentState>(options.consent ?? 'granted')
 
   const isReady = computed(() => report() !== null || error() !== null)
   const isSuspicious = computed(() => {
@@ -143,6 +168,7 @@ export function createFingerly(options: FingerlyOptions): Fingerly {
   })
 
   let clientPromise: Promise<FingerlyClient> | undefined
+  let loaded: FingerlyClient | undefined
   let current: Promise<IdentifyResult> | undefined
 
   const client = (): Promise<FingerlyClient> => {
@@ -155,8 +181,25 @@ export function createFingerly(options: FingerlyOptions): Fingerly {
       ...(options.endpoint === undefined ? {} : { endpoint: options.endpoint }),
       ...(options.endpoints === undefined ? {} : { endpoints: options.endpoints }),
       ...(options.fallbackToDefaultEndpoint === undefined ? {} : { fallbackToDefaultEndpoint: options.fallbackToDefaultEndpoint }),
+      consent: consent(),
+    }).then((fingerly) => {
+      // Caught up before anything can identify through it: setConsent() may
+      // have been called while load() was settling.
+      if (fingerly.consent !== consent()) fingerly.setConsent(consent())
+      // And followed from here on, so a consent tool holding the client itself
+      // moves this state - and whatever is waiting on it - as well.
+      fingerly.onConsentChange((next) => consent.set(next))
+      loaded = fingerly
+      return fingerly
     })
     return clientPromise
+  }
+
+  const setConsent: Fingerly['setConsent'] = (next) => {
+    // The client first, so it validates the value and has it before an effect
+    // reacting to the signal below asks it to identify.
+    loaded?.setConsent(next)
+    consent.set(next)
   }
 
   const identify: Fingerly['identify'] = (identifyOptions = {}) => {
@@ -241,6 +284,8 @@ export function createFingerly(options: FingerlyOptions): Fingerly {
     isLoading: isLoading.asReadonly(),
     isReady,
     isSuspicious,
+    consent: consent.asReadonly(),
+    setConsent,
     identify,
     refresh,
     client,

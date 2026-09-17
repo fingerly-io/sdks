@@ -32,6 +32,7 @@ export type {
   FingerlyState,
   FingerlyStore,
   Confidence,
+  ConsentState,
   IdentifyResult,
   IdentifyTrigger,
   SignalReport,
@@ -42,4 +43,4 @@ export type {
   VerdictName,
   Verdicts,
 } from '@fingerly/react'
-export { TransportError } from '@fingerly/react'
+export { ConsentError, TransportError } from '@fingerly/react'

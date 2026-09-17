@@ -63,6 +63,27 @@ your layout does not have to become one. Pages Router is the same component in
 
 Mounting it collects nothing. When to identify stays the page's decision.
 
+### Waiting for consent
+
+When identification needs the visitor's consent first, pass `consent` with
+what your consent tool says now. It is a prop rather than an environment
+variable, because it is the visitor's decision rather than the deployment's:
+
+```tsx
+'use client'
+<FingerlyProvider apiKey={apiKey} consent={accepted ? 'granted' : 'pending'}>{children}</FingerlyProvider>
+```
+
+- `consent`: `'granted'` (the default), `'pending'` or `'denied'`.
+- `useFingerly().setConsent(state)`: sets it from a consent tool's callback. The
+  client's own `setConsent()` does the same.
+
+While it is not `granted` nothing is collected or sent,
+`useIdentify({ immediate: true })` and `<FingerlyRequestId />` wait, and a
+manual `identify()` fails with a `ConsentError`. Once it becomes `granted` the
+waiting identification runs, once. The details are in the
+[React binding's README](../react/README.md#waiting-for-consent).
+
 ## Identify
 
 The hooks are `@fingerly/react`'s, re-exported so you install one package:

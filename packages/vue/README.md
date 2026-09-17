@@ -19,7 +19,7 @@ import { createFingerly } from '@fingerly/vue'
 import App from './App.vue'
 
 createApp(App)
-  .use(createFingerly({ apiKey: 'pk_live_…' }))
+  .use(createFingerly({ apiKey: 'fly_pk_us_production_…' }))
   .mount('#app')
 ```
 
@@ -146,13 +146,45 @@ const { identify } = useIdentify({ tag: () => `checkout:${route.params.orderId}`
 For a page that wants the local verdicts and nothing else:
 
 ```ts
-app.use(createFingerly({ apiKey: 'pk_live_…', submit: false }))
+app.use(createFingerly({ apiKey: 'fly_pk_us_production_…', submit: false }))
 ```
 
 Everything the server decides comes back empty: no `requestId`, no `visitorId`,
 and `suspectScore` is `null` rather than `0`. That is the honest answer rather
 than a gap — nothing was sent, so nobody scored it, and a `0` would read as
 "scored, found nothing".
+
+## Waiting for consent
+
+If identifying a visitor needs their consent first, install the plugin with
+`consent: 'pending'`. Until it is `granted` nothing is collected and nothing is
+sent: `useIdentify({ immediate: true })` waits, and the client is not even
+built.
+
+```ts
+app.use(createFingerly({ apiKey: 'fly_pk_us_production_…', consent: 'pending' }))
+```
+
+Then set it from wherever your consent tool reports the answer:
+
+```ts
+const fingerly = useFingerly()             // or this.$fingerly
+fingerly.setConsent('granted')             // from the consent tool's callback
+
+const client = await fingerly.client()
+client.setConsent('denied')                // the same, on the client itself
+```
+
+- `consent`: `'granted'` (the default), `'pending'` or `'denied'`, an option to
+  `createFingerly()`.
+- `setConsent(state)`: on `useFingerly()` and `this.$fingerly`, and on the
+  client. Synchronous, and setting the current value again does nothing.
+- `consent` in `useIdentify()`: the current state as a readonly ref, for
+  rendering a banner.
+
+Setting `granted` starts the identification that was waiting, once. `pending`
+and `denied` behave the same. Withdrawing consent while an identification is
+running stops it before it submits, and it fails with a `ConsentError`.
 
 ## Options API
 
@@ -189,6 +221,7 @@ const {
   verdicts,          // Ref<Verdicts | null>     — the five local verdicts
   report,            // Ref<SignalReport | null> — every source, with status and timing
   error,             // Ref<Error | null>
+  consent,           // Ref<ConsentState>        (granted, pending or denied)
   isLoading,    // Ref<boolean>
   isReady,      // ComputedRef<boolean>    — finished, successfully or not
   isSuspicious, // ComputedRef<boolean>    — any verdict at medium+
@@ -239,6 +272,11 @@ try {
 key is wrong, or was used from an origin it does not list) and `402` (the
 organisation is not accepting traffic) — both are your configuration rather than
 the visitor's.
+
+`ConsentError` means consent is not `granted`. It carries `code:
+'consent_required'` and the `state`, and lands in `error` like any other
+failure. `{ immediate: true }` waits for consent rather than producing one, so
+it only sees this error when consent is withdrawn while it runs.
 
 Calling `identify()` during SSR rejects with `FingerlyServerError` and a message
 saying what to do instead. Use `{ immediate: true }`, which already waits for

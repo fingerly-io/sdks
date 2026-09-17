@@ -4,7 +4,7 @@
  * The provider, configured the way a Next app configures things.
  */
 
-import { FingerlyProvider as ReactFingerlyProvider } from '@fingerly/react'
+import { FingerlyProvider as ReactFingerlyProvider, type ConsentState } from '@fingerly/react'
 import type { ReactNode } from 'react'
 
 /**
@@ -27,6 +27,15 @@ export interface FingerlyNextProviderProps {
   fallbackToDefaultEndpoint?: boolean
   /** Collect and score without submitting anything. */
   submit?: boolean
+  /**
+   * Whether the visitor has agreed to be identified. Defaults to `granted`.
+   *
+   * Read as the current answer: pass what the consent tool says now, and a
+   * change to `granted` starts any automatic identification that was waiting.
+   * Deliberately not read from the environment, because it is the visitor's
+   * decision rather than the deployment's.
+   */
+  consent?: ConsentState
   children?: ReactNode
 }
 
@@ -120,6 +129,7 @@ export function FingerlyProvider(props: FingerlyNextProviderProps): ReactNode {
       {...(endpoints === undefined ? {} : { endpoints })}
       {...(props.fallbackToDefaultEndpoint === undefined ? {} : { fallbackToDefaultEndpoint: props.fallbackToDefaultEndpoint })}
       {...(props.submit === undefined ? {} : { submit: props.submit })}
+      {...(props.consent === undefined ? {} : { consent: props.consent })}
     >
       {props.children}
     </ReactFingerlyProvider>

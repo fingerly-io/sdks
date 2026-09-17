@@ -17,7 +17,7 @@ pnpm add @fingerly/angular
 import { provideFingerly } from '@fingerly/angular'
 
 export const appConfig: ApplicationConfig = {
-  providers: [provideFingerly({ apiKey: 'pk_live_…' })],
+  providers: [provideFingerly({ apiKey: 'fly_pk_us_production_…' })],
 }
 ```
 
@@ -152,13 +152,44 @@ readonly fingerly = injectIdentify({ tag: () => `checkout:${this.orderId()}` })
 For an app that wants the local verdicts and nothing else:
 
 ```ts
-provideFingerly({ apiKey: 'pk_live_…', submit: false })
+provideFingerly({ apiKey: 'fly_pk_us_production_…', submit: false })
 ```
 
 Everything the server decides comes back empty: no `requestId`, no `visitorId`,
 and `suspectScore` is `null` rather than `0`. That is the honest answer rather
 than a gap — nothing was sent, so nobody scored it, and a `0` would read as
 "scored, found nothing".
+
+## Waiting for consent
+
+If identifying a visitor needs their consent first, provide it with `consent:
+'pending'`. Until it is `granted` nothing is collected and nothing is sent:
+`injectIdentify({ immediate: true })` waits, and the client is not even built.
+
+```ts
+provideFingerly({ apiKey: 'fly_pk_us_production_…', consent: 'pending' })
+```
+
+Then set it from wherever your consent tool reports the answer:
+
+```ts
+readonly fingerly = injectFingerly()
+
+onConsentAnswered(accepted: boolean) {    // the consent tool's callback
+  this.fingerly.setConsent(accepted ? 'granted' : 'denied')
+}
+```
+
+- `consent`: `'granted'` (the default), `'pending'` or `'denied'`, an option to
+  `provideFingerly()`.
+- `setConsent(state)`: on `injectFingerly()` and `injectIdentify()`, and on the
+  client (`await fingerly.client()`). Synchronous, and setting the current value
+  again does nothing.
+- `fingerly.consent()`: the current state as a signal, for rendering a banner.
+
+Setting `granted` starts the identification that was waiting, once. `pending`
+and `denied` behave the same. Withdrawing consent while an identification is
+running stops it before it submits, and it fails with a `ConsentError`.
 
 ## Where these can be called
 
@@ -187,11 +218,13 @@ fingerly.triggers()          // IdentifyTrigger[]   — what the server scored o
 fingerly.verdicts()          // Verdicts | null     — the five local verdicts
 fingerly.report()            // SignalReport | null — every source, with status and timing
 fingerly.error()             // Error | null
+fingerly.consent()           // ConsentState        (granted, pending or denied)
 fingerly.isLoading()    // boolean
 fingerly.isReady()      // boolean             — finished, successfully or not
 fingerly.isSuspicious() // boolean             — any verdict at medium+
 fingerly.identify()     // Promise<IdentifyResult>
 fingerly.refresh()      // Promise<IdentifyResult>
+fingerly.setConsent('granted')
 ```
 
 Signals, not observables: a template reads `fingerly.isSuspicious()` and
@@ -242,6 +275,11 @@ tries again instead of being handed the same rejection.
 key is wrong, or was used from an origin it does not list) and `402` (the
 organisation is not accepting traffic) — both are your configuration rather than
 the visitor's.
+
+`ConsentError` means consent is not `granted`. It carries `code:
+'consent_required'` and the `state`, and lands in `error()` like any other
+failure. `{ immediate: true }` waits for consent rather than producing one, so
+it only sees this error when consent is withdrawn while it runs.
 
 Calling `identify()` during a server render rejects with `FingerlyServerError`
 and a message saying what to do instead. Use `{ immediate: true }`, which

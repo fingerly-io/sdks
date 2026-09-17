@@ -17,7 +17,27 @@ const loadMock = vi.fn()
 vi.mock('@fingerly/web-js', () => ({
   load: (...args: unknown[]) => loadMock(...args),
   TransportError: class TransportError extends Error {},
+  ConsentError: class ConsentError extends Error {},
 }))
+
+/** The part of a client the store talks to, with consent that notifies as the real one does. */
+function fakeClient(options: { consent?: string } = {}) {
+  const listeners = new Set<(state: string) => void>()
+  const client = {
+    consent: options.consent ?? 'granted',
+    identify: identifyMock,
+    setConsent: (state: string) => {
+      if (state === client.consent) return
+      client.consent = state
+      for (const listener of [...listeners]) listener(state)
+    },
+    onConsentChange: (listener: (state: string) => void) => {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    },
+  }
+  return client
+}
 
 const { FingerlyProvider } = await import('../src/provider.js')
 const { FingerlyRequestId } = await import('../src/field.js')
@@ -55,7 +75,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   document.body.innerHTML = ''
   identifyMock.mockResolvedValue(RESULT)
-  loadMock.mockResolvedValue({ identify: identifyMock })
+  loadMock.mockImplementation(async (options: { consent?: string }) => fakeClient(options))
 })
 
 afterEach(() => {
@@ -77,7 +97,7 @@ describe('FingerlyProvider', () => {
       )
     })
 
-    expect(loadMock).toHaveBeenCalledWith({ apiKey: 'pk_from_env' })
+    expect(loadMock).toHaveBeenCalledWith({ apiKey: 'pk_from_env', consent: 'granted' })
   })
 
   it('takes the endpoint from the environment too', async () => {
@@ -95,6 +115,7 @@ describe('FingerlyProvider', () => {
     expect(loadMock).toHaveBeenCalledWith({
       apiKey: 'pk_from_env',
       endpoint: 'https://fingerly.internal',
+      consent: 'granted',
     })
   })
 
@@ -109,7 +130,7 @@ describe('FingerlyProvider', () => {
       )
     })
 
-    expect(loadMock).toHaveBeenCalledWith({ apiKey: 'pk_from_prop' })
+    expect(loadMock).toHaveBeenCalledWith({ apiKey: 'pk_from_prop', consent: 'granted' })
   })
 
   it('says which variable to set when there is no key', () => {
@@ -216,6 +237,30 @@ describe('FingerlyRequestId', () => {
     await act(async () => undefined)
 
     expect(container.querySelector('input')?.getAttribute('name')).toBe('risk_ref')
+  })
+
+  it('waits for consent before filling the field, then identifies once it is granted', async () => {
+    const { container, root } = render(
+      <FingerlyProvider apiKey="fly_pk_us_development_test" consent="pending">
+        <FingerlyRequestId />
+      </FingerlyProvider>,
+    )
+    await act(async () => undefined)
+
+    expect(loadMock).not.toHaveBeenCalled()
+    expect((container.querySelector('input') as HTMLInputElement).value).toBe('')
+
+    await act(async () =>
+      root.render(
+        <FingerlyProvider apiKey="fly_pk_us_development_test" consent="granted">
+          <FingerlyRequestId />
+        </FingerlyProvider>,
+      ),
+    )
+
+    expect(loadMock).toHaveBeenCalledWith({ apiKey: 'fly_pk_us_development_test', consent: 'granted' })
+    expect(identifyMock).toHaveBeenCalledTimes(1)
+    expect((container.querySelector('input') as HTMLInputElement).value).toBe('req_1')
   })
 
   it('can be told not to identify, for a form that does it at submit time', () => {

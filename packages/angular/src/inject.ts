@@ -10,8 +10,10 @@
 import {
   afterNextRender,
   computed,
+  effect,
   inject,
   Injector,
+  untracked,
   type Signal,
 } from '@angular/core'
 import type { Confidence, Verdict, Verdicts } from '@fingerly/web-js'
@@ -48,6 +50,9 @@ export interface InjectIdentifyOptions {
    * Angular does not run those callbacks during server-side rendering, so a
    * page renders on the server and collects in the browser with no platform
    * check of its own.
+   *
+   * It waits for consent. While `consent()` is `pending` or `denied` nothing
+   * is started, and the identification begins once it becomes `granted`.
    */
   immediate?: boolean
   /**
@@ -96,11 +101,27 @@ export function injectIdentify(options: InjectIdentifyOptions = {}): Fingerly {
   if (options.immediate) {
     afterNextRender(
       () => {
-        // The rejection is swallowed rather than left to become an unhandled
-        // one: the failure is already in `fingerly.error()`, which is where a
-        // component that opted into `immediate` will look for it. A caller who
-        // wants to await the outcome calls identify() themselves.
-        void identify().catch(() => undefined)
+        // An effect rather than one read, so a banner accepted after the
+        // render starts the identification that was waiting for it. Once: the
+        // shared state memoises the run, so consent flipping back and forth
+        // afterwards submits nothing more. Created with this injector, so it
+        // is destroyed with the component that asked for it.
+        effect(
+          () => {
+            if (fingerly.consent() !== 'granted') return
+            // Untracked: only consent should re-run this. A signal read while
+            // identifying - a `tag` given as one - must not start another.
+            untracked(() => {
+              // The rejection is swallowed rather than left to become an
+              // unhandled one: the failure is already in `fingerly.error()`,
+              // which is where a component that opted into `immediate` will
+              // look for it. A caller who wants to await the outcome calls
+              // identify() themselves.
+              void identify().catch(() => undefined)
+            })
+          },
+          { injector },
+        )
       },
       { injector },
     )

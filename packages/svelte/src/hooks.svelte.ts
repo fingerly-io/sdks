@@ -27,6 +27,9 @@ export interface UseIdentifyOptions {
    * It runs in an `$effect`, which is what makes it server-safe - effects do
    * not run during SSR, so a SvelteKit page using this renders on the server
    * and collects on the client without a guard of its own.
+   *
+   * It waits for consent. While `consent` is `pending` or `denied` nothing is
+   * started, and the identification begins once it becomes `granted`.
    */
   immediate?: boolean
   /**
@@ -78,6 +81,10 @@ export function useIdentify(options: UseIdentifyOptions = {}): Fingerly {
 
   if (options.immediate) {
     $effect(() => {
+      // Reading `consent` is what makes this effect run again when a banner is
+      // accepted after mount. Once: the shared state memoises the run, so
+      // consent flipping back and forth afterwards submits nothing more.
+      if (fingerly.consent !== 'granted') return
       // The rejection is swallowed rather than left to become an unhandled
       // one: the failure is already in `fingerly.error`, which is where a
       // component that opted into `immediate` will look for it. A caller who
@@ -138,6 +145,10 @@ export function useIdentify(options: UseIdentifyOptions = {}): Fingerly {
     get isSuspicious() {
       return fingerly.isSuspicious
     },
+    get consent() {
+      return fingerly.consent
+    },
+    setConsent: fingerly.setConsent,
     identify,
     refresh,
     client: fingerly.client,

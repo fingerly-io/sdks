@@ -7,6 +7,7 @@ import {
   computed,
   onMounted,
   toValue,
+  watch,
   type ComputedRef,
   type MaybeRefOrGetter,
 } from 'vue'
@@ -25,6 +26,9 @@ export interface UseIdentifyOptions {
    * It runs in `onMounted`, which is what makes it server-safe - the hook does
    * not run during SSR, so a Nuxt page using this renders on the server and
    * collects on the client without a guard of its own.
+   *
+   * It waits for consent. While `consent` is `pending` or `denied` nothing is
+   * started, and the identification begins once it becomes `granted`.
    */
   immediate?: boolean
   /**
@@ -89,11 +93,24 @@ export function useIdentify(options: UseIdentifyOptions = {}): UseIdentifyReturn
 
   if (options.immediate) {
     onMounted(() => {
-      // The rejection is deliberately swallowed here rather than left to become
-      // an unhandled rejection: the failure is already in `state.error`, which
-      // is where a component that opted into `immediate` will look for it. A
-      // caller who wants to await the outcome calls identify() themselves.
-      void identify().catch(() => undefined)
+      // Watched rather than read once, so a banner accepted after mount starts
+      // the identification that was waiting for it. Once: the plugin reuses a
+      // finished run, so consent flipping back and forth afterwards submits
+      // nothing more. Created inside the hook, so it belongs to this component
+      // and stops when it unmounts.
+      watch(
+        () => fingerly.state.consent.value === 'granted',
+        (consented) => {
+          if (!consented) return
+          // The rejection is deliberately swallowed here rather than left to
+          // become an unhandled rejection: the failure is already in
+          // `state.error`, which is where a component that opted into
+          // `immediate` will look for it. A caller who wants to await the
+          // outcome calls identify() themselves.
+          void identify().catch(() => undefined)
+        },
+        { immediate: true },
+      )
     })
   }
 

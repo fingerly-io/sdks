@@ -18,7 +18,7 @@ pnpm add @fingerly/svelte
 <script lang="ts">
   import { setupFingerly } from '@fingerly/svelte'
 
-  setupFingerly({ apiKey: 'pk_live_…' })
+  setupFingerly({ apiKey: 'fly_pk_us_production_…' })
 </script>
 
 <slot />
@@ -153,13 +153,43 @@ const fingerly = useIdentify({ tag: () => `checkout:${page.params.orderId}` })
 For a page that wants the local verdicts and nothing else:
 
 ```ts
-setupFingerly({ apiKey: 'pk_live_…', submit: false })
+setupFingerly({ apiKey: 'fly_pk_us_production_…', submit: false })
 ```
 
 Everything the server decides comes back empty: no `requestId`, no `visitorId`,
 and `suspectScore` is `null` rather than `0`. That is the honest answer rather
 than a gap — nothing was sent, so nobody scored it, and a `0` would read as
 "scored, found nothing".
+
+## Waiting for consent
+
+If identifying a visitor needs their consent first, set up with `consent:
+'pending'`. Until it is `granted` nothing is collected and nothing is sent:
+`useIdentify({ immediate: true })` waits, and the client is not even built.
+
+```ts
+const fingerly = setupFingerly({ apiKey: 'fly_pk_us_production_…', consent: 'pending' })
+```
+
+Then set it from wherever your consent tool reports the answer:
+
+```ts
+fingerly.setConsent('granted')             // from the consent tool's callback
+
+const client = await fingerly.client()
+client.setConsent('denied')                // the same, on the client itself
+```
+
+- `consent`: `'granted'` (the default), `'pending'` or `'denied'`, an option to
+  `setupFingerly()` and `createFingerly()`.
+- `setConsent(state)`: on the object `setupFingerly()`, `useFingerly()` and
+  `useIdentify()` return, and on the client. Synchronous, and setting the
+  current value again does nothing.
+- `fingerly.consent`: the current state, reactive, for rendering a banner.
+
+Setting `granted` starts the identification that was waiting, once. `pending`
+and `denied` behave the same. Withdrawing consent while an identification is
+running stops it before it submits, and it fails with a `ConsentError`.
 
 ## What you get back
 
@@ -180,11 +210,13 @@ fingerly.triggers          // IdentifyTrigger[]   — what the server scored on
 fingerly.verdicts          // Verdicts | null     — the five local verdicts
 fingerly.report            // SignalReport | null — every source, with status and timing
 fingerly.error             // Error | null
+fingerly.consent           // ConsentState        (granted, pending or denied)
 fingerly.isLoading    // boolean
 fingerly.isReady      // boolean             — finished, successfully or not
 fingerly.isSuspicious // boolean             — any verdict at medium+
 fingerly.identify()   // Promise<IdentifyResult>
 fingerly.refresh()    // Promise<IdentifyResult>
+fingerly.setConsent('granted')
 ```
 
 Every field is a getter over a rune, so reading one in a template subscribes to
@@ -234,6 +266,11 @@ tries again instead of being handed the same rejection.
 key is wrong, or was used from an origin it does not list) and `402` (the
 organisation is not accepting traffic) — both are your configuration rather than
 the visitor's.
+
+`ConsentError` means consent is not `granted`. It carries `code:
+'consent_required'` and the `state`, and lands in `error` like any other
+failure. `{ immediate: true }` waits for consent rather than producing one, so
+it only sees this error when consent is withdrawn while it runs.
 
 Calling `identify()` during SSR rejects with `FingerlyServerError` and a message
 saying what to do instead. Use `{ immediate: true }`, which already waits for

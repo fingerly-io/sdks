@@ -57,6 +57,7 @@ describe('the module', () => {
       endpoints: [],
       fallbackToDefaultEndpoint: false,
       submit: false,
+      consent: 'granted',
     })
   })
 
@@ -64,7 +65,7 @@ describe('the module', () => {
     const nuxt = nuxtWith()
     expect(() => module_.setup({ apiKey: 'pk' }, nuxt)).not.toThrow()
     expect(fingerlyConfig(nuxt)).toEqual({
-      apiKey: 'pk', endpoint: '', endpoints: [], fallbackToDefaultEndpoint: false, submit: true,
+      apiKey: 'pk', endpoint: '', endpoints: [], fallbackToDefaultEndpoint: false, submit: true, consent: 'granted',
     })
   })
 
@@ -81,6 +82,7 @@ describe('the module', () => {
       endpoints: [],
       fallbackToDefaultEndpoint: false,
       submit: true,
+      consent: 'granted',
     })
   })
 
@@ -96,6 +98,7 @@ describe('the module', () => {
       endpoints: [],
       fallbackToDefaultEndpoint: false,
       submit: true,
+      consent: 'granted',
     })
   })
 
@@ -107,8 +110,18 @@ describe('the module', () => {
     module_.setup({ apiKey: 'pk' }, nuxt)
 
     expect(Object.keys(fingerlyConfig(nuxt) as object).sort()).toEqual([
-      'apiKey', 'endpoint', 'endpoints', 'fallbackToDefaultEndpoint', 'submit',
+      'apiKey', 'consent', 'endpoint', 'endpoints', 'fallbackToDefaultEndpoint', 'submit',
     ])
+  })
+
+  it('publishes consent, and lets the environment override it', () => {
+    const configured = nuxtWith()
+    module_.setup({ apiKey: 'pk', consent: 'pending' }, configured)
+    expect(fingerlyConfig(configured)).toMatchObject({ consent: 'pending' })
+
+    const overridden = nuxtWith({ fingerly: { consent: 'denied' } })
+    module_.setup({ apiKey: 'pk', consent: 'pending' }, overridden)
+    expect(fingerlyConfig(overridden)).toMatchObject({ consent: 'denied' })
   })
 
   it('does not fail the build when no key is configured anywhere', () => {
@@ -118,7 +131,7 @@ describe('the module', () => {
     module_.setup({}, nuxt)
 
     expect(fingerlyConfig(nuxt)).toEqual({
-      apiKey: '', endpoint: '', endpoints: [], fallbackToDefaultEndpoint: false, submit: true,
+      apiKey: '', endpoint: '', endpoints: [], fallbackToDefaultEndpoint: false, submit: true, consent: 'granted',
     })
   })
 
