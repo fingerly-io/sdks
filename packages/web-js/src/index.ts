@@ -47,6 +47,12 @@ export interface FingerlyOptions
  * still works when this needs to warm a worker or wait for a document to be
  * ready, and changing `load()` from sync to async later would break every
  * integration at once.
+ *
+ * Loading collects nothing and sends nothing, whatever `consent` is: no
+ * source runs until `identify()` or `collect()` is called, and those refuse
+ * while consent is not `granted`. So a page that needs consent first can load
+ * early with `consent: 'pending'` and call `setConsent('granted')` from its
+ * consent tool.
  */
 export function load(options: FingerlyOptions): Promise<FingerlyClient> {
   return Promise.resolve(
@@ -68,6 +74,7 @@ export type {
   FingerlyEvent,
   FingerlyWebEvent,
   Confidence,
+  ConsentState,
   IdentifyOptions,
   IdentifyResult,
   IdentifyTrigger,
@@ -79,4 +86,4 @@ export type {
   Verdict,
   Verdicts,
 } from '@fingerly/core'
-export { FingerlyClient, SOURCE, TransportError } from '@fingerly/core'
+export { ConsentError, FingerlyClient, SOURCE, TransportError } from '@fingerly/core'

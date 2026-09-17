@@ -289,6 +289,11 @@ export class HttpTransport implements Transport {
     let lastError: TransportError | undefined
     let endpointIndex = 0
     for (let attempt = 1; attempt <= this.maxAttempts; attempt++) {
+      // As in submit(): an abort listener added to a signal that has already
+      // fired never runs, so without this a cancelled supplement would still
+      // send its next attempt.
+      if (signal?.aborted) throw new TransportError('The supplement was cancelled')
+
       try {
         const url = `${this.urls[endpointIndex]!.replace(/\/identify$/, '')}/events/${encodeURIComponent(requestId)}/supplement`
         await this.postJSON(url, body, signal)

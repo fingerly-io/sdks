@@ -144,4 +144,17 @@ describe('HttpTransport retry idempotency', () => {
     expect(() => new HttpTransport({ apiKey: 'key', endpoints: [] })).toThrow('must not be empty')
     expect(() => new HttpTransport({ apiKey: 'key', endpoint: '/old', endpoints: '/new' })).toThrow('not both')
   })
+
+  it('sends no supplement once its signal has been aborted', async () => {
+    // The client aborts this signal when consent is withdrawn. An abort
+    // listener added after the fact never fires, so the loop has to look.
+    const fetchImpl = vi.fn() as unknown as typeof fetch
+    const controller = new AbortController()
+    controller.abort()
+
+    await expect(new HttpTransport({ apiKey: 'key', endpoint: 'https://example.test', fetchImpl })
+      .submitSupplement('request-1', { ...submission(), token: 'continuation' }, controller.signal))
+      .rejects.toBeInstanceOf(TransportError)
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
 })

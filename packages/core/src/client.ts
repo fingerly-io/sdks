@@ -7,11 +7,13 @@
  * theirs - which is what keeps this file free of anything platform-specific.
  */
 
+import { assertConsentState, ConsentError } from './consent.js'
 import { detectAll } from './detect/index.js'
 import { collect, type ScheduleOptions } from './scheduler.js'
 import type { Source } from './source.js'
-import { HttpTransport, type Transport } from './transport.js'
+import { HttpTransport, type SubmitResponse, type Transport } from './transport.js'
 import type {
+  ConsentState,
   IdentifyResult,
   IdentifySubmission,
   DeferredIdentifyResult,
@@ -51,6 +53,15 @@ export interface FingerlyClientOptions {
   schedule?: ScheduleOptions
   /** Replaced in tests, and by any SDK that has its own network stack. */
   transport?: Transport
+  /**
+   * Whether the visitor has agreed to be identified. Defaults to `granted`.
+   *
+   * Pass `pending` when identification waits on a consent banner, and call
+   * [[FingerlyClient.setConsent]] once it is answered. Until then `identify()`
+   * and `collect()` run no source and send nothing, and fail with a
+   * [[ConsentError]].
+   */
+  consent?: ConsentState
 }
 
 export interface IdentifyOptions {
@@ -84,8 +95,13 @@ export class FingerlyClient {
   private readonly options: FingerlyClientOptions
   private readonly transport: Transport
   private readonly platform: SdkPlatform
+  private consentState: ConsentState
+  private readonly consentListeners = new Set<(state: ConsentState) => void>()
 
   constructor(options: FingerlyClientOptions) {
+    const consent = options.consent ?? 'granted'
+    assertConsentState(consent)
+    this.consentState = consent
     this.options = options
     this.platform = options.platform ?? 'web'
     this.transport =
@@ -96,6 +112,87 @@ export class FingerlyClient {
         ...(options.endpoints === undefined ? {} : { endpoints: options.endpoints }),
         ...(options.fallbackToDefaultEndpoint === undefined ? {} : { fallbackToDefaultEndpoint: options.fallbackToDefaultEndpoint }),
       })
+  }
+
+  /** Whether the visitor has agreed to be identified. See [[setConsent]]. */
+  get consent(): ConsentState {
+    return this.consentState
+  }
+
+  /**
+   * Record the visitor's answer, as the consent tool reports it.
+   *
+   * Synchronous, and safe to call as often as a consent tool likes: setting the
+   * state the client already has changes nothing and notifies nobody. It
+   * applies to the next call and to any call already in flight - withdrawing
+   * consent stops a running `identify()` from starting further sources or
+   * submitting, and stops its deferred supplement from being sent.
+   */
+  setConsent(state: ConsentState): void {
+    assertConsentState(state)
+    if (state === this.consentState) return
+    this.consentState = state
+
+    // A copy, so a listener that unsubscribes as it runs does not perturb the
+    // loop. Each is isolated from the others: the in-flight calls cancel
+    // themselves through this same set, and one customer listener throwing
+    // must not leave a withdrawn call free to submit. The error is rethrown
+    // on a clean stack so it is still reported.
+    for (const listener of [...this.consentListeners]) {
+      try {
+        listener(state)
+      } catch (error) {
+        setTimeout(() => {
+          throw error
+        }, 0)
+      }
+    }
+  }
+
+  /**
+   * Be told when consent changes. Returns the unsubscribe.
+   *
+   * Called on a change only, never with the state at the moment of
+   * subscribing - read [[consent]] for that. This is what the framework
+   * bindings use to start an automatic identification once a banner is
+   * accepted.
+   */
+  onConsentChange(listener: (state: ConsentState) => void): () => void {
+    this.consentListeners.add(listener)
+    return () => {
+      this.consentListeners.delete(listener)
+    }
+  }
+
+  /** Throws unless consent is granted. */
+  private requireConsent(): void {
+    if (this.consentState !== 'granted') throw new ConsentError(this.consentState)
+  }
+
+  /**
+   * A signal for one call that aborts when the caller's does, or when consent
+   * stops being granted.
+   *
+   * Handed to the scheduler, so a withdrawal starts no further source and
+   * cancels the ones running, and to the transport, so it sends no retry and
+   * abandons the request in flight. `close()` must run when the call settles,
+   * or every finished call stays subscribed.
+   */
+  private consentScope(signal: AbortSignal | undefined): { signal: AbortSignal; close(): void } {
+    const controller = new AbortController()
+    const abort = () => controller.abort()
+    if (signal?.aborted) abort()
+    else signal?.addEventListener('abort', abort, { once: true })
+    const unsubscribe = this.onConsentChange((state) => {
+      if (state !== 'granted') abort()
+    })
+    return {
+      signal: controller.signal,
+      close: () => {
+        unsubscribe()
+        signal?.removeEventListener('abort', abort)
+      },
+    }
   }
 
   /**
@@ -112,14 +209,33 @@ export class FingerlyClient {
    * The local verdicts in [[IdentifyResult.verdicts]] are still there and are
    * still advisory - they are computed in the page, by code the visitor
    * controls. Where the two disagree, the server is the one to believe.
+   *
+   * Fails with a [[ConsentError]], before any source runs, while consent is
+   * not granted - and again if consent is withdrawn before the submission.
    */
   async identify(options: IdentifyOptions = {}): Promise<IdentifyResult> {
+    this.requireConsent()
+    const scope = this.consentScope(options.signal)
+    try {
+      return await this.identifyWithConsent(options, scope.signal)
+    } finally {
+      scope.close()
+    }
+  }
+
+  private async identifyWithConsent(options: IdentifyOptions, signal: AbortSignal): Promise<IdentifyResult> {
     const automaticDeferred = options.submit !== false && options.tiers === undefined
     const report = await this.collectReport(
       automaticDeferred ? ['fast'] : (options.tiers ?? ['fast', 'deferred']),
-      options.signal,
+      signal,
       automaticDeferred ? 300 : undefined,
     )
+    // Withdrawn while the sources ran. Checked here rather than beside the
+    // submission because nothing between the two awaits: this is the last
+    // moment the answer can change before the request is made, and it also
+    // keeps a `submit: false` caller from receiving a report collected after
+    // the visitor said no.
+    this.requireConsent()
     const verdicts = detectAll(report)
 
     if (options.submit === false) {
@@ -151,7 +267,15 @@ export class FingerlyClient {
       ...(options.tag === undefined ? {} : { tag: options.tag }),
     }
 
-    const answer = await this.transport.submit(submission, options.signal)
+    let answer: SubmitResponse
+    try {
+      answer = await this.transport.submit(submission, signal)
+    } catch (error) {
+      // A withdrawal aborts the request, which the transport reports as a
+      // cancellation. Say what actually happened.
+      this.requireConsent()
+      throw error
+    }
     const result: IdentifyResult = {
       requestId: answer.request_id,
       visitorId: answer.visitor_id ?? '',
@@ -202,11 +326,20 @@ export class FingerlyClient {
     token: string,
     signal?: AbortSignal,
   ): Promise<DeferredIdentifyResult> {
+    // Skipped rather than failed: nothing went wrong, the visitor changed
+    // their answer, and a caller logging failures should not see one.
+    const withdrawn: DeferredIdentifyResult = { status: 'skipped', reason: 'consent-withdrawn' }
+    if (this.consentState !== 'granted') return withdrawn
+
+    const scope = this.consentScope(signal)
     let report: SignalReport | undefined
     let combinedReport: SignalReport | undefined
     let verdicts: ReturnType<typeof detectAll> | undefined
     try {
-      report = await this.collectReport(['deferred'], signal, 1200, initial.sources)
+      report = await this.collectReport(['deferred'], scope.signal, 1200, initial.sources)
+      // Nothing below awaits before the supplement is sent, so this is the
+      // check immediately before it.
+      if (this.consentState !== 'granted') return withdrawn
       combinedReport = {
         schema: initial.schema,
         budget_ms: initial.budget_ms + report.budget_ms,
@@ -223,9 +356,11 @@ export class FingerlyClient {
         signals: report,
         token,
       }
-      await this.transport.submitSupplement!(requestId, submission, signal)
+      await this.transport.submitSupplement!(requestId, submission, scope.signal)
       return { status: 'submitted', report, combinedReport, verdicts }
     } catch (error) {
+      // The supplement was abandoned because consent was withdrawn mid-flight.
+      if (this.consentState !== 'granted') return withdrawn
       return {
         status: 'failed',
         error: error instanceof Error ? error : new Error(String(error)),
@@ -233,6 +368,8 @@ export class FingerlyClient {
         ...(combinedReport === undefined ? {} : { combinedReport }),
         ...(verdicts === undefined ? {} : { verdicts }),
       }
+    } finally {
+      scope.close()
     }
   }
 
@@ -242,11 +379,24 @@ export class FingerlyClient {
    * Public because it is genuinely useful on its own - a debug page, a test
    * harness, or a customer who wants to see exactly what would be sent before
    * they agree to send it.
+   *
+   * Consent applies here too, although nothing is sent: collecting is itself
+   * the reading of the device that consent covers. Fails with a
+   * [[ConsentError]] while consent is not granted, or if it is withdrawn
+   * while the sources run.
    */
   async collect(options: IdentifyOptions = {}): Promise<SignalReport> {
+    this.requireConsent()
     const tiers: SourceTier[] = options.tiers ?? ['fast', 'deferred']
 
-    return this.collectReport(tiers, options.signal)
+    const scope = this.consentScope(options.signal)
+    try {
+      const report = await this.collectReport(tiers, scope.signal)
+      this.requireConsent()
+      return report
+    } finally {
+      scope.close()
+    }
   }
 
   private async collectReport(

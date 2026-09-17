@@ -34,7 +34,7 @@ describe('FingerlyClient deferred collection', () => {
     expect(submitSupplement).toHaveBeenCalledWith(
       'request-1',
       expect.objectContaining({ token: 'continuation', signals: expect.objectContaining({ tiers: ['deferred'] }) }),
-      undefined,
+      expect.any(AbortSignal),
     )
   })
 

@@ -6,4 +6,4 @@
  * resolution to do the linking.
  */
 
-export { load, browserSources, inspectIntegrity, FingerlyClient, SOURCE, TransportError } from './index.js'
+export { load, browserSources, inspectIntegrity, ConsentError, FingerlyClient, SOURCE, TransportError } from './index.js'
