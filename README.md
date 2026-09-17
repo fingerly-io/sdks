@@ -42,6 +42,16 @@ repo relates to `server` and `panels`.
   use: `fingerly-server` plus a `-jakarta`, `-javax` and `-webflux` adapter,
   each taking its server API as `provided`. The WebFlux one offloads the
   blocking forward off the event loop.
+- `server/dotnet` — server-side .NET SDK for stored-event reads, webhook
+  verification, and a same-origin proxy, mirroring the Node SDK's architecture.
+  Maintained in the standalone private `sdk-dotnet` repository. Two packages:
+  `Fingerly.Server`, which targets net8.0 and netstandard2.0 so the reads stay
+  reachable from .NET Framework, and `Fingerly.Server.AspNetCore`, which mounts
+  the proxy as middleware or as routed endpoints. Zero runtime dependencies on
+  net8.0, since `System.Text.Json` is in its shared framework; both packages are
+  trimmable and AOT-safe, which is why every type is bound through the JSON
+  source generator rather than reflection. Everything is asynchronous, with no
+  synchronous counterpart.
 - `client/web/vue` — Vue 3 plugin and composables ([README](client/web/vue/README.md)).
   One shared identification per app, readonly reactive state, SSR-safe.
 - `client/web/{react,svelte,angular,nuxt,next}` — implemented framework bindings,

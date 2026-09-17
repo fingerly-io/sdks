@@ -31,3 +31,6 @@
 [submodule "server/java"]
 	path = server/java
 	url = git@github.com:fingerly-io/sdk-java.git
+[submodule "server/dotnet"]
+	path = server/dotnet
+	url = git@github.com:fingerly-io/sdk-dotnet.git
