@@ -39,12 +39,12 @@ describe('event client', () => {
 
   it('scopes reads through the secret key and encodes filters', async () => {
     let seen: { url: string; key: string | null } | undefined
-    const client = load({ secretKey: 'sk_test', endpoint: 'https://fingerly.test', fetchImpl: async (input, init) => {
+    const client = load({ secretKey: 'fly_sk_us_development_test', endpoint: 'https://fingerly.test', fetchImpl: async (input, init) => {
       seen = { url: String(input), key: new Headers(init?.headers).get('x-api-key') }
       return Response.json({ rows: [], page: 1, page_size: 20 })
     } })
     await client.events.list({ limit: 20, level: 'high' })
-    expect(seen).toEqual({ url: 'https://fingerly.test/api/v1/events?limit=20&level=high', key: 'sk_test' })
+    expect(seen).toEqual({ url: 'https://fingerly.test/api/v1/events?limit=20&level=high', key: 'fly_sk_us_development_test' })
   })
 })
 

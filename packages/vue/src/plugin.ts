@@ -132,7 +132,7 @@ function createState(): FingerlyState {
  * Build the plugin.
  *
  * ```ts
- * app.use(createFingerly({ apiKey: 'pk_live_…' }))
+ * app.use(createFingerly({ apiKey: 'fly_pk_us_production_…' }))
  * ```
  *
  * Nothing is collected here. Installing the plugin only makes the client

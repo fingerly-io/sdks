@@ -32,7 +32,7 @@ describe('under SSR', () => {
   })
 
   it('builds the state without touching the browser', () => {
-    const fingerly = createFingerly({ apiKey: 'pk_test' })
+    const fingerly = createFingerly({ apiKey: 'fly_pk_us_development_test' })
 
     // The application injector builds this during a server render, so it has
     // to be inert there: the page renders its "not yet identified" state and
@@ -43,7 +43,7 @@ describe('under SSR', () => {
   })
 
   it('rejects a direct identify() with a message that says what to do', async () => {
-    const fingerly = createFingerly({ apiKey: 'pk_test' })
+    const fingerly = createFingerly({ apiKey: 'fly_pk_us_development_test' })
 
     await expect(fingerly.identify()).rejects.toBeInstanceOf(FingerlyServerError)
     await expect(fingerly.identify()).rejects.toThrow(/cannot run during server-side rendering/)

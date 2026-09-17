@@ -30,7 +30,7 @@ export function useFingerly(): FingerlyContext {
     throw new Error(
       'No Fingerly plugin found. Install it before mounting:\n\n' +
         "  import { createFingerly } from '@fingerly/vue'\n" +
-        "  app.use(createFingerly({ apiKey: 'pk_live_…' }))",
+        "  app.use(createFingerly({ apiKey: 'fly_pk_us_production_…' }))",
     )
   }
 

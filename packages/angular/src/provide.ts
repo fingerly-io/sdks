@@ -30,7 +30,7 @@ export const FINGERLY = new InjectionToken<Fingerly>('fingerly')
  * ```ts
  * // app.config.ts
  * export const appConfig: ApplicationConfig = {
- *   providers: [provideFingerly({ apiKey: 'pk_live_…' })],
+ *   providers: [provideFingerly({ apiKey: 'fly_pk_us_production_…' })],
  * }
  * ```
  *
