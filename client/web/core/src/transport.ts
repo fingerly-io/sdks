@@ -13,7 +13,7 @@
  * being fetched afterwards, and a caller needs one round trip instead of two.
  */
 
-import { apiPrefix } from './routes.js'
+import { validateApiVersion } from './routes.js'
 import { defaultEndpointForKey } from './routing.js'
 import type { DeferredSubmission, IdentifySubmission } from './types.js'
 
@@ -229,8 +229,8 @@ export class HttpTransport implements Transport {
       const direct = defaultEndpointForKey(options.apiKey)
       if (!bases.includes(direct)) bases.push(direct)
     }
-    const prefix = apiPrefix(options.apiVersion)
-    this.urls = bases.map((base) => `${base}${prefix}/identify`)
+    const apiVersion = validateApiVersion(options.apiVersion)
+    this.urls = bases.map((base) => `${base}/api/${apiVersion}/identify`)
     this.maxAttempts = Math.max(1, this.urls.length, options.maxAttempts ?? 3)
     this.requestTimeoutMs = options.requestTimeoutMs ?? 5000
 
