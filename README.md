@@ -27,6 +27,13 @@ repo relates to `server` and `panels`.
   proxy under both ASGI and WSGI, because Python has two server standards where
   JavaScript has one `Request`/`Response`. Python 3.9+, one runtime dependency
   (`httpx`); uv and ruff for tooling.
+- `server/go` — server-side Go SDK for stored-event reads, webhook
+  verification, and a same-origin proxy, mirroring the Node SDK's architecture.
+  Maintained in the standalone private `fingerly-go` repository, named for its
+  import path rather than the `sdk-*` convention, as `stripe-go` is. Go 1.22+
+  and nothing outside the standard library. The proxy is a single
+  `http.Handler`, because `net/http` is the one standard every Go router takes,
+  so it needs no adapters.
 - `client/web/vue` — Vue 3 plugin and composables ([README](client/web/vue/README.md)).
   One shared identification per app, readonly reactive state, SSR-safe.
 - `client/web/{react,svelte,angular,nuxt,next}` — implemented framework bindings,

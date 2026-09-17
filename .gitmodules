@@ -25,3 +25,6 @@
 [submodule "server/python"]
 	path = server/python
 	url = git@github.com:fingerly-io/sdk-python.git
+[submodule "server/go"]
+	path = server/go
+	url = git@github.com:fingerly-io/fingerly-go.git
