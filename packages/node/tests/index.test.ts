@@ -10,6 +10,17 @@ describe('verifyWebhook', () => {
     expect(verifyWebhook({ secret: 'secret', payload, timestamp, signature, now: new Date(1700000000_000) })).toBe(true)
     expect(verifyWebhook({ secret: 'secret', payload, timestamp, signature, now: new Date(1700001000_000) })).toBe(false)
   })
+
+  it('accepts any of the signatures sent during a secret rotation', () => {
+    const payload = '{"ok":true}'
+    const timestamp = '1700000000'
+    const sign = (secret: string) => 'sha256=' + createHmac('sha256', secret).update(timestamp + '.' + payload).digest('hex')
+    const now = new Date(1700000000_000)
+    const header = `${sign('new')},${sign('old')}`
+    expect(verifyWebhook({ secret: 'new', payload, timestamp, signature: header, now })).toBe(true)
+    expect(verifyWebhook({ secret: 'old', payload, timestamp, signature: header, now })).toBe(true)
+    expect(verifyWebhook({ secret: 'other', payload, timestamp, signature: header, now })).toBe(false)
+  })
 })
 
 describe('event client', () => {

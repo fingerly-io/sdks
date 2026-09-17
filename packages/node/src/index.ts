@@ -99,17 +99,26 @@ export interface VerifyWebhookOptions {
   now?: Date
 }
 
-/** Verify the raw request body before parsing it. */
+/**
+ * Verify the raw request body before parsing it.
+ *
+ * While an endpoint's secret is being rotated the signature header carries one
+ * signature per secret, comma-separated, and a match on any of them is valid.
+ */
 export function verifyWebhook(options: VerifyWebhookOptions): boolean {
   const tolerance = options.toleranceSeconds ?? 300
   const seconds = Number(options.timestamp)
-  if (!options.secret || !options.signature?.startsWith('sha256=') || !Number.isSafeInteger(seconds)) return false
+  if (!options.secret || !options.signature || !Number.isSafeInteger(seconds)) return false
   const now = Math.floor((options.now ?? new Date()).getTime() / 1000)
   if (Math.abs(now - seconds) > tolerance) return false
   const body = Buffer.from(options.payload)
   const expected = Buffer.from(createHmac('sha256', options.secret).update(`${options.timestamp}.`).update(body).digest('hex'))
-  const actual = Buffer.from(options.signature.slice('sha256='.length))
-  return expected.length === actual.length && timingSafeEqual(expected, actual)
+  return options.signature.split(',').some((candidate) => {
+    const value = candidate.trim()
+    if (!value.startsWith('sha256=')) return false
+    const actual = Buffer.from(value.slice('sha256='.length))
+    return expected.length === actual.length && timingSafeEqual(expected, actual)
+  })
 }
 
 export interface ProxyOptions {
