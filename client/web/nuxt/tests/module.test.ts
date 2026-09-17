@@ -53,6 +53,7 @@ describe('the module', () => {
 
     expect(fingerlyConfig(nuxt)).toEqual({
       apiKey: 'pk_from_config',
+      apiVersion: 'v1',
       endpoint: '',
       endpoints: [],
       fallbackToDefaultEndpoint: false,
@@ -65,7 +66,7 @@ describe('the module', () => {
     const nuxt = nuxtWith()
     expect(() => module_.setup({ apiKey: 'pk' }, nuxt)).not.toThrow()
     expect(fingerlyConfig(nuxt)).toEqual({
-      apiKey: 'pk', endpoint: '', endpoints: [], fallbackToDefaultEndpoint: false, submit: true, consent: 'granted',
+      apiKey: 'pk', apiVersion: 'v1', endpoint: '', endpoints: [], fallbackToDefaultEndpoint: false, submit: true, consent: 'granted',
     })
   })
 
@@ -78,6 +79,7 @@ describe('the module', () => {
 
     expect(fingerlyConfig(nuxt)).toEqual({
       apiKey: 'pk_from_environment',
+      apiVersion: 'v1',
       endpoint: '',
       endpoints: [],
       fallbackToDefaultEndpoint: false,
@@ -94,6 +96,7 @@ describe('the module', () => {
 
     expect(fingerlyConfig(nuxt)).toEqual({
       apiKey: 'pk_from_config',
+      apiVersion: 'v1',
       endpoint: '',
       endpoints: [],
       fallbackToDefaultEndpoint: false,
@@ -110,7 +113,7 @@ describe('the module', () => {
     module_.setup({ apiKey: 'pk' }, nuxt)
 
     expect(Object.keys(fingerlyConfig(nuxt) as object).sort()).toEqual([
-      'apiKey', 'consent', 'endpoint', 'endpoints', 'fallbackToDefaultEndpoint', 'submit',
+      'apiKey', 'apiVersion', 'consent', 'endpoint', 'endpoints', 'fallbackToDefaultEndpoint', 'submit',
     ])
   })
 
@@ -131,7 +134,7 @@ describe('the module', () => {
     module_.setup({}, nuxt)
 
     expect(fingerlyConfig(nuxt)).toEqual({
-      apiKey: '', endpoint: '', endpoints: [], fallbackToDefaultEndpoint: false, submit: true, consent: 'granted',
+      apiKey: '', apiVersion: 'v1', endpoint: '', endpoints: [], fallbackToDefaultEndpoint: false, submit: true, consent: 'granted',
     })
   })
 

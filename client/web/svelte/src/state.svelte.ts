@@ -30,6 +30,8 @@ export interface FingerlyOptions {
   /** The SDK key from the dashboard. A public key is safe in a page. */
   apiKey: string
   /** Origin of the API. Defaults to production. */
+  /** API route version. Defaults to v1. */
+  apiVersion?: string
   endpoint?: string
   endpoints?: string | readonly string[]
   fallbackToDefaultEndpoint?: boolean
@@ -183,6 +185,7 @@ export function createFingerly(options: FingerlyOptions): Fingerly {
     clientPromise ??= load({
       apiKey: options.apiKey,
       ...(options.endpoint === undefined ? {} : { endpoint: options.endpoint }),
+      ...(options.apiVersion === undefined ? {} : { apiVersion: options.apiVersion }),
       ...(options.endpoints === undefined ? {} : { endpoints: options.endpoints }),
       ...(options.fallbackToDefaultEndpoint === undefined ? {} : { fallbackToDefaultEndpoint: options.fallbackToDefaultEndpoint }),
       consent,

@@ -28,7 +28,7 @@ export type FingerlyProviderProps = { children?: ReactNode } & (
    * is shared by every visitor it renders for, which is the one way this
    * package could leak one visitor's report into another's page.
    */
-  | { store: FingerlyStore; apiKey?: never; endpoint?: never; endpoints?: never; fallbackToDefaultEndpoint?: never; submit?: never; consent?: never }
+  | { store: FingerlyStore; apiKey?: never; apiVersion?: never; endpoint?: never; endpoints?: never; fallbackToDefaultEndpoint?: never; submit?: never; consent?: never }
 )
 
 /**
@@ -49,7 +49,7 @@ export type FingerlyProviderProps = { children?: ReactNode } & (
  * starts any automatic identification that was waiting, on the same store.
  */
 export function FingerlyProvider(props: FingerlyProviderProps): ReactNode {
-  const { children, store, apiKey, endpoint, endpoints, fallbackToDefaultEndpoint, submit, consent } = props as FingerlyProviderProps & FingerlyReactOptions
+  const { children, store, apiKey, apiVersion, endpoint, endpoints, fallbackToDefaultEndpoint, submit, consent } = props as FingerlyProviderProps & FingerlyReactOptions
 
   // Keyed on the values rather than on the options object, so the ordinary
   // `<FingerlyProvider apiKey="…">` - a fresh object literal on every render of
@@ -59,6 +59,7 @@ export function FingerlyProvider(props: FingerlyProviderProps): ReactNode {
     () =>
       createFingerlyStore({
         apiKey: apiKey as string,
+        ...(apiVersion === undefined ? {} : { apiVersion }),
         ...(endpoint === undefined ? {} : { endpoint }),
         ...(endpoints === undefined ? {} : { endpoints }),
         ...(fallbackToDefaultEndpoint === undefined ? {} : { fallbackToDefaultEndpoint }),
@@ -69,7 +70,7 @@ export function FingerlyProvider(props: FingerlyProviderProps): ReactNode {
     // a question, not a new configuration, and rebuilding the store for it
     // would discard the identification it is about to allow. The value at
     // creation seeds the store; the effect below carries every change after.
-    [apiKey, endpoint, endpoints, fallbackToDefaultEndpoint, submit],
+    [apiKey, apiVersion, endpoint, endpoints, fallbackToDefaultEndpoint, submit],
   )
 
   useEffect(() => {

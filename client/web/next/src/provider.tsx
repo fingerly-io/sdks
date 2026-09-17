@@ -20,6 +20,8 @@ export interface FingerlyNextProviderProps {
   /** Overrides `NEXT_PUBLIC_FINGERLY_API_KEY`. */
   apiKey?: string
   /** Overrides `NEXT_PUBLIC_FINGERLY_ENDPOINT`. Defaults to production. */
+  /** API route version. Defaults to v1. */
+  apiVersion?: string
   endpoint?: string
   /** Ordered first-party endpoints; overrides NEXT_PUBLIC_FINGERLY_ENDPOINTS. */
   endpoints?: string | readonly string[]
@@ -126,6 +128,7 @@ export function FingerlyProvider(props: FingerlyNextProviderProps): ReactNode {
     <ReactFingerlyProvider
       apiKey={apiKey}
       {...(endpoint === undefined ? {} : { endpoint })}
+      {...(props.apiVersion === undefined ? {} : { apiVersion: props.apiVersion })}
       {...(endpoints === undefined ? {} : { endpoints })}
       {...(props.fallbackToDefaultEndpoint === undefined ? {} : { fallbackToDefaultEndpoint: props.fallbackToDefaultEndpoint })}
       {...(props.submit === undefined ? {} : { submit: props.submit })}

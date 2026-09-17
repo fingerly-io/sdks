@@ -13,6 +13,7 @@ export interface ModuleOptions {
   /** The SDK key from the dashboard. A public key is safe in a page. */
   apiKey?: string
   /** Origin of the API. Defaults to production. */
+  apiVersion?: string
   endpoint?: string
   endpoints?: string[]
   fallbackToDefaultEndpoint?: boolean
@@ -48,6 +49,7 @@ export interface ModuleOptions {
  */
 export interface FingerlyPublicConfig {
   apiKey: string
+  apiVersion: string
   endpoint: string
   endpoints: string[]
   fallbackToDefaultEndpoint: boolean
@@ -78,6 +80,7 @@ export function resolvePublicConfig(
 
   return {
     apiKey: pick(existing?.apiKey, options.apiKey) ?? '',
+    apiVersion: pick(existing?.apiVersion, options.apiVersion) ?? 'v1',
     endpoint: pick(existing?.endpoint, options.endpoint) ?? '',
     endpoints: existing?.endpoints ?? options.endpoints ?? [],
     fallbackToDefaultEndpoint: existing?.fallbackToDefaultEndpoint ?? options.fallbackToDefaultEndpoint ?? false,

@@ -35,6 +35,8 @@ import { SDK_VERSION } from './version.js'
 export const SCHEMA_VERSION = 1
 
 export interface FingerlyClientOptions {
+  /** API route version. Defaults to v1; the server must support it. */
+  apiVersion?: string
   /** The SDK key, from the dashboard. A public key is safe in a page. */
   apiKey: string
   /** Origin of the API. Defaults to production. */
@@ -107,6 +109,7 @@ export class FingerlyClient {
     this.transport =
       options.transport ??
       new HttpTransport({
+        ...(options.apiVersion === undefined ? {} : { apiVersion: options.apiVersion }),
         apiKey: options.apiKey,
         ...(options.endpoint === undefined ? {} : { endpoint: options.endpoint }),
         ...(options.endpoints === undefined ? {} : { endpoints: options.endpoints }),

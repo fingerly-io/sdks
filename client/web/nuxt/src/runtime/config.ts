@@ -31,6 +31,7 @@ export function toVueOptions(config: Partial<FingerlyPublicConfig> | undefined):
 
   return {
     apiKey,
+    ...(config?.apiVersion === undefined || config.apiVersion === '' ? {} : { apiVersion: config.apiVersion }),
     ...(config?.endpoint === undefined || config.endpoint === ''
       ? {}
       : { endpoint: config.endpoint }),

@@ -158,3 +158,19 @@ describe('HttpTransport retry idempotency', () => {
     expect(fetchImpl).not.toHaveBeenCalled()
   })
 })
+
+describe('API version configuration', () => {
+  it('uses the configured version for identify and deferred reports', async () => {
+    const fetchImpl = vi.fn(async () => new Response('{"request_id":"request-version"}')) as typeof fetch
+    const transport = new HttpTransport({ apiKey: 'public-test-key', endpoint: '/metrics', apiVersion: 'v2', fetchImpl })
+    await transport.submit(submission())
+    await transport.submitSupplement('request-version', { token: 'token', sdk: submission().sdk, signals: submission().signals })
+    expect(vi.mocked(fetchImpl).mock.calls.map(([url]) => url)).toEqual([
+      '/metrics/api/v2/identify', '/metrics/api/v2/events/request-version/supplement',
+    ])
+  })
+
+  it.each(['', '1', 'v0', 'v2/../v1', 'v2?query', 'v2\n'])('rejects an invalid version %j', (apiVersion) => {
+    expect(() => new HttpTransport({ apiKey: 'public-test-key', apiVersion })).toThrow(TypeError)
+  })
+})
