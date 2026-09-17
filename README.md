@@ -1,6 +1,6 @@
 # fingerly/sdks
 
-Client SDKs for the Fingerly fraud detection/prevention platform. This repository
+Client and server SDKs for the Fingerly fraud detection/prevention platform. This repository
 is the integration workspace: independently versioned SDK repositories are
 mounted here as git submodules, alongside the pnpm workspace and Turborepo.
 
@@ -9,36 +9,38 @@ repo relates to `server` and `panels`.
 
 ## Layout
 
-- `packages/types` — canonical TypeScript wire contracts, maintained in the
+- `client/web/types` — canonical TypeScript wire contracts, maintained in the
   standalone private `sdk-types` repository and consumed by TypeScript bridges.
-- `packages/core` — framework-agnostic device/event core (TS), shared by web and Node SDKs.
+- `client/web/core` — framework-agnostic client device/event core (TS), shared by browser SDKs.
   The budgeted scheduler, the signal vocabulary, the transport, and the detectors.
   Contains no DOM code and is compiled against the worker lib so that it cannot
-  acquire any — `node` depends on it.
-- `packages/web-js` — vanilla browser SDK. The ~22 browser sources and the
+  acquire any.
+- `client/web/web-js` — vanilla browser SDK. The ~22 browser sources and the
   tamper layer that checks whether the browser is lying about them.
-- `packages/node` — server-side Node SDK for stored-event reads, webhook
-  verification, and a framework-neutral same-origin proxy.
-- `packages/vue` — Vue 3 plugin and composables ([README](packages/vue/README.md)).
+- `server/node` — server-side Node SDK for stored-event reads, webhook
+  verification, and a framework-neutral same-origin proxy. Maintained in the
+  standalone private `sdk-node` repository; it has no runtime dependencies.
+- `client/web/vue` — Vue 3 plugin and composables ([README](client/web/vue/README.md)).
   One shared identification per app, readonly reactive state, SSR-safe.
-- `packages/{react,svelte,angular,nuxt,next}` — implemented framework bindings,
+- `client/web/{react,svelte,angular,nuxt,next}` — implemented framework bindings,
   built on `web-js`/`vue`/`react`.
-- `mobile/ios` — the native iOS SDK (Swift). Implemented; see its
-  [README](mobile/ios/README.md). Ships an SPM package and a podspec: React
+- `client/mobile/ios` — the native iOS SDK (Swift). Implemented; see its
+  [README](client/mobile/ios/README.md). Ships an SPM package and a podspec: React
   Native integrates through CocoaPods, while Flutter supports both CocoaPods
   and Swift Package Manager.
-- `mobile/android` — the native Android SDK (Kotlin). Implemented; see its
-  [README](mobile/android/README.md). One dependency (coroutines), no JNI, and
+- `client/mobile/android` — the native Android SDK (Kotlin). Implemented; see its
+  [README](client/mobile/android/README.md). One dependency (coroutines), no JNI, and
   two install-time permissions that prompt nobody. Publishes an AAR as
   `io.fingerly:fingerly`, which is what the three bridges depend on.
-- `mobile/react-native`, `mobile/flutter`, `mobile/lynx` — standalone bridges to the native SDKs, not
+- `client/mobile/react-native`, `client/mobile/flutter`, `client/mobile/lynx` — standalone bridges to the native SDKs, not
   second implementations. All three are thin on purpose: almost every signal worth
   having on a phone is unreachable from JavaScript or Dart, so a cross-platform
   SDK that collected only what it could reach would report a jailbroken,
   instrumented device as clean. React Native and Lynx are in the pnpm workspace;
   Flutter is a Dart/pub package and is not. Lynx supports Android and iOS hosts.
 - `contract` — API contract synced from `server`'s OpenAPI spec; the sync point for
-  the API shape across every SDK/panel consumer
+  the API shape across every SDK/panel consumer. Server SDKs vendor snapshots
+  so they can build and test independently.
 
 ## Development
 
@@ -61,7 +63,7 @@ pnpm --filter @fingerly/web-js demo   # http://localhost:4173
 The iOS SDK is a separate toolchain and is not driven by Turborepo:
 
 ```
-cd mobile/ios
+cd client/mobile/ios
 xcodebuild test -scheme Fingerly -destination 'platform=iOS Simulator,name=iPhone 16e'
 ./Example/run.sh                    # builds, installs and launches on a booted simulator
 ```
@@ -69,7 +71,7 @@ xcodebuild test -scheme Fingerly -destination 'platform=iOS Simulator,name=iPhon
 Flutter is a separate Dart package:
 
 ```
-cd mobile/flutter
+cd client/mobile/flutter
 flutter pub get
 flutter analyze
 flutter test
@@ -78,9 +80,9 @@ flutter test
 Lynx is a separate library and example app inside the pnpm workspace:
 
 ```
-pnpm --dir mobile/lynx test
-pnpm --dir mobile/lynx build
-pnpm --dir mobile/lynx/example build
+pnpm --dir client/mobile/lynx test
+pnpm --dir client/mobile/lynx build
+pnpm --dir client/mobile/lynx/example build
 ```
 
 The demo page runs the browser SDK against whatever browser opens it and renders
@@ -94,7 +96,7 @@ written out there.
 
 ## Status
 
-`core`, `web-js`, Node, the framework bindings, `mobile/ios`, `mobile/android`, and
+`core`, `web-js`, Node, the framework bindings, `client/mobile/ios`, `client/mobile/android`, and
 the Flutter, React Native, and Lynx bridges are implemented. See [`todo.md`](todo.md)
 for what is done, what was measured, and what is left, and
 [`docs/another library-teardown.md`](docs/another library-teardown.md) for the
@@ -109,9 +111,9 @@ sources are in the map.
 
 That is what lets the server have one reader (`server/domain/risk/report.go`)
 and one set of rules. The canonical TypeScript shape lives in
-`packages/types/src/index.ts`; `packages/core` re-exports it, while
-`mobile/ios/Sources/Fingerly/Core/Types.swift`
-and `mobile/android/.../core/Types.kt` are literal ports of it, field for field,
+`client/web/types/src/index.ts`; `client/web/core` re-exports it, while
+`client/mobile/ios/Sources/Fingerly/Core/Types.swift`
+and `client/mobile/android/.../core/Types.kt` are literal ports of it, field for field,
 because both ends were already written.
 
 Native SDKs additionally emit a `device` source, which is the one thing the
@@ -200,7 +202,7 @@ devices rather than asking. Requesting is what is banned —
 `requestStorageAccess`, file and device pickers, `credentials.get`, fullscreen
 and pointer-lock grabs.
 
-`packages/web-js/tests/no-permission-prompts.test.ts` enforces that list against
+`client/web/web-js/tests/no-permission-prompts.test.ts` enforces that list against
 the source tree, so it cannot regress quietly.
 
 The one API that prompts on some browsers and not others is canvas readback:

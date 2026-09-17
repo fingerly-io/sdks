@@ -1,21 +1,24 @@
 [submodule "mobile/ios"]
-	path = mobile/ios
+	path = client/mobile/ios
 	url = git@github.com:fingerly-io/sdk-ios.git
 [submodule "mobile/android"]
-	path = mobile/android
+	path = client/mobile/android
 	url = git@github.com:fingerly-io/sdk-android.git
 [submodule "mobile/flutter"]
-	path = mobile/flutter
+	path = client/mobile/flutter
 	url = git@github.com:fingerly-io/sdk-flutter.git
 [submodule "packages/types"]
-	path = packages/types
+	path = client/web/types
 	url = git@github.com:fingerly-io/sdk-types.git
 [submodule "mobile/react-native"]
-	path = mobile/react-native
+	path = client/mobile/react-native
 	url = git@github.com:fingerly-io/sdk-react-native.git
 [submodule "mobile/lynx"]
-	path = mobile/lynx
+	path = client/mobile/lynx
 	url = git@github.com:fingerly-io/sdk-lynx.git
 [submodule "proxies/cloudflare"]
 	path = proxies/cloudflare
 	url = git@github.com:fingerly-io/cloudflare-worker-proxy.git
+[submodule "server/node"]
+	path = server/node
+	url = git@github.com:fingerly-io/sdk-node.git

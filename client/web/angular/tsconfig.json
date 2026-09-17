@@ -1,5 +1,5 @@
 {
-  "extends": "../../tsconfig.base.json",
+  "extends": "../../../tsconfig.base.json",
   "compilerOptions": {
     // No rootDir/outDir here: this config is the typechecker (`noEmit`), and
     // tsconfig.build.json is the one that emits.

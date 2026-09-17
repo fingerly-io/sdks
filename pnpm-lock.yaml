@@ -14,11 +14,11 @@ importers:
 
   contract: {}
 
-  mobile/lynx:
+  client/mobile/lynx:
     dependencies:
       '@fingerly/types':
         specifier: workspace:*
-        version: link:../../packages/types
+        version: link:../../web/types
     devDependencies:
       '@lynx-js/autolink-codegen':
         specifier: 0.6.0
@@ -30,11 +30,11 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@26.4.0)(happy-dom@15.11.7)(lightningcss@1.33.0)(terser@5.51.2)
 
-  mobile/react-native:
+  client/mobile/react-native:
     dependencies:
       '@fingerly/types':
         specifier: workspace:*
-        version: link:../../packages/types
+        version: link:../../web/types
       react-native:
         specifier: '>=0.73'
         version: 0.87.1(@babel/core@7.29.7)(@types/react@19.2.18)(react@19.2.8)
@@ -49,7 +49,7 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@26.4.0)(happy-dom@15.11.7)(lightningcss@1.33.0)(terser@5.51.2)
 
-  packages/angular:
+  client/web/angular:
     dependencies:
       '@fingerly/web-js':
         specifier: workspace:*
@@ -83,7 +83,7 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@26.4.0)(happy-dom@15.11.7)(lightningcss@1.33.0)(terser@5.51.2)
 
-  packages/core:
+  client/web/core:
     dependencies:
       '@fingerly/types':
         specifier: workspace:*
@@ -99,11 +99,11 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@26.4.0)(happy-dom@15.11.7)(lightningcss@1.33.0)(terser@5.51.2)
 
-  packages/next:
+  client/web/next:
     dependencies:
       '@fingerly/node':
         specifier: workspace:*
-        version: link:../node
+        version: link:../../../server/node
       '@fingerly/react':
         specifier: workspace:*
         version: link:../react
@@ -139,7 +139,7 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@26.4.0)(happy-dom@15.11.7)(lightningcss@1.33.0)(terser@5.51.2)
 
-  packages/node:
+  server/node:
     devDependencies:
       '@types/node':
         specifier: 26.4.0
@@ -166,7 +166,7 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@26.4.0)(happy-dom@15.11.7)(lightningcss@1.33.0)(terser@5.51.2)
 
-  packages/nuxt:
+  client/web/nuxt:
     dependencies:
       '@fingerly/vue':
         specifier: workspace:*
@@ -200,7 +200,7 @@ importers:
         specifier: ^3.5.42
         version: 3.5.42(typescript@5.9.3)
 
-  packages/react:
+  client/web/react:
     dependencies:
       '@fingerly/web-js':
         specifier: workspace:*
@@ -231,7 +231,7 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@26.4.0)(happy-dom@15.11.7)(lightningcss@1.33.0)(terser@5.51.2)
 
-  packages/svelte:
+  client/web/svelte:
     dependencies:
       '@fingerly/web-js':
         specifier: workspace:*
@@ -253,7 +253,7 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@26.4.0)(happy-dom@15.11.7)(lightningcss@1.33.0)(terser@5.51.2)
 
-  packages/types:
+  client/web/types:
     devDependencies:
       tsup:
         specifier: ^8.3.5
@@ -265,7 +265,7 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@26.4.0)(happy-dom@15.11.7)(lightningcss@1.33.0)(terser@5.51.2)
 
-  packages/vue:
+  client/web/vue:
     dependencies:
       '@fingerly/web-js':
         specifier: workspace:*
@@ -287,7 +287,7 @@ importers:
         specifier: ^3.5.42
         version: 3.5.42(typescript@5.9.3)
 
-  packages/web-js:
+  client/web/web-js:
     dependencies:
       '@fingerly/core':
         specifier: workspace:*

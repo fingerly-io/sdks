@@ -1,5 +1,6 @@
 packages:
-  - "packages/*"
-  - "mobile/react-native"
-  - "mobile/lynx"
+  - "client/web/*"
+  - "client/mobile/react-native"
+  - "client/mobile/lynx"
+  - "server/*"
   - "contract"

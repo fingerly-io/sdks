@@ -334,7 +334,7 @@ that splits one visitor into two.
 
 ## Reproducing
 
-`packages/web-js/demo/shields.html`, served by the web-js demo server:
+`client/web/web-js/demo/shields.html`, served by the web-js demo server:
 
 ```sh
 pnpm --filter @fingerly/web-js demo   # http://localhost:4173/demo/shields.html
