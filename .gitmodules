@@ -34,3 +34,6 @@
 [submodule "server/dotnet"]
 	path = server/dotnet
 	url = git@github.com:fingerly-io/sdk-dotnet.git
+[submodule "server/ruby"]
+	path = server/ruby
+	url = git@github.com:fingerly-io/sdk-ruby.git

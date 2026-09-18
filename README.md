@@ -52,6 +52,14 @@ repo relates to `server` and `panels`.
   trimmable and AOT-safe, which is why every type is bound through the JSON
   source generator rather than reflection. Everything is asynchronous, with no
   synchronous counterpart.
+- `server/ruby` — server-side Ruby SDK for stored-event reads, webhook
+  verification, and a same-origin proxy, mirroring the Node SDK's architecture.
+  Maintained in the standalone private `sdk-ruby` repository. Ruby 3.1+ and
+  nothing outside the standard library. The proxy is one piece of Rack
+  middleware, because Rack is the interface every Ruby server and framework
+  shares, so it needs no adapters. One synchronous client and no asynchronous
+  twin: `Net::HTTP` has honoured the fiber scheduler since Ruby 3.0, so the
+  same client is non-blocking under Falcon. Ships RBS signatures.
 - `client/web/vue` — Vue 3 plugin and composables ([README](client/web/vue/README.md)).
   One shared identification per app, readonly reactive state, SSR-safe.
 - `client/web/{react,svelte,angular,nuxt,next}` — implemented framework bindings,
