@@ -40,3 +40,6 @@
 [submodule "server/rust"]
 	path = server/rust
 	url = git@github.com:fingerly-io/sdk-rust.git
+[submodule "server/php"]
+	path = server/php
+	url = git@github.com:fingerly-io/sdk-php.git

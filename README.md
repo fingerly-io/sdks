@@ -72,6 +72,19 @@ repo relates to `server` and `panels`.
   counterpart; cancellation is dropping the future. Webhook verification sits
   behind no feature, so `default-features = false` is a build with neither an
   HTTP stack nor a runtime in it.
+- `server/php` — server-side PHP SDK for stored-event reads, webhook
+  verification, and a same-origin proxy, mirroring the Node SDK's architecture.
+  Maintained in the standalone private `sdk-php` repository. PHP 8.1+ and
+  nothing outside `ext-curl` and `ext-json`; CI asserts that
+  `composer install --no-dev` installs exactly zero packages and that the
+  client, proxy and webhook verification all work in that state. A PSR-18
+  client is accepted but never required, because requiring one means the
+  package stops working unless an implementation happens to be installed.
+  The proxy is one framework-neutral core plus a PSR-15, a Laravel and a
+  Symfony adapter, because PHP has three live server request shapes and no
+  equivalent of Rack to unify them, so this is the Java situation rather than
+  the Go one. `handle()` is the interface and the adapters are conveniences,
+  so Phalcon, CodeIgniter, Yii or a bare script need about ten lines.
 - `client/web/vue` — Vue 3 plugin and composables ([README](client/web/vue/README.md)).
   One shared identification per app, readonly reactive state, SSR-safe.
 - `client/web/{react,svelte,angular,nuxt,next}` — implemented framework bindings,
