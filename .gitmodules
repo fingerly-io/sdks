@@ -37,3 +37,6 @@
 [submodule "server/ruby"]
 	path = server/ruby
 	url = git@github.com:fingerly-io/sdk-ruby.git
+[submodule "server/rust"]
+	path = server/rust
+	url = git@github.com:fingerly-io/sdk-rust.git

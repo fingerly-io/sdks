@@ -60,6 +60,18 @@ repo relates to `server` and `panels`.
   shares, so it needs no adapters. One synchronous client and no asynchronous
   twin: `Net::HTTP` has honoured the fiber scheduler since Ruby 3.0, so the
   same client is non-blocking under Falcon. Ships RBS signatures.
+- `server/rust` — server-side Rust SDK for stored-event reads, webhook
+  verification, and a same-origin proxy, mirroring the Node SDK's architecture.
+  Maintained in the standalone private `sdk-rust` repository. Rust 1.88+,
+  async on Tokio, and the only server SDK with no dependency-free option:
+  Rust has no HTTP in its standard library, so it is reqwest over rustls.
+  The proxy is a `tower::Service` over `http` types rather than a set of
+  framework adapters, because that is the interface axum, hyper, warp and
+  tonic already share, the same reasoning that made the Go proxy one
+  `http.Handler`. Everything is asynchronous, with no synchronous
+  counterpart; cancellation is dropping the future. Webhook verification sits
+  behind no feature, so `default-features = false` is a build with neither an
+  HTTP stack nor a runtime in it.
 - `client/web/vue` — Vue 3 plugin and composables ([README](client/web/vue/README.md)).
   One shared identification per app, readonly reactive state, SSR-safe.
 - `client/web/{react,svelte,angular,nuxt,next}` — implemented framework bindings,
