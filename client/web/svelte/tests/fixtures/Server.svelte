@@ -1,7 +1,7 @@
 <script lang="ts">
   import { setupFingerly, useIdentify } from '../../src/index.js'
 
-  const fingerly = setupFingerly({ apiKey: 'fly_pk_us_development_test' })
+  const fingerly = setupFingerly({ apiKey: 'fly_pk_development_test' })
   const identified = useIdentify({ immediate: true })
 
   // Awaiting is not possible during a component's initialisation, so the

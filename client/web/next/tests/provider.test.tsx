@@ -241,7 +241,7 @@ describe('FingerlyRequestId', () => {
 
   it('waits for consent before filling the field, then identifies once it is granted', async () => {
     const { container, root } = render(
-      <FingerlyProvider apiKey="fly_pk_us_development_test" consent="pending">
+      <FingerlyProvider apiKey="fly_pk_development_test" consent="pending">
         <FingerlyRequestId />
       </FingerlyProvider>,
     )
@@ -252,13 +252,13 @@ describe('FingerlyRequestId', () => {
 
     await act(async () =>
       root.render(
-        <FingerlyProvider apiKey="fly_pk_us_development_test" consent="granted">
+        <FingerlyProvider apiKey="fly_pk_development_test" consent="granted">
           <FingerlyRequestId />
         </FingerlyProvider>,
       ),
     )
 
-    expect(loadMock).toHaveBeenCalledWith({ apiKey: 'fly_pk_us_development_test', consent: 'granted' })
+    expect(loadMock).toHaveBeenCalledWith({ apiKey: 'fly_pk_development_test', consent: 'granted' })
     expect(identifyMock).toHaveBeenCalledTimes(1)
     expect((container.querySelector('input') as HTMLInputElement).value).toBe('req_1')
   })

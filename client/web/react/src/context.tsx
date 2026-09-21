@@ -35,7 +35,7 @@ export type FingerlyProviderProps = { children?: ReactNode } & (
  * Make the client and the shared result available to everything below.
  *
  * ```tsx
- * <FingerlyProvider apiKey="fly_pk_us_production_…">
+ * <FingerlyProvider apiKey="fly_pk_production_…">
  *   <App />
  * </FingerlyProvider>
  * ```

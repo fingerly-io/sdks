@@ -41,7 +41,7 @@ describe('under SSR', () => {
     }
 
     const html = renderToString(
-      <FingerlyProvider apiKey="fly_pk_us_development_test">
+      <FingerlyProvider apiKey="fly_pk_development_test">
         <Page />
       </FingerlyProvider>,
     )
@@ -64,7 +64,7 @@ describe('under SSR', () => {
     }
 
     const html = renderToString(
-      <FingerlyProvider apiKey="fly_pk_us_development_test">
+      <FingerlyProvider apiKey="fly_pk_development_test">
         <Page />
       </FingerlyProvider>,
     )
@@ -87,7 +87,7 @@ describe('under SSR', () => {
     }
 
     renderToString(
-      <FingerlyProvider apiKey="fly_pk_us_development_test">
+      <FingerlyProvider apiKey="fly_pk_development_test">
         <Page />
       </FingerlyProvider>,
     )
