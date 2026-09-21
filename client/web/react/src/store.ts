@@ -34,7 +34,7 @@ export interface FingerlyReactOptions {
   endpoint?: string
   /** Ordered first-party ingestion endpoints. */
   endpoints?: string | readonly string[]
-  /** Try the regional Fingerly API only after custom endpoints fail. */
+  /** Try the Fingerly API only after custom endpoints fail. */
   fallbackToDefaultEndpoint?: boolean
   /**
    * Collect and score without submitting anything.

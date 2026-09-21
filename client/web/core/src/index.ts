@@ -8,8 +8,7 @@
 
 export { FingerlyClient, SCHEMA_VERSION } from './client.js'
 export type { FingerlyClientOptions, IdentifyOptions } from './client.js'
-export { defaultEndpointForKey, regionFromKey } from './routing.js'
-export type { DataRegion } from './routing.js'
+export { DEFAULT_ENDPOINT } from './routing.js'
 export { ConsentError } from './consent.js'
 
 export { collect } from './scheduler.js'

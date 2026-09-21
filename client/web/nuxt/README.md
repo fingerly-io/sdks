@@ -17,7 +17,7 @@ pnpm add @fingerly/nuxt
 export default defineNuxtConfig({
   modules: ['@fingerly/nuxt'],
   fingerly: {
-    apiKey: 'fly_pk_us_production_…',
+    apiKey: 'fly_pk_production_…',
   },
 })
 ```
@@ -25,7 +25,7 @@ export default defineNuxtConfig({
 Or leave the key out of the config and set it in the environment:
 
 ```
-NUXT_PUBLIC_FINGERLY_API_KEY=fly_pk_us_production_…
+NUXT_PUBLIC_FINGERLY_API_KEY=fly_pk_production_…
 ```
 
 The environment wins, and that is the point. Nuxt reads `runtimeConfig.public`
@@ -50,7 +50,7 @@ If identifying a visitor needs their consent first, start with `consent:
 ```ts
 // nuxt.config.ts
 fingerly: {
-  apiKey: 'fly_pk_us_production_…',
+  apiKey: 'fly_pk_production_…',
   consent: 'pending',
 },
 ```

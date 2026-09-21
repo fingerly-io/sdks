@@ -136,7 +136,7 @@ beforeEach(() => {
 
 describe('setupFingerly', () => {
   it('collects nothing on mount', () => {
-    render({ options: { apiKey: 'fly_pk_us_development_test' } })
+    render({ options: { apiKey: 'fly_pk_development_test' } })
 
     // Setting up makes the client reachable and no more. A setup that
     // fingerprinted would run during every server render as well.
@@ -145,10 +145,10 @@ describe('setupFingerly', () => {
   })
 
   it('passes the endpoint through, and omits it when unset', async () => {
-    const page = render({ options: { apiKey: 'fly_pk_us_development_test', endpoint: 'http://localhost:8099' } })
+    const page = render({ options: { apiKey: 'fly_pk_development_test', endpoint: 'http://localhost:8099' } })
     await page.state.identify()
 
-    expect(loadMock).toHaveBeenCalledWith({ apiKey: 'fly_pk_us_development_test', endpoint: 'http://localhost:8099', consent: 'granted' })
+    expect(loadMock).toHaveBeenCalledWith({ apiKey: 'fly_pk_development_test', endpoint: 'http://localhost:8099', consent: 'granted' })
   })
 })
 
@@ -163,7 +163,7 @@ describe('useFingerly', () => {
 
 describe('useIdentify', () => {
   it('collects on mount when immediate is set, and the template follows', async () => {
-    const page = render({ options: { apiKey: 'fly_pk_us_development_test' }, immediate: true })
+    const page = render({ options: { apiKey: 'fly_pk_development_test' }, immediate: true })
 
     expect(page.text()).toContain('ready:false')
 
@@ -178,7 +178,7 @@ describe('useIdentify', () => {
   })
 
   it('surfaces everything the server decided', async () => {
-    const page = render({ options: { apiKey: 'fly_pk_us_development_test' } })
+    const page = render({ options: { apiKey: 'fly_pk_development_test' } })
 
     await page.state.identify()
 
@@ -210,7 +210,7 @@ describe('useIdentify', () => {
       suspectLevel: null,
       triggers: [],
     })
-    const page = render({ options: { apiKey: 'fly_pk_us_development_test' } })
+    const page = render({ options: { apiKey: 'fly_pk_development_test' } })
 
     await page.state.identify()
 
@@ -221,7 +221,7 @@ describe('useIdentify', () => {
   })
 
   it('shares one identification across every component that asks', async () => {
-    const page = render({ options: { apiKey: 'fly_pk_us_development_test' }, immediate: true, children: 3 })
+    const page = render({ options: { apiKey: 'fly_pk_development_test' }, immediate: true, children: 3 })
     await settle()
 
     expect(identifyMock).toHaveBeenCalledTimes(1)
@@ -231,7 +231,7 @@ describe('useIdentify', () => {
   })
 
   it('reuses a finished identification rather than repeating it', async () => {
-    const page = render({ options: { apiKey: 'fly_pk_us_development_test' } })
+    const page = render({ options: { apiKey: 'fly_pk_development_test' } })
 
     await page.state.identify()
     await page.state.identify()
@@ -240,7 +240,7 @@ describe('useIdentify', () => {
   })
 
   it('starts a fresh one when forced', async () => {
-    const page = render({ options: { apiKey: 'fly_pk_us_development_test' } })
+    const page = render({ options: { apiKey: 'fly_pk_development_test' } })
 
     await page.state.identify()
     await page.state.identify({ force: true })
@@ -250,7 +250,7 @@ describe('useIdentify', () => {
 
   it('reads a getter tag at submission time', async () => {
     let orderId = 'order_1'
-    const page = render({ options: { apiKey: 'fly_pk_us_development_test' }, tag: () => orderId })
+    const page = render({ options: { apiKey: 'fly_pk_development_test' }, tag: () => orderId })
 
     orderId = 'order_2'
     await page.state.identify()
@@ -260,7 +260,7 @@ describe('useIdentify', () => {
 
   it('records a failure without leaving an unhandled rejection', async () => {
     identifyMock.mockRejectedValue(new Error('collector exploded'))
-    const page = render({ options: { apiKey: 'fly_pk_us_development_test' }, immediate: true })
+    const page = render({ options: { apiKey: 'fly_pk_development_test' }, immediate: true })
 
     await settle()
 
@@ -270,7 +270,7 @@ describe('useIdentify', () => {
 
   it('retries after a failure rather than serving the rejection forever', async () => {
     identifyMock.mockRejectedValueOnce(new Error('collector exploded'))
-    const page = render({ options: { apiKey: 'fly_pk_us_development_test' } })
+    const page = render({ options: { apiKey: 'fly_pk_development_test' } })
 
     await page.state.identify().catch(() => undefined)
     await page.state.identify()
@@ -281,7 +281,7 @@ describe('useIdentify', () => {
   it('leaves requestId null when submit is off, and still shares the run', async () => {
     identifyMock.mockResolvedValue({ ...RESULT, requestId: '' })
     const page = render({
-      options: { apiKey: 'fly_pk_us_development_test', submit: false },
+      options: { apiKey: 'fly_pk_development_test', submit: false },
       immediate: true,
       children: 2,
     })
@@ -296,7 +296,7 @@ describe('useIdentify', () => {
 
 describe('useVerdict', () => {
   it('reports one verdict and its reasons', async () => {
-    const page = render({ options: { apiKey: 'fly_pk_us_development_test' }, immediate: true })
+    const page = render({ options: { apiKey: 'fly_pk_development_test' }, immediate: true })
     await settle()
 
     expect(page.text()).toContain('incognito:true')
@@ -305,7 +305,7 @@ describe('useVerdict', () => {
   })
 
   it('honours a confidence floor', async () => {
-    const page = render({ options: { apiKey: 'fly_pk_us_development_test' }, immediate: true, min: 'high' })
+    const page = render({ options: { apiKey: 'fly_pk_development_test' }, immediate: true, min: 'high' })
     await settle()
 
     // Fired, but at medium - not enough to act on when high was asked for.
@@ -314,7 +314,7 @@ describe('useVerdict', () => {
   })
 
   it('reports nothing rather than guessing before identification', () => {
-    const page = render({ options: { apiKey: 'fly_pk_us_development_test' } })
+    const page = render({ options: { apiKey: 'fly_pk_development_test' } })
 
     expect(page.text()).toContain('incognito:false')
     expect(page.text()).toContain('confidence:-')
@@ -324,7 +324,7 @@ describe('useVerdict', () => {
 
 describe('consent', () => {
   it('waits for consent before identifying on mount, then identifies once', async () => {
-    const page = render({ options: { apiKey: 'fly_pk_us_development_test', consent: 'pending' }, immediate: true, children: 2 })
+    const page = render({ options: { apiKey: 'fly_pk_development_test', consent: 'pending' }, immediate: true, children: 2 })
     await settle()
 
     // Not even the client: nothing is loaded while the visitor has not answered.
@@ -335,7 +335,7 @@ describe('consent', () => {
     page.state.setConsent('granted')
     await settle()
 
-    expect(loadMock).toHaveBeenCalledWith({ apiKey: 'fly_pk_us_development_test', consent: 'granted' })
+    expect(loadMock).toHaveBeenCalledWith({ apiKey: 'fly_pk_development_test', consent: 'granted' })
     expect(identifyMock).toHaveBeenCalledTimes(1)
     expect(page.text()).toContain('request:req_1')
 
@@ -348,7 +348,7 @@ describe('consent', () => {
   })
 
   it("follows the client's own setConsent", async () => {
-    const page = render({ options: { apiKey: 'fly_pk_us_development_test', consent: 'denied' }, immediate: true })
+    const page = render({ options: { apiKey: 'fly_pk_development_test', consent: 'denied' }, immediate: true })
 
     const client = await page.state.client()
     client.setConsent('granted')
@@ -359,7 +359,7 @@ describe('consent', () => {
   })
 
   it('surfaces a ConsentError from a manual identify through error', async () => {
-    const page = render({ options: { apiKey: 'fly_pk_us_development_test', consent: 'pending' } })
+    const page = render({ options: { apiKey: 'fly_pk_development_test', consent: 'pending' } })
 
     await expect(page.state.identify()).rejects.toMatchObject({ code: 'consent_required' })
     flushSync()

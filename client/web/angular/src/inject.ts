@@ -31,7 +31,7 @@ export function injectFingerly(): Fingerly {
     throw new Error(
       'No Fingerly provider found. Add one where the application is bootstrapped:\n\n' +
         "  import { provideFingerly } from '@fingerly/angular'\n" +
-        "  bootstrapApplication(App, { providers: [provideFingerly({ apiKey: 'fly_pk_us_production_…' })] })",
+        "  bootstrapApplication(App, { providers: [provideFingerly({ apiKey: 'fly_pk_production_…' })] })",
     )
   }
 

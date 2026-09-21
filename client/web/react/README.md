@@ -18,7 +18,7 @@ import { createRoot } from 'react-dom/client'
 import { FingerlyProvider } from '@fingerly/react'
 
 createRoot(document.getElementById('root')!).render(
-  <FingerlyProvider apiKey="fly_pk_us_production_…">
+  <FingerlyProvider apiKey="fly_pk_production_…">
     <App />
   </FingerlyProvider>,
 )
@@ -166,7 +166,7 @@ const { identify } = useIdentify({ tag: () => `checkout:${params.orderId}` })
 For a page that wants the local verdicts and nothing else:
 
 ```tsx
-<FingerlyProvider apiKey="fly_pk_us_production_…" submit={false}>
+<FingerlyProvider apiKey="fly_pk_production_…" submit={false}>
 ```
 
 Everything the server decides comes back empty: no `requestId`, no `visitorId`,
@@ -182,7 +182,7 @@ says now. Until it is `granted` nothing is collected and nothing is sent:
 even built.
 
 ```tsx
-<FingerlyProvider apiKey="fly_pk_us_production_…" consent={accepted ? 'granted' : 'pending'}>
+<FingerlyProvider apiKey="fly_pk_production_…" consent={accepted ? 'granted' : 'pending'}>
 ```
 
 Changing the prop to `granted` starts the identification that was waiting, once,
@@ -216,7 +216,7 @@ better served by building the store per request and handing it in:
 ```tsx
 import { FingerlyProvider, createFingerlyStore } from '@fingerly/react'
 
-const store = createFingerlyStore({ apiKey: 'fly_pk_us_production_…' })   // once per request
+const store = createFingerlyStore({ apiKey: 'fly_pk_production_…' })   // once per request
 <FingerlyProvider store={store}><App /></FingerlyProvider>
 ```
 

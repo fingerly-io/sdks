@@ -28,7 +28,7 @@ export function useFingerly(): FingerlyStore {
     throw new Error(
       'No <FingerlyProvider> found above this component. Add one near the root:\n\n' +
         "  import { FingerlyProvider } from '@fingerly/react'\n" +
-        "  <FingerlyProvider apiKey='fly_pk_us_production_…'><App /></FingerlyProvider>",
+        "  <FingerlyProvider apiKey='fly_pk_production_…'><App /></FingerlyProvider>",
     )
   }
 

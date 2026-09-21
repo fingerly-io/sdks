@@ -9,7 +9,7 @@
  * ```ts
  * import { load } from '@fingerly/web-js'
  *
- * const fingerly = await load({ apiKey: 'fly_pk_us_production_…' })
+ * const fingerly = await load({ apiKey: 'fly_pk_production_…' })
  * const { visitorId, visitorIsNew, suspectScore, verdicts } = await fingerly.identify()
  *
  * // The server's answer, in the same round trip.

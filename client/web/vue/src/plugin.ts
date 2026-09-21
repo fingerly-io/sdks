@@ -156,7 +156,7 @@ function createState(consent: ConsentState): FingerlyState {
  * Build the plugin.
  *
  * ```ts
- * app.use(createFingerly({ apiKey: 'fly_pk_us_production_…' }))
+ * app.use(createFingerly({ apiKey: 'fly_pk_production_…' }))
  * ```
  *
  * Nothing is collected here. Installing the plugin only makes the client

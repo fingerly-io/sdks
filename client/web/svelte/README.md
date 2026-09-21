@@ -18,7 +18,7 @@ pnpm add @fingerly/svelte
 <script lang="ts">
   import { setupFingerly } from '@fingerly/svelte'
 
-  setupFingerly({ apiKey: 'fly_pk_us_production_…' })
+  setupFingerly({ apiKey: 'fly_pk_production_…' })
 </script>
 
 <slot />
@@ -153,7 +153,7 @@ const fingerly = useIdentify({ tag: () => `checkout:${page.params.orderId}` })
 For a page that wants the local verdicts and nothing else:
 
 ```ts
-setupFingerly({ apiKey: 'fly_pk_us_production_…', submit: false })
+setupFingerly({ apiKey: 'fly_pk_production_…', submit: false })
 ```
 
 Everything the server decides comes back empty: no `requestId`, no `visitorId`,
@@ -168,7 +168,7 @@ If identifying a visitor needs their consent first, set up with `consent:
 `useIdentify({ immediate: true })` waits, and the client is not even built.
 
 ```ts
-const fingerly = setupFingerly({ apiKey: 'fly_pk_us_production_…', consent: 'pending' })
+const fingerly = setupFingerly({ apiKey: 'fly_pk_production_…', consent: 'pending' })
 ```
 
 Then set it from wherever your consent tool reports the answer:

@@ -24,7 +24,7 @@ describe('consent', () => {
     vi.stubGlobal('fetch', fetchImpl)
     const createElement = vi.spyOn(document, 'createElement')
 
-    const fingerly = await load({ apiKey: 'fly_pk_us_development_test', consent: 'pending' })
+    const fingerly = await load({ apiKey: 'fly_pk_development_test', consent: 'pending' })
 
     await expect(fingerly.identify()).rejects.toBeInstanceOf(ConsentError)
     await expect(fingerly.collect()).rejects.toBeInstanceOf(ConsentError)
@@ -49,7 +49,7 @@ describe('consent', () => {
     )
     vi.stubGlobal('fetch', fetchImpl)
 
-    const fingerly = await load({ apiKey: 'fly_pk_us_development_test', consent: 'denied', sources })
+    const fingerly = await load({ apiKey: 'fly_pk_development_test', consent: 'denied', sources })
     await expect(fingerly.identify()).rejects.toMatchObject({ code: 'consent_required', state: 'denied' })
     expect(runs).toEqual([])
     expect(fetchImpl).not.toHaveBeenCalled()

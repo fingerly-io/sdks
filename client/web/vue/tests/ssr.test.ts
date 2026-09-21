@@ -43,7 +43,7 @@ describe('under SSR', () => {
     })
 
     const app = createSSRApp(Page)
-    app.use(createFingerly({ apiKey: 'fly_pk_us_development_test' }))
+    app.use(createFingerly({ apiKey: 'fly_pk_development_test' }))
 
     const html = await renderToString(app)
 
@@ -69,7 +69,7 @@ describe('under SSR', () => {
             return () => h('div')
           },
         }),
-      ).use(createFingerly({ apiKey: 'fly_pk_us_development_test' })),
+      ).use(createFingerly({ apiKey: 'fly_pk_development_test' })),
     )
 
     await new Promise((resolve) => setTimeout(resolve, 0))

@@ -17,7 +17,7 @@ pnpm add @fingerly/angular
 import { provideFingerly } from '@fingerly/angular'
 
 export const appConfig: ApplicationConfig = {
-  providers: [provideFingerly({ apiKey: 'fly_pk_us_production_…' })],
+  providers: [provideFingerly({ apiKey: 'fly_pk_production_…' })],
 }
 ```
 
@@ -152,7 +152,7 @@ readonly fingerly = injectIdentify({ tag: () => `checkout:${this.orderId()}` })
 For an app that wants the local verdicts and nothing else:
 
 ```ts
-provideFingerly({ apiKey: 'fly_pk_us_production_…', submit: false })
+provideFingerly({ apiKey: 'fly_pk_production_…', submit: false })
 ```
 
 Everything the server decides comes back empty: no `requestId`, no `visitorId`,
@@ -167,7 +167,7 @@ If identifying a visitor needs their consent first, provide it with `consent:
 `injectIdentify({ immediate: true })` waits, and the client is not even built.
 
 ```ts
-provideFingerly({ apiKey: 'fly_pk_us_production_…', consent: 'pending' })
+provideFingerly({ apiKey: 'fly_pk_production_…', consent: 'pending' })
 ```
 
 Then set it from wherever your consent tool reports the answer:

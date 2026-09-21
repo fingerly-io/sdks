@@ -43,7 +43,7 @@ export interface FingerlyClientOptions {
   endpoint?: string
   /** Ordered first-party ingestion endpoints. */
   endpoints?: string | readonly string[]
-  /** Explicitly use the regional Fingerly API after custom endpoints fail. */
+  /** Explicitly use the Fingerly API after custom endpoints fail. */
   fallbackToDefaultEndpoint?: boolean
   /** Which platform this SDK reports as. Set by the wrapping package. */
   platform?: SdkPlatform

@@ -118,7 +118,7 @@ beforeEach(() => {
 
 describe('createFingerly', () => {
   it('does not collect anything on install', () => {
-    withSetup(() => useFingerly(), createFingerly({ apiKey: 'fly_pk_us_development_test' }))
+    withSetup(() => useFingerly(), createFingerly({ apiKey: 'fly_pk_development_test' }))
 
     // A plugin that fingerprinted on install would run before the app has
     // rendered, and during SSR.
@@ -129,12 +129,12 @@ describe('createFingerly', () => {
   it('passes the endpoint through, and omits it when unset', async () => {
     const { result } = withSetup(
       () => useIdentify(),
-      createFingerly({ apiKey: 'fly_pk_us_development_test', endpoint: 'http://localhost:8099' }),
+      createFingerly({ apiKey: 'fly_pk_development_test', endpoint: 'http://localhost:8099' }),
     )
     await result.identify()
 
     expect(loadMock).toHaveBeenCalledWith({
-      apiKey: 'fly_pk_us_development_test',
+      apiKey: 'fly_pk_development_test',
       endpoint: 'http://localhost:8099',
       consent: 'granted',
     })
@@ -156,7 +156,7 @@ describe('createFingerly', () => {
         render: () => h('div'),
       }),
     )
-    app.use(createFingerly({ apiKey: 'fly_pk_us_development_test' }))
+    app.use(createFingerly({ apiKey: 'fly_pk_development_test' }))
     app.mount(document.createElement('div'))
 
     await vi.waitFor(() => expect(suspicious).toBe(true))
@@ -169,7 +169,7 @@ describe('createFingerly', () => {
     // because the mock returns a requestId by default.
     identifyMock.mockResolvedValue({ ...RESULT, requestId: '' })
 
-    const plugin = createFingerly({ apiKey: 'fly_pk_us_development_test', submit: false })
+    const plugin = createFingerly({ apiKey: 'fly_pk_development_test', submit: false })
     const a = withSetup(() => useIdentify(), plugin).result
     const b = withSetup(() => useIdentify(), plugin).result
 
@@ -188,7 +188,7 @@ describe('createFingerly', () => {
 
     const { result } = withSetup(
       () => useIdentify(),
-      createFingerly({ apiKey: 'fly_pk_us_development_test', submit: false }),
+      createFingerly({ apiKey: 'fly_pk_development_test', submit: false }),
     )
     await result.identify()
 
@@ -217,7 +217,7 @@ describe('useFingerly', () => {
 
 describe('useIdentify', () => {
   it('collects, and exposes the result reactively', async () => {
-    const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'fly_pk_us_development_test' }))
+    const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'fly_pk_development_test' }))
 
     expect(result.isReady.value).toBe(false)
     expect(result.isLoading.value).toBe(false)
@@ -235,7 +235,7 @@ describe('useIdentify', () => {
   })
 
   it('shares one identification across every component that asks', async () => {
-    const plugin = createFingerly({ apiKey: 'fly_pk_us_development_test' })
+    const plugin = createFingerly({ apiKey: 'fly_pk_development_test' })
 
     const a = withSetup(() => useIdentify(), plugin).result
     const b = withSetup(() => useIdentify(), plugin).result
@@ -252,7 +252,7 @@ describe('useIdentify', () => {
   })
 
   it('reuses a finished identification rather than repeating it', async () => {
-    const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'fly_pk_us_development_test' }))
+    const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'fly_pk_development_test' }))
 
     await result.identify()
     await result.identify()
@@ -268,7 +268,7 @@ describe('useIdentify', () => {
     // added to IdentifyResult and forgotten there makes the second caller
     // silently poorer than the first. The second caller is the common one:
     // every component after the first takes this path.
-    const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'fly_pk_us_development_test' }))
+    const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'fly_pk_development_test' }))
 
     const first = await result.identify()
     const cached = await result.identify()
@@ -278,7 +278,7 @@ describe('useIdentify', () => {
   })
 
   it('surfaces everything the server decided', async () => {
-    const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'fly_pk_us_development_test' }))
+    const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'fly_pk_development_test' }))
 
     await result.identify()
 
@@ -310,7 +310,7 @@ describe('useIdentify', () => {
       suspectLevel: null,
       triggers: [],
     })
-    const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'fly_pk_us_development_test' }))
+    const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'fly_pk_development_test' }))
 
     await result.identify()
 
@@ -321,7 +321,7 @@ describe('useIdentify', () => {
   })
 
   it('starts a fresh one on refresh()', async () => {
-    const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'fly_pk_us_development_test' }))
+    const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'fly_pk_development_test' }))
 
     await result.identify()
     identifyMock.mockResolvedValueOnce({ ...RESULT, requestId: 'req_2' })
@@ -334,7 +334,7 @@ describe('useIdentify', () => {
   it('runs on mount when immediate is set', async () => {
     const { result } = withSetup(
       () => useIdentify({ immediate: true }),
-      createFingerly({ apiKey: 'fly_pk_us_development_test' }),
+      createFingerly({ apiKey: 'fly_pk_development_test' }),
     )
 
     await vi.waitFor(() => expect(result.isReady.value).toBe(true))
@@ -345,7 +345,7 @@ describe('useIdentify', () => {
     let order = 'order-1'
     const { result } = withSetup(
       () => useIdentify({ tag: () => order }),
-      createFingerly({ apiKey: 'fly_pk_us_development_test' }),
+      createFingerly({ apiKey: 'fly_pk_development_test' }),
     )
 
     order = 'order-2'
@@ -358,7 +358,7 @@ describe('useIdentify', () => {
     const failure = new Error('network down')
     identifyMock.mockRejectedValueOnce(failure)
 
-    const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'fly_pk_us_development_test' }))
+    const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'fly_pk_development_test' }))
 
     await expect(result.identify()).rejects.toThrow('network down')
 
@@ -369,7 +369,7 @@ describe('useIdentify', () => {
   })
 
   it('returns state that a component cannot assign to', async () => {
-    const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'fly_pk_us_development_test' }))
+    const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'fly_pk_development_test' }))
     await result.identify()
 
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
@@ -391,7 +391,7 @@ describe('useIdentify', () => {
 
   describe('isSuspicious', () => {
     it('is true for a medium-or-better verdict', async () => {
-      const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'fly_pk_us_development_test' }))
+      const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'fly_pk_development_test' }))
       await result.identify()
       expect(result.isSuspicious.value).toBe(true)
     })
@@ -402,14 +402,14 @@ describe('useIdentify', () => {
         verdicts: { ...RESULT.verdicts, automation: verdict(true, 'low', ['navigator-webdriver-true']) },
       })
 
-      const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'fly_pk_us_development_test' }))
+      const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'fly_pk_development_test' }))
       await result.identify()
 
       expect(result.isSuspicious.value).toBe(false)
     })
 
     it('is false before anything has been collected', () => {
-      const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'fly_pk_us_development_test' }))
+      const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'fly_pk_development_test' }))
       expect(result.isSuspicious.value).toBe(false)
     })
   })
@@ -417,7 +417,7 @@ describe('useIdentify', () => {
 
 describe('useVerdict', () => {
   it('reports a single verdict and its reasons', async () => {
-    const plugin = createFingerly({ apiKey: 'fly_pk_us_development_test' })
+    const plugin = createFingerly({ apiKey: 'fly_pk_development_test' })
     const identifier = withSetup(() => useIdentify(), plugin).result
     const automation = withSetup(() => useVerdict('automation'), plugin).result
 
@@ -435,7 +435,7 @@ describe('useVerdict', () => {
       verdicts: { ...RESULT.verdicts, automation: verdict(true, 'medium', ['x']) },
     })
 
-    const plugin = createFingerly({ apiKey: 'fly_pk_us_development_test' })
+    const plugin = createFingerly({ apiKey: 'fly_pk_development_test' })
     const identifier = withSetup(() => useIdentify(), plugin).result
     const strict = withSetup(() => useVerdict('automation', { min: 'high' }), plugin).result
     const loose = withSetup(() => useVerdict('automation', { min: 'low' }), plugin).result
@@ -452,7 +452,7 @@ describe('useVerdict', () => {
       verdicts: { ...RESULT.verdicts, tor: verdict(true, 'low', ['timezone-forced-to-utc']) },
     })
 
-    const plugin = createFingerly({ apiKey: 'fly_pk_us_development_test' })
+    const plugin = createFingerly({ apiKey: 'fly_pk_development_test' })
     const identifier = withSetup(() => useIdentify(), plugin).result
     const tor = withSetup(() => useVerdict('tor'), plugin).result
 
@@ -465,7 +465,7 @@ describe('consent', () => {
   it('waits for consent before identifying on mount, then identifies once', async () => {
     const { result } = withSetup(
       () => ({ identify: useIdentify({ immediate: true }), fingerly: useFingerly() }),
-      createFingerly({ apiKey: 'fly_pk_us_development_test', consent: 'pending' }),
+      createFingerly({ apiKey: 'fly_pk_development_test', consent: 'pending' }),
     )
     await nextTick()
 
@@ -477,7 +477,7 @@ describe('consent', () => {
     result.fingerly.setConsent('granted')
     await vi.waitFor(() => expect(result.identify.requestId.value).toBe('req_1'))
 
-    expect(loadMock).toHaveBeenCalledWith({ apiKey: 'fly_pk_us_development_test', consent: 'granted' })
+    expect(loadMock).toHaveBeenCalledWith({ apiKey: 'fly_pk_development_test', consent: 'granted' })
     expect(identifyMock).toHaveBeenCalledTimes(1)
 
     result.fingerly.setConsent('denied')
@@ -491,7 +491,7 @@ describe('consent', () => {
   it("follows the client's own setConsent", async () => {
     const { result } = withSetup(
       () => ({ identify: useIdentify({ immediate: true }), fingerly: useFingerly() }),
-      createFingerly({ apiKey: 'fly_pk_us_development_test', consent: 'denied' }),
+      createFingerly({ apiKey: 'fly_pk_development_test', consent: 'denied' }),
     )
 
     const client = await result.fingerly.client()
@@ -502,7 +502,7 @@ describe('consent', () => {
   })
 
   it('surfaces a ConsentError from a manual identify through error', async () => {
-    const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'fly_pk_us_development_test', consent: 'pending' }))
+    const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'fly_pk_development_test', consent: 'pending' }))
 
     await expect(result.identify()).rejects.toMatchObject({ code: 'consent_required' })
 

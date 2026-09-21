@@ -25,7 +25,7 @@ export interface FingerlyNextProviderProps {
   endpoint?: string
   /** Ordered first-party endpoints; overrides NEXT_PUBLIC_FINGERLY_ENDPOINTS. */
   endpoints?: string | readonly string[]
-  /** Opt into the regional Fingerly endpoint after custom endpoints fail. */
+  /** Opt into the Fingerly API after custom endpoints fail. */
   fallbackToDefaultEndpoint?: boolean
   /** Collect and score without submitting anything. */
   submit?: boolean

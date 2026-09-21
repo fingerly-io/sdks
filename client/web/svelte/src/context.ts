@@ -27,7 +27,7 @@ export const FINGERLY_KEY: unique symbol = Symbol('fingerly')
  * <!-- +layout.svelte -->
  * <script lang="ts">
  *   import { setupFingerly } from '@fingerly/svelte'
- *   setupFingerly({ apiKey: 'fly_pk_us_production_…' })
+ *   setupFingerly({ apiKey: 'fly_pk_production_…' })
  * </script>
  * ```
  *
@@ -54,7 +54,7 @@ export function useFingerly(): Fingerly {
     throw new Error(
       'No Fingerly context. Call setupFingerly() in a component above this one:\n\n' +
         "  import { setupFingerly } from '@fingerly/svelte'\n" +
-        "  setupFingerly({ apiKey: 'fly_pk_us_production_…' })\n\n" +
+        "  setupFingerly({ apiKey: 'fly_pk_production_…' })\n\n" +
         'It has to run during component initialisation - a <script> block, not an ' +
         'event handler or an $effect.',
     )

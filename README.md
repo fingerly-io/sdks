@@ -204,7 +204,7 @@ answer them — so the SDK states them and the server records them.
 ```ts
 import { load } from '@fingerly/web-js'
 
-const fingerly = await load({ apiKey: 'fly_pk_eu_production_…' })
+const fingerly = await load({ apiKey: 'fly_pk_production_…' })
 const result = await fingerly.identify({ tag: 'checkout' })
 const { requestId, visitorId, suspectScore, verdicts } = result
 
@@ -217,13 +217,9 @@ if (verdicts.automation.value && verdicts.automation.confidence === 'high') {
 const deferred = await result.deferred
 ```
 
-Region-bound keys route themselves: `fly_pk_us_…` uses
-`https://us.api.fingerly.io` and `fly_pk_eu_…` uses the isolated EU endpoint when
-that region launches. Unrecognized keys fall back to `https://api.fingerly.io`
-and are still rejected by server authentication.
-The optional `endpoint`/`endpoints` setting always wins, which is how a customer
-uses the Fingerly same-origin proxy on their own domain; it does not change the
-region bound into the credential or let traffic cross into another data plane.
+Every SDK submits to `https://api.fingerly.io`. The optional
+`endpoint`/`endpoints` setting always wins, which is how a customer uses the
+Fingerly same-origin proxy on their own domain.
 
 `identify()` collects, scores locally, and submits to `POST /api/v1/identify`,
 resolving with the server's verdict: `visitorId`, `suspectScore`,

@@ -14,7 +14,7 @@
  */
 
 import { validateApiVersion } from './routes.js'
-import { defaultEndpointForKey } from './routing.js'
+import { DEFAULT_ENDPOINT } from './routing.js'
 import type { DeferredSubmission, IdentifySubmission } from './types.js'
 
 export const IDENTIFY_PATH = '/api/v1/identify'
@@ -137,7 +137,7 @@ export interface HttpTransportOptions {
   endpoint?: string
   /** Ordered custom ingestion bases. Prefer this over endpoint. */
   endpoints?: string | readonly string[]
-  /** Append the API-key-derived Fingerly data plane after custom endpoints. */
+  /** Append the Fingerly API after custom endpoints, as a last resort. */
   fallbackToDefaultEndpoint?: boolean
   /** Total attempts, including the first. */
   maxAttempts?: number
@@ -221,13 +221,12 @@ export class HttpTransport implements Transport {
     this.apiKey = options.apiKey
     const configured = options.endpoints ?? options.endpoint
     let bases = configured === undefined
-      ? [defaultEndpointForKey(options.apiKey)]
+      ? [DEFAULT_ENDPOINT]
       : (Array.isArray(configured) ? [...configured] : [configured as string])
     if (bases.length === 0) throw new TypeError('The endpoints array must not be empty')
     bases = bases.map(normalizeEndpoint)
     if (configured !== undefined && options.fallbackToDefaultEndpoint) {
-      const direct = defaultEndpointForKey(options.apiKey)
-      if (!bases.includes(direct)) bases.push(direct)
+      if (!bases.includes(DEFAULT_ENDPOINT)) bases.push(DEFAULT_ENDPOINT)
     }
     const apiVersion = validateApiVersion(options.apiVersion)
     this.urls = bases.map((base) => `${base}/api/${apiVersion}/identify`)
