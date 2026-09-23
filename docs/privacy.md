@@ -111,8 +111,8 @@ pass through what it already knows.
 | Added | Source | Note |
 |---|---|---|
 | IP address | The request | Stored at full precision for 30 days |
-| Country, continent, ASN, network name | `iplocate.io` | **Your visitors' IP addresses are sent to this third party.** See our sub-processor list |
-| VPN / proxy / Tor / datacenter classification | `iplocate.io` | |
+| Country, continent, region, city | A geolocation database on our own servers | No request leaves our infrastructure to produce it |
+| VPN / proxy / Tor / datacenter / relay / mobile classification, ASN, network name | An IP intelligence provider | **Your visitors' IP addresses are sent to this provider.** It is named, with what it receives and where, in our sub-processor list |
 | `visitor_id` | Minted by us | Never derived from a hash of the signals, and never chosen by the client |
 | `suspect_score`, `suspect_level`, and the signals behind them | Our scoring | Every score is stored with the signals and weights that produced it, so it can be explained |
 
