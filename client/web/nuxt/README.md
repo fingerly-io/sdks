@@ -18,6 +18,8 @@ export default defineNuxtConfig({
   modules: ['@fingerly/nuxt'],
   fingerly: {
     apiKey: 'fly_pk_production_…',
+    // 'granted' only once you have consent (or another lawful basis)
+    consent: 'granted',
   },
 })
 ```
@@ -44,8 +46,8 @@ The module also publishes `fingerly.endpoint`, `fingerly.submit` and
 
 ### Waiting for consent
 
-If identifying a visitor needs their consent first, start with `consent:
-'pending'` (the default is `granted`; `denied` behaves like `pending`):
+Consent defaults to `pending` (`denied` behaves the same). If identifying a
+visitor needs their consent first, leave it `pending`:
 
 ```ts
 // nuxt.config.ts

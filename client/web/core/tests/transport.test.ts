@@ -6,6 +6,7 @@ import type { IdentifySubmission } from '../src/types.js'
 function submission(): IdentifySubmission {
   return {
     sdk: { platform: 'web', version: 'test' },
+    consent: 'granted',
     signals: {
       schema: 1,
       budget_ms: 1,
@@ -82,6 +83,36 @@ describe('HttpTransport retry idempotency', () => {
       expect.objectContaining<Partial<TransportError>>({ status: 422, retryable: false }),
     )
     expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+
+  it('carries the server error code of a refusal', async () => {
+    const refused = () => new Response(
+      '{"error":{"code":"consent_required","message":"send consent \\"granted\\""}}',
+      { status: 422, headers: { 'content-type': 'application/json' } },
+    )
+    const fetchImpl = vi.fn(async () => refused()) as typeof fetch
+    const transport = new HttpTransport({ apiKey: 'public-test-key', endpoint: 'https://example.test', fetchImpl })
+
+    await expect(transport.submit(submission())).rejects.toMatchObject({ status: 422, code: 'consent_required' })
+    await expect(transport.submitSupplement('request-1', { ...submission(), token: 'continuation' }))
+      .rejects.toMatchObject({ status: 422, code: 'consent_required' })
+  })
+
+  it('sends the consent state in both bodies', async () => {
+    const bodies: unknown[] = []
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)))
+      return new Response('{"request_id":"request-1"}', { status: 200 })
+    }) as typeof fetch
+    const transport = new HttpTransport({ apiKey: 'public-test-key', fetchImpl })
+
+    await transport.submit(submission())
+    await transport.submitSupplement('request-1', { ...submission(), token: 'continuation' })
+
+    expect(bodies).toEqual([
+      expect.objectContaining({ consent: 'granted', sdk: { platform: 'web', version: 'test' } }),
+      expect.objectContaining({ consent: 'granted', token: 'continuation' }),
+    ])
   })
 
   it('defaults to the Fingerly API', async () => {
@@ -190,7 +221,7 @@ describe('API version configuration', () => {
     const fetchImpl = vi.fn(async () => new Response('{"request_id":"request-version"}')) as typeof fetch
     const transport = new HttpTransport({ apiKey: 'public-test-key', apiVersion: 'v2', fetchImpl })
     await transport.submit(submission())
-    await transport.submitSupplement('request-version', { token: 'token', sdk: submission().sdk, signals: submission().signals })
+    await transport.submitSupplement('request-version', { token: 'token', sdk: submission().sdk, consent: 'granted', signals: submission().signals })
     expect(vi.mocked(fetchImpl).mock.calls.map(([url]) => url)).toEqual([
       'https://api.fingerly.io/api/v2/ingest', 'https://api.fingerly.io/api/v2/ingest',
     ])

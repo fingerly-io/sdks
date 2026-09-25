@@ -50,7 +50,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html>
       <body>
-        <FingerlyProvider apiKey={process.env.FINGERLY_API_KEY}>{children}</FingerlyProvider>
+        {/* consent="granted" only once you have consent (or another lawful basis) */}
+        <FingerlyProvider apiKey={process.env.FINGERLY_API_KEY} consent="granted">
+          {children}
+        </FingerlyProvider>
       </body>
     </html>
   )
@@ -63,10 +66,14 @@ your layout does not have to become one. Pages Router is the same component in
 
 Mounting it collects nothing. When to identify stays the page's decision.
 
+Consent defaults to `pending`, and nothing is collected or sent until it is
+`granted`. A site with a consent banner passes the banner's answer instead of
+`"granted"`, as below.
+
 ### Waiting for consent
 
-When identification needs the visitor's consent first, pass `consent` with
-what your consent tool says now. It is a prop rather than an environment
+Consent defaults to `pending`. When identification needs the visitor's consent
+first, pass `consent` with what your consent tool says now. It is a prop rather than an environment
 variable, because it is the visitor's decision rather than the deployment's:
 
 ```tsx
@@ -74,7 +81,7 @@ variable, because it is the visitor's decision rather than the deployment's:
 <FingerlyProvider apiKey={apiKey} consent={accepted ? 'granted' : 'pending'}>{children}</FingerlyProvider>
 ```
 
-- `consent`: `'granted'` (the default), `'pending'` or `'denied'`.
+- `consent`: `'pending'` (the default), `'granted'` or `'denied'`.
 - `useFingerly().setConsent(state)`: sets it from a consent tool's callback. The
   client's own `setConsent()` does the same.
 

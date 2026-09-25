@@ -11,7 +11,7 @@ import { assertConsentState, ConsentError } from './consent.js'
 import { detectAll } from './detect/index.js'
 import { collect, type ScheduleOptions } from './scheduler.js'
 import type { Source } from './source.js'
-import { HttpTransport, type SubmitResponse, type Transport } from './transport.js'
+import { HttpTransport, TransportError, type SubmitResponse, type Transport } from './transport.js'
 import type {
   ConsentState,
   IdentifyResult,
@@ -60,12 +60,13 @@ export interface FingerlyClientOptions {
   /** Replaced in tests, and by any SDK that has its own network stack. */
   transport?: Transport
   /**
-   * Whether the visitor has agreed to be identified. Defaults to `granted`.
+   * Whether the visitor has agreed to be identified. Defaults to `pending`.
    *
-   * Pass `pending` when identification waits on a consent banner, and call
+   * Leave it `pending` when identification waits on a consent banner, and call
    * [[FingerlyClient.setConsent]] once it is answered. Until then `identify()`
    * and `collect()` run no source and send nothing, and fail with a
-   * [[ConsentError]].
+   * [[ConsentError]]. Pass `granted` only once the visitor has agreed, or
+   * where another lawful basis applies.
    */
   consent?: ConsentState
 }
@@ -90,6 +91,20 @@ export interface IdentifyOptions {
   submit?: boolean
 }
 
+/**
+ * The server's `422 consent_required`, as the error the client throws itself.
+ *
+ * It should never happen: the client sends only while consent is `granted`,
+ * and says so in the body. A custom transport or a proxy that rewrites the
+ * body could still provoke it, and a caller handling consent failures should
+ * see this one the same way. Reported as `pending` rather than the client's
+ * own `granted`: the server has no record of consent for this submission,
+ * and an error saying consent was granted would contradict its own message.
+ */
+function consentRefusal(error: unknown): unknown {
+  return error instanceof TransportError && error.code === 'consent_required' ? new ConsentError('pending') : error
+}
+
 /** No sources ran, so nothing was found. Distinct from "found nothing". */
 const EMPTY_INTEGRITY: IntegrityReport = {
   patched_natives: [],
@@ -105,7 +120,7 @@ export class FingerlyClient {
   private readonly consentListeners = new Set<(state: ConsentState) => void>()
 
   constructor(options: FingerlyClientOptions) {
-    const consent = options.consent ?? 'granted'
+    const consent = options.consent ?? 'pending'
     assertConsentState(consent)
     this.consentState = consent
     this.options = options
@@ -270,6 +285,9 @@ export class FingerlyClient {
 
     const submission: IdentifySubmission = {
       sdk: { platform: this.platform, version: SDK_VERSION },
+      // The state at the moment of sending, which the check above makes
+      // `granted`. The server refuses a submission without it.
+      consent: this.consentState,
       signals: report,
       ...(options.tag === undefined ? {} : { tag: options.tag }),
     }
@@ -281,7 +299,7 @@ export class FingerlyClient {
       // A withdrawal aborts the request, which the transport reports as a
       // cancellation. Say what actually happened.
       this.requireConsent()
-      throw error
+      throw consentRefusal(error)
     }
     const result: IdentifyResult = {
       requestId: answer.request_id,
@@ -360,6 +378,7 @@ export class FingerlyClient {
       verdicts = detectAll(combinedReport)
       const submission: DeferredSubmission = {
         sdk: { platform: this.platform, version: SDK_VERSION },
+        consent: this.consentState,
         signals: report,
         token,
       }
@@ -368,9 +387,10 @@ export class FingerlyClient {
     } catch (error) {
       // The supplement was abandoned because consent was withdrawn mid-flight.
       if (this.consentState !== 'granted') return withdrawn
+      const failure = consentRefusal(error)
       return {
         status: 'failed',
-        error: error instanceof Error ? error : new Error(String(error)),
+        error: failure instanceof Error ? failure : new Error(String(failure)),
         ...(report === undefined ? {} : { report }),
         ...(combinedReport === undefined ? {} : { combinedReport }),
         ...(verdicts === undefined ? {} : { verdicts }),

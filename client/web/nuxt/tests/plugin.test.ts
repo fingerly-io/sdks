@@ -24,7 +24,7 @@ vi.mock('@fingerly/web-js', () => ({
 function fakeClient(options: { consent?: string } = {}) {
   const listeners = new Set<(state: string) => void>()
   const client = {
-    consent: options.consent ?? 'granted',
+    consent: options.consent ?? 'pending',
     identify: identifyMock,
     setConsent: (state: string) => {
       if (state === client.consent) return
@@ -90,7 +90,7 @@ describe('the runtime plugin', () => {
 
   it('builds the client from the runtime config', async () => {
     __setRuntimeConfig({
-      fingerly: { apiKey: 'pk_runtime', endpoint: 'https://fingerly.internal' },
+      fingerly: { apiKey: 'pk_runtime', endpoint: 'https://fingerly.internal', consent: 'granted' },
     })
 
     const { identify } = mountWithPlugin(() => useIdentify())
@@ -101,6 +101,17 @@ describe('the runtime plugin', () => {
       endpoint: 'https://fingerly.internal',
       consent: 'granted',
     })
+  })
+
+  it('defaults consent to pending, so nothing identifies on mount', async () => {
+    __setRuntimeConfig({ fingerly: { apiKey: 'pk_runtime' } })
+
+    const identify = mountWithPlugin(() => useIdentify({ immediate: true }))
+    await Promise.resolve()
+
+    expect(identify.consent.value).toBe('pending')
+    expect(loadMock).not.toHaveBeenCalled()
+    expect(identifyMock).not.toHaveBeenCalled()
   })
 
   it('takes consent from the runtime config, and identifies on mount only once it is granted', async () => {

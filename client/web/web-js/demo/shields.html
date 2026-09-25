@@ -26,7 +26,7 @@
         border: 1px solid color-mix(in srgb, currentColor 20%, transparent); border-radius: 6px; }
 </style>
 
-<script src="../dist/fingerly.global.js"></script>
+<script src="../dist/browser.global.js"></script>
 
 <h1>Shield probe</h1>
 <p>Run this in a normal window and a private window, in each browser. Copy both.</p>
@@ -442,7 +442,7 @@
   async function sdkView() {
     if (typeof Fingerly === 'undefined') return { error: 'bundle not loaded' }
     try {
-      const client = await Fingerly.load({ apiKey: 'demo' })
+      const client = await Fingerly.load({ apiKey: 'demo', consent: 'granted' })
       const result = await client.identify({ submit: false })
       const sources = result.report && result.report.sources
       const pick = (id) => {

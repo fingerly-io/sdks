@@ -40,7 +40,7 @@ class ConsentError extends Error {
 function fakeClient(options: { consent?: string } = {}) {
   const listeners = new Set<(state: string) => void>()
   const client = {
-    consent: options.consent ?? 'granted',
+    consent: options.consent ?? 'pending',
     identify: (...args: unknown[]) =>
       client.consent === 'granted' ? identifyMock(...args) : Promise.reject(new ConsentError(client.consent)),
     setConsent: (state: string) => {
@@ -108,7 +108,7 @@ beforeEach(() => {
 
 describe('provideFingerly', () => {
   it('collects nothing when the application starts', () => {
-    application({ apiKey: 'fly_pk_development_test' })
+    application({ apiKey: 'fly_pk_development_test', consent: 'granted' })
     TestBed.runInInjectionContext(() => injectFingerly())
 
     // Providing makes the client reachable and no more. A provider that
@@ -119,7 +119,7 @@ describe('provideFingerly', () => {
   })
 
   it('passes the endpoint through, and omits it when unset', async () => {
-    application({ apiKey: 'fly_pk_development_test', endpoint: 'http://localhost:8099' })
+    application({ apiKey: 'fly_pk_development_test', consent: 'granted', endpoint: 'http://localhost:8099' })
     const fingerly = TestBed.runInInjectionContext(() => injectFingerly())
 
     await fingerly.identify()
@@ -128,7 +128,7 @@ describe('provideFingerly', () => {
   })
 
   it('builds the state once for the whole application', async () => {
-    application({ apiKey: 'fly_pk_development_test' })
+    application({ apiKey: 'fly_pk_development_test', consent: 'granted' })
 
     const first = TestBed.runInInjectionContext(() => injectFingerly())
     const second = TestBed.runInInjectionContext(() => injectFingerly())
@@ -157,7 +157,7 @@ describe('injectFingerly', () => {
 
 describe('injectIdentify', () => {
   it('collects after the first render when immediate is set', async () => {
-    application({ apiKey: 'fly_pk_development_test' })
+    application({ apiKey: 'fly_pk_development_test', consent: 'granted' })
     const fingerly = TestBed.runInInjectionContext(() => injectIdentify({ immediate: true }))
 
     // Nothing yet: afterNextRender has not run, which is also why a server
@@ -175,7 +175,7 @@ describe('injectIdentify', () => {
   })
 
   it('surfaces everything the server decided', async () => {
-    application({ apiKey: 'fly_pk_development_test' })
+    application({ apiKey: 'fly_pk_development_test', consent: 'granted' })
     const fingerly = TestBed.runInInjectionContext(() => injectIdentify({ immediate: true }))
 
     await render()
@@ -208,7 +208,7 @@ describe('injectIdentify', () => {
       suspectLevel: null,
       triggers: [],
     })
-    application({ apiKey: 'fly_pk_development_test' })
+    application({ apiKey: 'fly_pk_development_test', consent: 'granted' })
     const fingerly = TestBed.runInInjectionContext(() => injectIdentify({ immediate: true }))
 
     await render()
@@ -220,7 +220,7 @@ describe('injectIdentify', () => {
   })
 
   it('shares one identification across every component that asks', async () => {
-    application({ apiKey: 'fly_pk_development_test' })
+    application({ apiKey: 'fly_pk_development_test', consent: 'granted' })
 
     const components = [1, 2, 3].map(() =>
       TestBed.runInInjectionContext(() => injectIdentify({ immediate: true })),
@@ -232,7 +232,7 @@ describe('injectIdentify', () => {
   })
 
   it('reuses a finished identification rather than repeating it', async () => {
-    application({ apiKey: 'fly_pk_development_test' })
+    application({ apiKey: 'fly_pk_development_test', consent: 'granted' })
     const fingerly = TestBed.runInInjectionContext(() => injectIdentify())
 
     await fingerly.identify()
@@ -242,7 +242,7 @@ describe('injectIdentify', () => {
   })
 
   it('starts a fresh one on refresh()', async () => {
-    application({ apiKey: 'fly_pk_development_test' })
+    application({ apiKey: 'fly_pk_development_test', consent: 'granted' })
     const fingerly = TestBed.runInInjectionContext(() => injectIdentify())
 
     await fingerly.identify()
@@ -252,7 +252,7 @@ describe('injectIdentify', () => {
   })
 
   it('reads a tag signal at submission time, not at construction time', async () => {
-    application({ apiKey: 'fly_pk_development_test' })
+    application({ apiKey: 'fly_pk_development_test', consent: 'granted' })
     const orderId = signal('order_1')
     const fingerly = TestBed.runInInjectionContext(() => injectIdentify({ tag: orderId }))
 
@@ -264,7 +264,7 @@ describe('injectIdentify', () => {
 
   it('records a failure without leaving an unhandled rejection', async () => {
     identifyMock.mockRejectedValue(new Error('collector exploded'))
-    application({ apiKey: 'fly_pk_development_test' })
+    application({ apiKey: 'fly_pk_development_test', consent: 'granted' })
     const fingerly = TestBed.runInInjectionContext(() => injectIdentify({ immediate: true }))
 
     await render()
@@ -276,7 +276,7 @@ describe('injectIdentify', () => {
 
   it('retries after a failure rather than serving the rejection forever', async () => {
     identifyMock.mockRejectedValueOnce(new Error('collector exploded'))
-    application({ apiKey: 'fly_pk_development_test' })
+    application({ apiKey: 'fly_pk_development_test', consent: 'granted' })
     const fingerly = TestBed.runInInjectionContext(() => injectIdentify())
 
     await fingerly.identify().catch(() => undefined)
@@ -288,7 +288,7 @@ describe('injectIdentify', () => {
 
   it('leaves requestId null when submit is off, and still shares the run', async () => {
     identifyMock.mockResolvedValue({ ...RESULT, requestId: '' })
-    application({ apiKey: 'fly_pk_development_test', submit: false })
+    application({ apiKey: 'fly_pk_development_test', consent: 'granted', submit: false })
 
     const first = TestBed.runInInjectionContext(() => injectIdentify({ immediate: true }))
     const second = TestBed.runInInjectionContext(() => injectIdentify({ immediate: true }))
@@ -303,7 +303,7 @@ describe('injectIdentify', () => {
 
 describe('injectVerdict', () => {
   it('reports one verdict and its reasons', async () => {
-    application({ apiKey: 'fly_pk_development_test' })
+    application({ apiKey: 'fly_pk_development_test', consent: 'granted' })
     const { incognito, fingerly } = TestBed.runInInjectionContext(() => ({
       fingerly: injectIdentify({ immediate: true }),
       incognito: injectVerdict('incognito'),
@@ -317,7 +317,7 @@ describe('injectVerdict', () => {
   })
 
   it('honours a confidence floor', async () => {
-    application({ apiKey: 'fly_pk_development_test' })
+    application({ apiKey: 'fly_pk_development_test', consent: 'granted' })
     const incognito = TestBed.runInInjectionContext(() => {
       injectIdentify({ immediate: true })
       return injectVerdict('incognito', { min: 'high' })
@@ -330,7 +330,7 @@ describe('injectVerdict', () => {
   })
 
   it('follows a signal, so an input can change which verdict is watched', async () => {
-    application({ apiKey: 'fly_pk_development_test' })
+    application({ apiKey: 'fly_pk_development_test', consent: 'granted' })
     const name = signal<'tor' | 'automation'>('tor')
     const watched = TestBed.runInInjectionContext(() => {
       injectIdentify({ immediate: true })
@@ -347,7 +347,7 @@ describe('injectVerdict', () => {
   })
 
   it('reports nothing rather than guessing before identification', () => {
-    application({ apiKey: 'fly_pk_development_test' })
+    application({ apiKey: 'fly_pk_development_test', consent: 'granted' })
     const incognito = TestBed.runInInjectionContext(() => injectVerdict('incognito'))
 
     expect(incognito.verdict()).toBeNull()
@@ -370,6 +370,23 @@ describe('the state itself', () => {
 })
 
 describe('consent', () => {
+  it('defaults to pending, so nothing identifies after render until consent is granted', async () => {
+    application({ apiKey: 'fly_pk_development_test' })
+    const fingerly = TestBed.runInInjectionContext(() => injectIdentify({ immediate: true }))
+
+    await render()
+
+    expect(fingerly.consent()).toBe('pending')
+    expect(loadMock).not.toHaveBeenCalled()
+    await expect(fingerly.identify()).rejects.toMatchObject({ code: 'consent_required' })
+    expect(identifyMock).not.toHaveBeenCalled()
+
+    fingerly.setConsent('granted')
+    await render()
+
+    expect(identifyMock).toHaveBeenCalledTimes(1)
+  })
+
   it('waits for consent before identifying after render, then identifies once', async () => {
     application({ apiKey: 'fly_pk_development_test', consent: 'pending' })
     const fingerly = TestBed.runInInjectionContext(() => injectIdentify({ immediate: true }))

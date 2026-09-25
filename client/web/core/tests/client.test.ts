@@ -21,7 +21,7 @@ describe('FingerlyClient deferred collection', () => {
       })),
       submitSupplement,
     }
-    const result = await new FingerlyClient({ apiKey: 'public', sources, transport }).identify()
+    const result = await new FingerlyClient({ apiKey: 'public', consent: 'granted', sources, transport }).identify()
 
     expect(order).toEqual(['fast'])
     expect(result).toMatchObject({ requestId: 'request-1', visitorId: 'visitor-1', suspectScore: 7 })
@@ -41,7 +41,7 @@ describe('FingerlyClient deferred collection', () => {
   it('collects both tiers locally and never starts a network supplement', async () => {
     const transport: Transport = { submit: vi.fn() }
     const result = await new FingerlyClient({
-      apiKey: 'public', transport,
+      apiKey: 'public', consent: 'granted', transport,
       sources: [
         { id: 'a', tier: 'fast', run: () => 1 },
         { id: 'b', tier: 'deferred', run: () => 2 },

@@ -47,10 +47,11 @@ export interface FingerlyReactOptions {
    */
   submit?: boolean
   /**
-   * Whether the visitor has agreed to be identified. Defaults to `granted`.
+   * Whether the visitor has agreed to be identified. Defaults to `pending`.
    *
-   * Pass `pending` when identification waits on a consent banner, then call
-   * [[FingerlyStore.setConsent]] when it is answered. Until then nothing is
+   * Leave it `pending` while identification waits on a consent banner, then
+   * call [[FingerlyStore.setConsent]] when it is answered, or pass `granted`
+   * once you have consent (or another lawful basis). Until then nothing is
    * collected or sent: `useIdentify({ immediate: true })` waits, and a manual
    * `identify()` fails with a `ConsentError` in `error`.
    */
@@ -119,7 +120,7 @@ const INITIAL: FingerlyState = Object.freeze({
   report: null,
   error: null,
   isLoading: false,
-  consent: 'granted',
+  consent: 'pending',
 })
 
 /** What `useFingerly()` returns, and what the provider puts in context. */

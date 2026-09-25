@@ -30,7 +30,7 @@ export interface FingerlyNextProviderProps {
   /** Collect and score without submitting anything. */
   submit?: boolean
   /**
-   * Whether the visitor has agreed to be identified. Defaults to `granted`.
+   * Whether the visitor has agreed to be identified. Defaults to `pending`.
    *
    * Read as the current answer: pass what the consent tool says now, and a
    * change to `granted` starts any automatic identification that was waiting.

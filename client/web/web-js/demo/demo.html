@@ -314,7 +314,7 @@
       </footer>
     </main>
 
-    <script src="../dist/fingerly.global.js"></script>
+    <script src="../dist/browser.global.js"></script>
     <script>
       // ───────────────────────────────────────────────────────────────────
       // The signals this page renders, and where each one's answer comes from.
@@ -795,6 +795,8 @@
           const submit = Boolean(settings.apiKey && settings.endpoint)
           const client = await Fingerly.load({
             apiKey: settings.apiKey || 'unset',
+            // Pressing run on this page is the visitor asking to be identified.
+            consent: 'granted',
             ...(settings.endpoint ? { endpoint: settings.endpoint } : {}),
           })
 

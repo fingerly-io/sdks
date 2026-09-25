@@ -18,7 +18,8 @@ import { createRoot } from 'react-dom/client'
 import { FingerlyProvider } from '@fingerly/react'
 
 createRoot(document.getElementById('root')!).render(
-  <FingerlyProvider apiKey="fly_pk_production_…">
+  // consent="granted" only once you have consent (or another lawful basis)
+  <FingerlyProvider apiKey="fly_pk_production_…" consent="granted">
     <App />
   </FingerlyProvider>,
 )
@@ -31,6 +32,10 @@ does not work by design.
 
 Mounting the provider collects nothing. It makes the client available and
 nothing more; when to identify is the page's decision, not the provider's.
+
+Consent defaults to `pending`, and nothing is collected or sent until it is
+`granted`. A page with a consent banner passes the banner's answer instead of
+`"granted"`; see [Waiting for consent](#waiting-for-consent).
 
 ## Identify
 
@@ -176,8 +181,9 @@ than a gap — nothing was sent, so nobody scored it, and a `0` would read as
 
 ## Waiting for consent
 
-If identifying a visitor needs their consent first, pass what your consent tool
-says now. Until it is `granted` nothing is collected and nothing is sent:
+Consent defaults to `pending`. If identifying a visitor needs their consent
+first, pass what your consent tool says now. Until it is `granted` nothing is
+collected and nothing is sent:
 `useIdentify({ immediate: true })` and `suspend` wait, and the client is not
 even built.
 
@@ -197,7 +203,7 @@ const client = await fingerly.client()
 client.setConsent('denied')                // the same, on the client itself
 ```
 
-- `consent`: `'granted'` (the default), `'pending'` or `'denied'`. A provider
+- `consent`: `'pending'` (the default), `'granted'` or `'denied'`. A provider
   prop, and an option to `createFingerlyStore()`.
 - `setConsent(state)`: on the store from `useFingerly()`, and on the client.
   Synchronous, and setting the current value again does nothing.

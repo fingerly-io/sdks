@@ -28,11 +28,12 @@ export interface ModuleOptions {
    */
   submit?: boolean
   /**
-   * The consent the app starts with. Defaults to `granted`.
+   * The consent the app starts with. Defaults to `pending`.
    *
-   * Set `pending` when identification waits on a consent banner, then call
-   * `useFingerly().setConsent('granted')` from wherever the banner is
-   * answered. Until then `useIdentify({ immediate: true })` waits and nothing
+   * Leave it `pending` while identification waits on a consent banner, then
+   * call `useFingerly().setConsent('granted')` from wherever the banner is
+   * answered, or set `granted` once you have consent (or another lawful
+   * basis). Until then `useIdentify({ immediate: true })` waits and nothing
    * is collected or sent.
    */
   consent?: ConsentState
@@ -85,6 +86,6 @@ export function resolvePublicConfig(
     endpoints: existing?.endpoints ?? options.endpoints ?? [],
     fallbackToDefaultEndpoint: existing?.fallbackToDefaultEndpoint ?? options.fallbackToDefaultEndpoint ?? false,
     submit: existing?.submit ?? options.submit ?? true,
-    consent: pick(existing?.consent, options.consent) ?? 'granted',
+    consent: pick(existing?.consent, options.consent) ?? 'pending',
   }
 }

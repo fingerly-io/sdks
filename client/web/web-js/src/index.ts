@@ -50,9 +50,9 @@ export interface FingerlyOptions
  *
  * Loading collects nothing and sends nothing, whatever `consent` is: no
  * source runs until `identify()` or `collect()` is called, and those refuse
- * while consent is not `granted`. So a page that needs consent first can load
- * early with `consent: 'pending'` and call `setConsent('granted')` from its
- * consent tool.
+ * while consent is not `granted`. Consent defaults to `pending`, so a page can
+ * load early and call `setConsent('granted')` from its consent tool, or pass
+ * `consent: 'granted'` once it already has consent (or another lawful basis).
  */
 export function load(options: FingerlyOptions): Promise<FingerlyClient> {
   return Promise.resolve(

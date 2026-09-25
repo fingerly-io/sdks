@@ -24,7 +24,7 @@ vi.mock('@fingerly/web-js', () => ({
 function fakeClient(options: { consent?: string } = {}) {
   const listeners = new Set<(state: string) => void>()
   const client = {
-    consent: options.consent ?? 'granted',
+    consent: options.consent ?? 'pending',
     identify: identifyMock,
     setConsent: (state: string) => {
       if (state === client.consent) return
@@ -91,7 +91,7 @@ describe('FingerlyProvider', () => {
 
     await act(async () => {
       render(
-        <FingerlyProvider>
+        <FingerlyProvider consent="granted">
           <FingerlyRequestId />
         </FingerlyProvider>,
       )
@@ -106,7 +106,7 @@ describe('FingerlyProvider', () => {
 
     await act(async () => {
       render(
-        <FingerlyProvider>
+        <FingerlyProvider consent="granted">
           <FingerlyRequestId />
         </FingerlyProvider>,
       )
@@ -124,7 +124,7 @@ describe('FingerlyProvider', () => {
 
     await act(async () => {
       render(
-        <FingerlyProvider apiKey="pk_from_prop">
+        <FingerlyProvider apiKey="pk_from_prop" consent="granted">
           <FingerlyRequestId />
         </FingerlyProvider>,
       )
@@ -193,7 +193,7 @@ describe('the environment read', () => {
 describe('FingerlyRequestId', () => {
   const provider = (children: ReactNode) => {
     environment.NEXT_PUBLIC_FINGERLY_API_KEY = 'pk_from_env'
-    return <FingerlyProvider>{children}</FingerlyProvider>
+    return <FingerlyProvider consent="granted">{children}</FingerlyProvider>
   }
 
   it('renders the field empty and fills it once identified', async () => {
@@ -237,6 +237,20 @@ describe('FingerlyRequestId', () => {
     await act(async () => undefined)
 
     expect(container.querySelector('input')?.getAttribute('name')).toBe('risk_ref')
+  })
+
+  it('defaults to pending, leaving the field empty and sending nothing', async () => {
+    environment.NEXT_PUBLIC_FINGERLY_API_KEY = 'pk_from_env'
+    const { container } = render(
+      <FingerlyProvider>
+        <FingerlyRequestId />
+      </FingerlyProvider>,
+    )
+    await act(async () => undefined)
+
+    expect(loadMock).not.toHaveBeenCalled()
+    expect(identifyMock).not.toHaveBeenCalled()
+    expect((container.querySelector('input') as HTMLInputElement).value).toBe('')
   })
 
   it('waits for consent before filling the field, then identifies once it is granted', async () => {

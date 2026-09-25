@@ -40,7 +40,7 @@ class ConsentError extends Error {
 function fakeClient(options: { consent?: string } = {}) {
   const listeners = new Set<(state: string) => void>()
   const client = {
-    consent: options.consent ?? 'granted',
+    consent: options.consent ?? 'pending',
     identify: (...args: unknown[]) =>
       client.consent === 'granted' ? identifyMock(...args) : Promise.reject(new ConsentError(client.consent)),
     setConsent: (state: string) => {
@@ -172,7 +172,7 @@ beforeEach(() => {
 describe('FingerlyProvider', () => {
   it('does not collect anything on mount', () => {
     const { element } = probe(() => useFingerly())
-    render(<FingerlyProvider apiKey="fly_pk_development_test">{element}</FingerlyProvider>)
+    render(<FingerlyProvider apiKey="fly_pk_development_test" consent="granted">{element}</FingerlyProvider>)
 
     // A provider that fingerprinted as it mounted would collect during the
     // first render of every app that installs it, whether or not the page
@@ -184,7 +184,7 @@ describe('FingerlyProvider', () => {
   it('passes the endpoint through, and omits it when unset', async () => {
     const { latest, element } = probe(() => useIdentify())
     render(
-      <FingerlyProvider apiKey="fly_pk_development_test" endpoint="http://localhost:8099">
+      <FingerlyProvider apiKey="fly_pk_development_test" consent="granted" endpoint="http://localhost:8099">
         {element}
       </FingerlyProvider>,
     )
@@ -199,10 +199,10 @@ describe('FingerlyProvider', () => {
     // store on every render of whatever is above it - discarding the
     // identification and collecting again.
     const { latest, element } = probe(() => useIdentify())
-    const { root } = render(<FingerlyProvider apiKey="fly_pk_development_test">{element}</FingerlyProvider>)
+    const { root } = render(<FingerlyProvider apiKey="fly_pk_development_test" consent="granted">{element}</FingerlyProvider>)
 
     await act(() => latest().identify())
-    act(() => root.render(<FingerlyProvider apiKey="fly_pk_development_test">{element}</FingerlyProvider>))
+    act(() => root.render(<FingerlyProvider apiKey="fly_pk_development_test" consent="granted">{element}</FingerlyProvider>))
     await act(() => latest().identify())
 
     expect(identifyMock).toHaveBeenCalledTimes(1)
@@ -211,7 +211,7 @@ describe('FingerlyProvider', () => {
 
   it('accepts a store built elsewhere, for one store per request', async () => {
     const { createFingerlyStore } = await import('../src/store.js')
-    const store = createFingerlyStore({ apiKey: 'pk_request', submit: false })
+    const store = createFingerlyStore({ apiKey: 'pk_request', consent: 'granted', submit: false })
 
     const { latest, element } = probe(() => useIdentify())
     render(<FingerlyProvider store={store}>{element}</FingerlyProvider>)
@@ -239,7 +239,7 @@ describe('useIdentify', () => {
     const { latest, element } = probe(() => useIdentify({ immediate: true }))
 
     await act(async () => {
-      render(<FingerlyProvider apiKey="fly_pk_development_test">{element}</FingerlyProvider>)
+      render(<FingerlyProvider apiKey="fly_pk_development_test" consent="granted">{element}</FingerlyProvider>)
     })
 
     expect(latest().isReady).toBe(true)
@@ -253,7 +253,7 @@ describe('useIdentify', () => {
     const { latest, element } = probe(() => useIdentify({ immediate: true }))
 
     await act(async () => {
-      render(<FingerlyProvider apiKey="fly_pk_development_test">{element}</FingerlyProvider>)
+      render(<FingerlyProvider apiKey="fly_pk_development_test" consent="granted">{element}</FingerlyProvider>)
     })
 
     expect(latest().visitorId).toBe('vis_1')
@@ -287,7 +287,7 @@ describe('useIdentify', () => {
     const { latest, element } = probe(() => useIdentify({ immediate: true }))
 
     await act(async () => {
-      render(<FingerlyProvider apiKey="fly_pk_development_test">{element}</FingerlyProvider>)
+      render(<FingerlyProvider apiKey="fly_pk_development_test" consent="granted">{element}</FingerlyProvider>)
     })
 
     expect(latest().suspectScore).toBeNull()
@@ -303,7 +303,7 @@ describe('useIdentify', () => {
 
     await act(async () => {
       render(
-        <FingerlyProvider apiKey="fly_pk_development_test">
+        <FingerlyProvider apiKey="fly_pk_development_test" consent="granted">
           {a.element}
           {b.element}
           {c.element}
@@ -327,7 +327,7 @@ describe('useIdentify', () => {
     await act(async () => {
       render(
         <StrictMode>
-          <FingerlyProvider apiKey="fly_pk_development_test">{element}</FingerlyProvider>
+          <FingerlyProvider apiKey="fly_pk_development_test" consent="granted">{element}</FingerlyProvider>
         </StrictMode>,
       )
     })
@@ -337,7 +337,7 @@ describe('useIdentify', () => {
 
   it('reuses a finished identification rather than repeating it', async () => {
     const { latest, element } = probe(() => useIdentify())
-    render(<FingerlyProvider apiKey="fly_pk_development_test">{element}</FingerlyProvider>)
+    render(<FingerlyProvider apiKey="fly_pk_development_test" consent="granted">{element}</FingerlyProvider>)
 
     await act(() => latest().identify())
     await act(() => latest().identify())
@@ -347,7 +347,7 @@ describe('useIdentify', () => {
 
   it('starts a fresh one on refresh()', async () => {
     const { latest, element } = probe(() => useIdentify())
-    render(<FingerlyProvider apiKey="fly_pk_development_test">{element}</FingerlyProvider>)
+    render(<FingerlyProvider apiKey="fly_pk_development_test" consent="granted">{element}</FingerlyProvider>)
 
     await act(() => latest().identify())
     await act(() => latest().refresh())
@@ -358,7 +358,7 @@ describe('useIdentify', () => {
   it('reads a getter tag at submission time, not at render time', async () => {
     let orderId = 'order_1'
     const { latest, element } = probe(() => useIdentify({ tag: () => orderId }))
-    render(<FingerlyProvider apiKey="fly_pk_development_test">{element}</FingerlyProvider>)
+    render(<FingerlyProvider apiKey="fly_pk_development_test" consent="granted">{element}</FingerlyProvider>)
 
     orderId = 'order_2'
     await act(() => latest().identify())
@@ -371,7 +371,7 @@ describe('useIdentify', () => {
     const { latest, element } = probe(() => useIdentify({ immediate: true }))
 
     await act(async () => {
-      render(<FingerlyProvider apiKey="fly_pk_development_test">{element}</FingerlyProvider>)
+      render(<FingerlyProvider apiKey="fly_pk_development_test" consent="granted">{element}</FingerlyProvider>)
     })
 
     expect(latest().error?.message).toBe('collector exploded')
@@ -382,7 +382,7 @@ describe('useIdentify', () => {
   it('retries after a failure rather than serving the rejection forever', async () => {
     identifyMock.mockRejectedValueOnce(new Error('collector exploded'))
     const { latest, element } = probe(() => useIdentify())
-    render(<FingerlyProvider apiKey="fly_pk_development_test">{element}</FingerlyProvider>)
+    render(<FingerlyProvider apiKey="fly_pk_development_test" consent="granted">{element}</FingerlyProvider>)
 
     await act(async () => {
       await latest().identify().catch(() => undefined)
@@ -401,7 +401,7 @@ describe('useIdentify', () => {
 
     await act(async () => {
       render(
-        <FingerlyProvider apiKey="fly_pk_development_test" submit={false}>
+        <FingerlyProvider apiKey="fly_pk_development_test" consent="granted" submit={false}>
           {a.element}
           {b.element}
         </FingerlyProvider>,
@@ -419,7 +419,7 @@ describe('useIdentify', () => {
       identifyMock.mockResolvedValue({ ...RESULT, verdicts })
       const { latest, element } = probe(() => useIdentify({ immediate: true }))
       await act(async () => {
-        render(<FingerlyProvider apiKey="fly_pk_development_test">{element}</FingerlyProvider>)
+        render(<FingerlyProvider apiKey="fly_pk_development_test" consent="granted">{element}</FingerlyProvider>)
       })
       return latest
     }
@@ -436,7 +436,7 @@ describe('useIdentify', () => {
 
     it('is false before anything has been collected', () => {
       const { latest, element } = probe(() => useIdentify())
-      render(<FingerlyProvider apiKey="fly_pk_development_test">{element}</FingerlyProvider>)
+      render(<FingerlyProvider apiKey="fly_pk_development_test" consent="granted">{element}</FingerlyProvider>)
 
       expect(latest().isSuspicious).toBe(false)
       expect(latest().isReady).toBe(false)
@@ -456,7 +456,7 @@ describe('useVerdict', () => {
 
     await act(async () => {
       render(
-        <FingerlyProvider apiKey="fly_pk_development_test">
+        <FingerlyProvider apiKey="fly_pk_development_test" consent="granted">
           {identifier.element}
           {element}
         </FingerlyProvider>,
@@ -473,7 +473,7 @@ describe('useVerdict', () => {
 
     await act(async () => {
       render(
-        <FingerlyProvider apiKey="fly_pk_development_test">
+        <FingerlyProvider apiKey="fly_pk_development_test" consent="granted">
           {identifier.element}
           {element}
         </FingerlyProvider>,
@@ -492,7 +492,7 @@ describe('useVerdict', () => {
 
     await act(async () => {
       render(
-        <FingerlyProvider apiKey="fly_pk_development_test">
+        <FingerlyProvider apiKey="fly_pk_development_test" consent="granted">
           {identifier.element}
           {element}
         </FingerlyProvider>,
@@ -505,7 +505,7 @@ describe('useVerdict', () => {
 
   it('reports nothing rather than guessing before identification', () => {
     const { latest, element } = probe(() => useVerdict('automation'))
-    render(<FingerlyProvider apiKey="fly_pk_development_test">{element}</FingerlyProvider>)
+    render(<FingerlyProvider apiKey="fly_pk_development_test" consent="granted">{element}</FingerlyProvider>)
 
     expect(latest().verdict).toBeNull()
     expect(latest().confidence).toBeNull()
@@ -529,7 +529,7 @@ describe('suspend', () => {
     }
 
     const { container } = await renderAsync(
-      <FingerlyProvider apiKey="fly_pk_development_test">
+      <FingerlyProvider apiKey="fly_pk_development_test" consent="granted">
         <Suspense fallback={<span>collecting</span>}>
           <Card />
         </Suspense>
@@ -554,7 +554,7 @@ describe('suspend', () => {
     }
 
     const { container } = await renderAsync(
-      <FingerlyProvider apiKey="fly_pk_development_test">
+      <FingerlyProvider apiKey="fly_pk_development_test" consent="granted">
         <Suspense fallback={<span>collecting</span>}>
           <Card name="incognito" />
           <Card name="automation" />
@@ -570,6 +570,32 @@ describe('suspend', () => {
 })
 
 describe('consent', () => {
+  it('defaults to pending, so nothing identifies on mount until consent is granted', async () => {
+    const identify = probe(() => useIdentify({ immediate: true }))
+    const store = probe(() => useFingerly())
+
+    await act(async () => {
+      render(
+        <FingerlyProvider apiKey="fly_pk_development_test">
+          {identify.element}
+          {store.element}
+        </FingerlyProvider>,
+      )
+    })
+
+    expect(identify.latest().consent).toBe('pending')
+    expect(loadMock).not.toHaveBeenCalled()
+    expect(identifyMock).not.toHaveBeenCalled()
+    await act(async () => {
+      await expect(identify.latest().identify()).rejects.toMatchObject({ code: 'consent_required' })
+    })
+    expect(identifyMock).not.toHaveBeenCalled()
+
+    await act(async () => store.latest().setConsent('granted'))
+
+    expect(identifyMock).toHaveBeenCalledTimes(1)
+  })
+
   it('waits for consent before identifying on mount, then identifies once', async () => {
     const identify = probe(() => useIdentify({ immediate: true }))
     const store = probe(() => useFingerly())

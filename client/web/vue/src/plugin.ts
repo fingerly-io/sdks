@@ -52,10 +52,11 @@ export interface FingerlyVueOptions {
    */
   submit?: boolean
   /**
-   * Whether the visitor has agreed to be identified. Defaults to `granted`.
+   * Whether the visitor has agreed to be identified. Defaults to `pending`.
    *
-   * Pass `pending` when identification waits on a consent banner, then call
-   * [[FingerlyContext.setConsent]] when it is answered. Until then nothing is
+   * Leave it `pending` while identification waits on a consent banner, then
+   * call [[FingerlyContext.setConsent]] when it is answered, or pass `granted`
+   * once you have consent (or another lawful basis). Until then nothing is
    * collected or sent: `useIdentify({ immediate: true })` waits, and a manual
    * `identify()` fails with a `ConsentError` in `error`.
    */
@@ -165,7 +166,7 @@ function createState(consent: ConsentState): FingerlyState {
  * the page that knows.
  */
 export function createFingerly(options: FingerlyVueOptions): Plugin {
-  const state = createState(options.consent ?? 'granted')
+  const state = createState(options.consent ?? 'pending')
 
   let clientPromise: Promise<FingerlyClient> | undefined
   let loaded: FingerlyClient | undefined

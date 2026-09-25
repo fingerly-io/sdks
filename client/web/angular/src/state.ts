@@ -45,10 +45,11 @@ export interface FingerlyOptions {
    */
   submit?: boolean
   /**
-   * Whether the visitor has agreed to be identified. Defaults to `granted`.
+   * Whether the visitor has agreed to be identified. Defaults to `pending`.
    *
-   * Pass `pending` when identification waits on a consent banner, then call
-   * [[Fingerly.setConsent]] when it is answered. Until then nothing is
+   * Leave it `pending` while identification waits on a consent banner, then
+   * call [[Fingerly.setConsent]] when it is answered, or pass `granted`
+   * once you have consent (or another lawful basis). Until then nothing is
    * collected or sent: `injectIdentify({ immediate: true })` waits, and a
    * manual `identify()` fails with a `ConsentError` in `error`.
    */
@@ -160,7 +161,7 @@ export function createFingerly(options: FingerlyOptions): Fingerly {
   const report = signal<SignalReport | null>(null)
   const error = signal<Error | null>(null)
   const isLoading = signal(false)
-  const consent = signal<ConsentState>(options.consent ?? 'granted')
+  const consent = signal<ConsentState>(options.consent ?? 'pending')
 
   const isReady = computed(() => report() !== null || error() !== null)
   const isSuspicious = computed(() => {

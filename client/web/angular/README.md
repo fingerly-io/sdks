@@ -17,7 +17,8 @@ pnpm add @fingerly/angular
 import { provideFingerly } from '@fingerly/angular'
 
 export const appConfig: ApplicationConfig = {
-  providers: [provideFingerly({ apiKey: 'fly_pk_production_…' })],
+  // consent: 'granted' only once you have consent (or another lawful basis)
+  providers: [provideFingerly({ apiKey: 'fly_pk_production_…', consent: 'granted' })],
 }
 ```
 
@@ -33,6 +34,11 @@ and the one-submission-per-page rule would quietly stop holding.
 
 Providing it collects nothing. The state is built the first time something
 injects it, and it collects only when asked.
+
+Consent defaults to `pending`, and nothing is collected or sent until it is
+`granted`. A page with a consent banner leaves it `pending` and calls
+`setConsent('granted')` once the banner is accepted; see
+[Waiting for consent](#waiting-for-consent).
 
 ## Identify
 
@@ -163,7 +169,7 @@ than a gap — nothing was sent, so nobody scored it, and a `0` would read as
 ## Waiting for consent
 
 If identifying a visitor needs their consent first, provide it with `consent:
-'pending'`. Until it is `granted` nothing is collected and nothing is sent:
+'pending'`, the default. Until it is `granted` nothing is collected and nothing is sent:
 `injectIdentify({ immediate: true })` waits, and the client is not even built.
 
 ```ts
@@ -180,7 +186,7 @@ onConsentAnswered(accepted: boolean) {    // the consent tool's callback
 }
 ```
 
-- `consent`: `'granted'` (the default), `'pending'` or `'denied'`, an option to
+- `consent`: `'pending'` (the default), `'granted'` or `'denied'`, an option to
   `provideFingerly()`.
 - `setConsent(state)`: on `injectFingerly()` and `injectIdentify()`, and on the
   client (`await fingerly.client()`). Synchronous, and setting the current value

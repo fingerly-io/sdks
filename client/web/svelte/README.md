@@ -18,7 +18,8 @@ pnpm add @fingerly/svelte
 <script lang="ts">
   import { setupFingerly } from '@fingerly/svelte'
 
-  setupFingerly({ apiKey: 'fly_pk_production_…' })
+  // consent: 'granted' only once you have consent (or another lawful basis)
+  setupFingerly({ apiKey: 'fly_pk_production_…', consent: 'granted' })
 </script>
 
 <slot />
@@ -33,6 +34,11 @@ Setting up collects nothing. It makes the client reachable and no more; when to
 identify is the page's decision. Like every Svelte context call it has to run
 during component initialisation — a `<script>` block, not an event handler and
 not an `$effect`.
+
+Consent defaults to `pending`, and nothing is collected or sent until it is
+`granted`. A page with a consent banner leaves it `pending` and calls
+`setConsent('granted')` once the banner is accepted; see
+[Waiting for consent](#waiting-for-consent).
 
 ## Identify
 
@@ -164,7 +170,7 @@ than a gap — nothing was sent, so nobody scored it, and a `0` would read as
 ## Waiting for consent
 
 If identifying a visitor needs their consent first, set up with `consent:
-'pending'`. Until it is `granted` nothing is collected and nothing is sent:
+'pending'`, the default. Until it is `granted` nothing is collected and nothing is sent:
 `useIdentify({ immediate: true })` waits, and the client is not even built.
 
 ```ts
@@ -180,7 +186,7 @@ const client = await fingerly.client()
 client.setConsent('denied')                // the same, on the client itself
 ```
 
-- `consent`: `'granted'` (the default), `'pending'` or `'denied'`, an option to
+- `consent`: `'pending'` (the default), `'granted'` or `'denied'`, an option to
   `setupFingerly()` and `createFingerly()`.
 - `setConsent(state)`: on the object `setupFingerly()`, `useFingerly()` and
   `useIdentify()` return, and on the client. Synchronous, and setting the

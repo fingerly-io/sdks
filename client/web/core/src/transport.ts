@@ -125,9 +125,36 @@ export class TransportError extends Error {
     message: string,
     readonly status?: number,
     readonly retryable = false,
+    /** The server's error code, such as `consent_required`, when it sent one. */
+    readonly code?: string,
   ) {
     super(message)
   }
+}
+
+/**
+ * The `error.code` of a refusal, when the body is the API's error envelope.
+ *
+ * Best effort: a refusal from a proxy or a captive portal is not JSON, and its
+ * status is still the useful part.
+ */
+async function refusalCode(response: Response): Promise<string | undefined> {
+  try {
+    const body = (await response.json()) as { error?: { code?: unknown } } | null
+    const code = body?.error?.code
+    return typeof code === 'string' && code !== '' ? code : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function refusal(response: Response, code: string | undefined): TransportError {
+  return new TransportError(
+    `The server refused the submission (${response.status})`,
+    response.status,
+    isRetryableStatus(response.status),
+    code,
+  )
 }
 
 export interface HttpTransportOptions {
@@ -352,13 +379,7 @@ export class HttpTransport implements Transport {
         credentials: 'omit',
         signal: controller.signal,
       })
-      if (!response.ok) {
-        throw new TransportError(
-          `The server refused the submission (${response.status})`,
-          response.status,
-          isRetryableStatus(response.status),
-        )
-      }
+      if (!response.ok) throw refusal(response, await refusalCode(response))
       return response
     } finally {
       clearTimeout(timer)
@@ -394,13 +415,7 @@ export class HttpTransport implements Transport {
         signal: controller.signal,
       })
 
-      if (!response.ok) {
-        throw new TransportError(
-          `The server refused the submission (${response.status})`,
-          response.status,
-          isRetryableStatus(response.status),
-        )
-      }
+      if (!response.ok) throw refusal(response, await refusalCode(response))
 
       const responseBody = (await response.json()) as Partial<SubmitResponse>
       if (typeof responseBody?.request_id !== 'string' || responseBody.request_id === '') {

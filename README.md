@@ -204,7 +204,10 @@ answer them — so the SDK states them and the server records them.
 ```ts
 import { load } from '@fingerly/web-js'
 
-const fingerly = await load({ apiKey: 'fly_pk_production_…' })
+// Consent defaults to 'pending', which collects and sends nothing. Pass
+// 'granted' only once you have consent (or another lawful basis), or load
+// with the default and call fingerly.setConsent('granted') from your consent tool.
+const fingerly = await load({ apiKey: 'fly_pk_production_…', consent: 'granted' })
 const result = await fingerly.identify({ tag: 'checkout' })
 const { requestId, visitorId, suspectScore, verdicts } = result
 
@@ -242,10 +245,11 @@ customer redeploying an SDK.
 every signal each platform reads, what we add server-side, how long it is kept,
 and what an integrator has to do about consent.
 
-The header on it is the part to know — **there is no consent parameter yet**, so
-every SDK collects unconditionally the moment it is initialised. Until that
-changes, gating initialisation is the integrator's job, and the docs say so.
-Background in
+The part to know: **every SDK's `consent` defaults to `pending`**, which
+collects and sends nothing until the integrator calls `setConsent('granted')`
+(or loads with `granted` once they have consent or another lawful basis). Every
+submission carries `"consent": "granted"`, and the API refuses anything else
+with `422 consent_required`. Background in
 [`server/docs/compliance/`](../server/docs/compliance/README.md).
 
 ## The SDK never asks the visitor for anything

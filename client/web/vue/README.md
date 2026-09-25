@@ -19,7 +19,8 @@ import { createFingerly } from '@fingerly/vue'
 import App from './App.vue'
 
 createApp(App)
-  .use(createFingerly({ apiKey: 'fly_pk_production_…' }))
+  // consent: 'granted' only once you have consent (or another lawful basis)
+  .use(createFingerly({ apiKey: 'fly_pk_production_…', consent: 'granted' }))
   .mount('#app')
 ```
 
@@ -30,6 +31,11 @@ does not work by design.
 
 Installing the plugin collects nothing. It makes the client available and
 nothing more; when to identify is the page's decision, not the plugin's.
+
+Consent defaults to `pending`, and nothing is collected or sent until it is
+`granted`. A page with a consent banner leaves it `pending` and calls
+`setConsent('granted')` once the banner is accepted; see
+[Waiting for consent](#waiting-for-consent).
 
 ## Identify
 
@@ -157,7 +163,7 @@ than a gap — nothing was sent, so nobody scored it, and a `0` would read as
 ## Waiting for consent
 
 If identifying a visitor needs their consent first, install the plugin with
-`consent: 'pending'`. Until it is `granted` nothing is collected and nothing is
+`consent: 'pending'`, the default. Until it is `granted` nothing is collected and nothing is
 sent: `useIdentify({ immediate: true })` waits, and the client is not even
 built.
 
@@ -175,7 +181,7 @@ const client = await fingerly.client()
 client.setConsent('denied')                // the same, on the client itself
 ```
 
-- `consent`: `'granted'` (the default), `'pending'` or `'denied'`, an option to
+- `consent`: `'pending'` (the default), `'granted'` or `'denied'`, an option to
   `createFingerly()`.
 - `setConsent(state)`: on `useFingerly()` and `this.$fingerly`, and on the
   client. Synchronous, and setting the current value again does nothing.

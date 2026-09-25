@@ -97,7 +97,7 @@
       </div>
     </div>
 
-    <script src="../dist/fingerly.global.js"></script>
+    <script src="../dist/browser.global.js"></script>
     <script>
       const $ = (id) => document.getElementById(id)
 
@@ -177,7 +177,8 @@
       async function run(submit) {
         $('run').disabled = $('submit').disabled = true
         try {
-          const options = { apiKey: $('apikey').value || 'demo' }
+          // Pressing run on this page is the visitor asking to be identified.
+          const options = { apiKey: $('apikey').value || 'demo', consent: 'granted' }
           if ($('endpoint').value) options.endpoint = $('endpoint').value
 
           // Xcode's simulator can be heavily throttled while the local Docker

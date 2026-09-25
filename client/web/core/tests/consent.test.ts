@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { FingerlyClient, type FingerlyClientOptions } from '../src/client.js'
 import { ConsentError } from '../src/consent.js'
 import type { Source } from '../src/source.js'
-import type { SubmitResponse, Transport } from '../src/transport.js'
+import { TransportError, type SubmitResponse, type Transport } from '../src/transport.js'
 import type { ConsentState } from '../src/types.js'
 
 const ANSWER: SubmitResponse = { request_id: 'request-1', visitor_id: 'visitor-1' }
@@ -35,17 +35,55 @@ function client(options: Partial<FingerlyClientOptions> & Pick<FingerlyClientOpt
 }
 
 describe('consent', () => {
-  it('defaults to granted, and identifies exactly as before', async () => {
+  it('defaults to pending, collecting nothing and sending nothing', async () => {
     const { source, calls } = countingSource()
     const transport = fakeTransport()
     const fingerly = client({ sources: [source], transport })
 
-    expect(fingerly.consent).toBe('granted')
-    const result = await fingerly.identify({ tiers: ['fast'] })
+    expect(fingerly.consent).toBe('pending')
+    await expect(fingerly.identify()).rejects.toMatchObject({
+      name: 'ConsentError',
+      code: 'consent_required',
+      state: 'pending',
+    })
+    await expect(fingerly.collect()).rejects.toBeInstanceOf(ConsentError)
 
+    expect(calls.count).toBe(0)
+    expect(transport.submit).not.toHaveBeenCalled()
+    expect(transport.submitSupplement).not.toHaveBeenCalled()
+  })
+
+  it('identifies when granted, and says so in both submission bodies', async () => {
+    const { source, calls } = countingSource()
+    const late = countingSource('late', 'deferred')
+    const transport = fakeTransport({ ...ANSWER, deferred_token: 'continuation' })
+    const fingerly = client({ sources: [source, late.source], transport, consent: 'granted' })
+
+    const result = await fingerly.identify()
     expect(result.visitorId).toBe('visitor-1')
+    expect((await result.deferred).status).toBe('submitted')
+
     expect(calls.count).toBe(1)
+    expect(late.calls.count).toBe(1)
     expect(transport.submit).toHaveBeenCalledTimes(1)
+    expect(transport.submit.mock.calls[0]![0]).toMatchObject({ consent: 'granted', sdk: { platform: 'web' } })
+    expect(transport.submitSupplement).toHaveBeenCalledTimes(1)
+    expect(transport.submitSupplement.mock.calls[0]![1]).toMatchObject({ consent: 'granted', token: 'continuation' })
+  })
+
+  it('reports the server refusing consent as a ConsentError', async () => {
+    const transport: Transport = {
+      submit: async () => {
+        throw new TransportError('The server refused the submission (422)', 422, false, 'consent_required')
+      },
+    }
+    const fingerly = client({ sources: [countingSource().source], transport, consent: 'granted' })
+
+    await expect(fingerly.identify({ tiers: ['fast'] })).rejects.toMatchObject({
+      name: 'ConsentError',
+      code: 'consent_required',
+      state: 'pending',
+    })
   })
 
   it.each<ConsentState>(['pending', 'denied'])(
@@ -104,7 +142,7 @@ describe('consent', () => {
   })
 
   it('notifies on a change only, and stops after unsubscribing', () => {
-    const fingerly = client({ sources: [], transport: fakeTransport() })
+    const fingerly = client({ sources: [], transport: fakeTransport(), consent: 'granted' })
     const listener = vi.fn()
     const unsubscribe = fingerly.onConsentChange(listener)
 
@@ -126,7 +164,7 @@ describe('consent', () => {
     expect(() => client({ sources: [], transport, consent: 'yes' as ConsentState })).toThrow(TypeError)
     const fingerly = client({ sources: [], transport })
     expect(() => fingerly.setConsent(true as unknown as ConsentState)).toThrow(TypeError)
-    expect(fingerly.consent).toBe('granted')
+    expect(fingerly.consent).toBe('pending')
   })
 
   it('does not submit when consent is withdrawn inside a source, and starts no further source', async () => {
@@ -141,6 +179,7 @@ describe('consent', () => {
       sources: [first.source, second.source],
       transport,
       schedule: { concurrency: 1 },
+      consent: 'granted',
     })
 
     await expect(fingerly.identify()).rejects.toMatchObject({ code: 'consent_required', state: 'denied' })
@@ -156,7 +195,7 @@ describe('consent', () => {
       fingerly.setConsent('pending')
       return 1
     })
-    fingerly = client({ sources: [source], transport: fakeTransport() })
+    fingerly = client({ sources: [source], transport: fakeTransport(), consent: 'granted' })
 
     await expect(fingerly.collect()).rejects.toBeInstanceOf(ConsentError)
   })
@@ -172,7 +211,7 @@ describe('consent', () => {
           signal?.addEventListener('abort', () => reject(new Error('The submission was cancelled')))
         }),
     }
-    const fingerly = client({ sources: [countingSource().source], transport })
+    const fingerly = client({ sources: [countingSource().source], transport, consent: 'granted' })
 
     const identified = fingerly.identify({ tiers: ['fast'] })
     await inFlight
@@ -184,7 +223,7 @@ describe('consent', () => {
   it('skips the deferred supplement when consent is withdrawn after the first response', async () => {
     const transport = fakeTransport({ ...ANSWER, deferred_token: 'continuation' })
     const deferred = countingSource('late', 'deferred')
-    const fingerly = client({ sources: [countingSource().source, deferred.source], transport })
+    const fingerly = client({ sources: [countingSource().source, deferred.source], transport, consent: 'granted' })
 
     const result = await fingerly.identify()
     fingerly.setConsent('denied')
@@ -200,7 +239,7 @@ describe('consent', () => {
       fingerly.setConsent('pending')
       return 2
     })
-    fingerly = client({ sources: [countingSource().source, deferred.source], transport })
+    fingerly = client({ sources: [countingSource().source, deferred.source], transport, consent: 'granted' })
 
     const result = await fingerly.identify()
 
@@ -213,7 +252,7 @@ describe('consent', () => {
   it('keeps notifying the others when one listener throws', () => {
     vi.useFakeTimers()
     try {
-      const fingerly = client({ sources: [], transport: fakeTransport() })
+      const fingerly = client({ sources: [], transport: fakeTransport(), consent: 'granted' })
       const after = vi.fn()
       fingerly.onConsentChange(() => {
         throw new Error('listener exploded')
