@@ -188,7 +188,7 @@ you may owe the person an explanation, and the per-event signal breakdown is
 what makes one possible.
 
 Every submission, with its signals exactly as sent, the IP lookup and the
-scoring report, is also kept in an archive (§7).
+scoring report, is also kept in an archive for 90 days (§7).
 
 ## 7. Retention
 
@@ -202,11 +202,11 @@ scoring report, is also kept in an archive (§7).
 | Short-term velocity state (hashed) | 8 days |
 | Device identity index | Until 180 days after the device was last seen, swept hourly |
 | Usage and billing records | About 3 years |
-| **Full submission archive**, including deferred reports | **Not yet bounded**: no expiry rule exists yet |
+| Full submission archive, including deferred reports | 90 days, deleted by the storage's own expiry rule |
 
-The last row is a known gap and the top of our remediation list. It is stated
-rather than omitted because you should not promise a retention period in your
-own notice that our storage does not yet keep.
+The archive keeps each submission as it arrived, with the IP lookup and the
+scoring report, so the event store can be rebuilt; it is not readable through
+the dashboard or the API.
 
 ## 8. What we do not do
 
