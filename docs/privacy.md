@@ -9,9 +9,9 @@ of it without knowing exactly what the code reads, stores and sends. This
 document is that list, checked against the code on 2026-09-25.
 
 > **Read §4 before shipping to visitors in the EU or UK.** Every SDK has a
-> `consent` option, but it defaults to `granted`, and the server neither
-> records nor enforces it. An integration that does nothing collects as soon
-> as it is initialised.
+> `consent` option. It defaults to `pending`, so an integration that does
+> nothing collects nothing, and the server refuses any submission not sent
+> with consent granted. Granting it is your call, and your responsibility.
 
 ## 1. The short version
 
@@ -127,23 +127,34 @@ declaration. This is being fixed; until it is, expect the warning on upload.
 Every SDK and binding takes a `consent` option: `'granted'`, `'pending'` or
 `'denied'`, changeable later with `setConsent()`.
 
-- **It defaults to `granted`.** If you pass nothing, the SDK collects as soon as
-  it is initialised.
+- **It defaults to `pending`.** If you pass nothing, the SDK collects nothing
+  until you call `setConsent('granted')`. This holds for every entry point: the
+  browser SDK and its script-tag build, the React, Next.js, Vue, Nuxt, Svelte
+  and Angular bindings, iOS, Android, and the React Native, Flutter and Lynx
+  bridges.
 - With `'pending'` or `'denied'`, nothing is collected: loading reads nothing,
   and `identify()` and `collect()` throw a `ConsentError` (`consent_required`)
-  before any source runs.
+  before any source runs. Framework bindings set to identify on mount wait
+  until consent becomes `'granted'`.
 - Withdrawing consent mid-call stops what is still running: the browser SDK
   aborts the sources and the submission in flight and skips the deferred report;
   the mobile SDKs check again before each source and before submitting.
-- **The server does not record or enforce it.** Consent is decided in the SDK
-  and is not part of the submission, so our side cannot tell an identification
-  made with consent from one made without.
+- **The server enforces it.** Every submission, the identification and the
+  deferred report alike, carries the state it was collected under,
+  `"consent": "granted"`, and the API refuses anything else with `422` and the
+  same code, `consent_required`. The SDKs only ever send while consent is
+  granted, so you should never see it; a hand-built request or a custom
+  transport that drops the field will.
+- **What the server cannot check** is whether consent was really given. It
+  guarantees that every event it records was sent by an integration that said
+  so; whether that statement is true is on the integration.
 
 So, for visitors in the EU or UK:
 
-1. **Initialise with `consent: 'pending'`** and call `setConsent('granted')` only
-   once you have the lawful basis you have decided on. Anything collected before
-   that cannot be retracted.
+1. **Keep the default, `consent: 'pending'`,** and call `setConsent('granted')`
+   only once you have the lawful basis you have decided on. Pass
+   `consent: 'granted'` at initialisation only if you already have it. Anything
+   collected before that cannot be retracted.
 2. **Treat fingerprinting as in scope for ePrivacy Art. 5(3).** Reading device
    characteristics is "gaining access to information stored in terminal
    equipment", and the EDPB's Guidelines 2/2023 confirm fingerprinting is
