@@ -1,0 +1,24 @@
+# Fingerly first-party proxy behind Traefik, version 1.0.0.
+#
+# Add this service to the compose project Traefik already routes with its
+# Docker provider. `/k7x2qm4a` is the path the Fingerly dashboard issued; the
+# router answers exactly that path and sends it to the container, which
+# forwards the browser SDK's submissions to the Fingerly API. Put the
+# container template's Dockerfile and server.mjs in ./site-relay.
+services:
+  site-relay:
+    build: ./site-relay
+    restart: unless-stopped
+    environment:
+      FINGERLY_PATH: /k7x2qm4a
+      # Traefik replaces X-Real-Ip with the address of the connection it
+      # accepted. Read the README before trusting forwarded headers upstream.
+      FINGERLY_CLIENT_IP_SOURCE: header:x-real-ip
+      # From the shell or an .env file kept out of version control.
+      FINGERLY_PROXY_KEY: ${FINGERLY_PROXY_KEY:?set FINGERLY_PROXY_KEY}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.site-relay.rule=Path(`/k7x2qm4a`)"
+      # Above your site's catch-all router, whatever its rule length.
+      - "traefik.http.routers.site-relay.priority=10000"
+      - "traefik.http.services.site-relay.loadbalancer.server.port=8080"

@@ -1,0 +1,52 @@
+# Fingerly first-party proxy behind Traefik on Kubernetes, version 1.0.0.
+#
+# The container template as a Deployment, and an IngressRoute sending exactly
+# `/k7x2qm4a`, the path the Fingerly dashboard issued, to it. Build and push
+# the image from the container template first. Create the key's Secret from
+# your secret store, never from a file in version control:
+#   kubectl create secret generic site-relay --from-literal=proxy-key=fly_px_...
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: site-relay
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: site-relay }
+  template:
+    metadata:
+      labels: { app: site-relay }
+    spec:
+      containers:
+        - name: site-relay
+          image: registry.example.com/site-relay:1.0.0
+          ports: [{ containerPort: 8080 }]
+          env:
+            - { name: FINGERLY_PATH, value: /k7x2qm4a }
+            # Traefik replaces X-Real-Ip with the address of the connection it
+            # accepted. See the README for load balancers in front of Traefik.
+            - { name: FINGERLY_CLIENT_IP_SOURCE, value: "header:x-real-ip" }
+            - name: FINGERLY_PROXY_KEY
+              valueFrom: { secretKeyRef: { name: site-relay, key: proxy-key } }
+          securityContext: { runAsNonRoot: true, allowPrivilegeEscalation: false, readOnlyRootFilesystem: true }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: site-relay
+spec:
+  selector: { app: site-relay }
+  ports: [{ port: 8080, targetPort: 8080 }]
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: site-relay
+spec:
+  routes:
+    - match: Path(`/k7x2qm4a`)
+      kind: Rule
+      priority: 10000
+      services:
+        - name: site-relay
+          port: 8080

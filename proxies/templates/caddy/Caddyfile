@@ -1,0 +1,65 @@
+# Fingerly first-party proxy for Caddy, version 1.0.0.
+#
+# Put the `handle` block first in the site block that serves your pages, so the
+# browser SDK posts to your own host. `/k7x2qm4a` is the path the Fingerly
+# dashboard issued for this proxy; the block answers exactly that path, nothing
+# under or beside it. The proxy key comes from the FINGERLY_PROXY_KEY
+# environment variable of the Caddy process, never from this file.
+
+www.example.com {
+	handle /k7x2qm4a {
+		# Deferred, so it replaces whatever the API sends and also covers the
+		# responses Caddy writes itself.
+		header >Cache-Control no-store
+
+		@notpost not method POST
+		header @notpost Allow POST
+		respond @notpost 405
+
+		# A key that is not shaped like a proxy key answers 503 rather than
+		# forwarding anything.
+		@nokey not vars_regexp {env.FINGERLY_PROXY_KEY} ^fly_px_(production|staging|development)_[A-Za-z0-9_-]+$
+		respond @nokey 503
+
+		request_body {
+			max_size 1MiB
+		}
+
+		# Visitor-sent X-Fingerly-* headers never reach the API; the ones below
+		# are set by this proxy alone.
+		request_header -X-Fingerly-*
+
+		# Browsers send Origin with every POST. The page's own origin stands in
+		# when a client leaves it out.
+		@noorigin not header Origin *
+		request_header @noorigin Origin {scheme}://{hostport}
+
+		# The one URL this block can reach. Both of the browser SDK's calls go
+		# here; the API tells them apart by their bodies.
+		rewrite * /api/v1/ingest
+		reverse_proxy https://api.fingerly.io {
+			header_up Host {upstream_hostport}
+			header_up -Cookie
+			header_up -Authorization
+			header_up X-Fingerly-Proxy-Key {env.FINGERLY_PROXY_KEY}
+			# The visitor's address. Behind a load balancer, set trusted_proxies
+			# (and trusted_proxies_strict) so this is the visitor, not the load
+			# balancer. See the README.
+			header_up X-Fingerly-Client-Ip {client_ip}
+			header_up X-Fingerly-Origin {http.request.header.Origin}
+			header_up X-Fingerly-User-Agent {http.request.header.User-Agent}
+			header_up X-Fingerly-Proxy-Version caddy/1.0.0
+
+			# The API sends nothing naming Fingerly to proxied callers; dropping
+			# cookies is defense in depth.
+			header_down -Set-Cookie
+
+			transport http {
+				dial_timeout 5s
+				response_header_timeout 5s
+			}
+		}
+	}
+
+	# ... the rest of your site ...
+}

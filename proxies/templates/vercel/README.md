@@ -1,0 +1,53 @@
+# Fingerly first-party proxy for Vercel
+
+A dependency-free Routing Middleware file for any project on Vercel. It answers
+one path the Fingerly dashboard issued, on your own domain, and forwards only
+the browser SDK's submissions to the Fingerly API. It is not an open proxy: the
+upstream is a constant in the code, and every other path and method is refused.
+
+## Steps
+
+1. In the dashboard, open **Integration > Proxy keys**, create a proxy and copy
+   the key it shows once. Note the path it issued, such as `/k7x2qm4a`.
+2. Save `middleware.ts` at the root of your project, beside `package.json`, and
+   replace `/k7x2qm4a` with your path in both places (`config.matcher` and
+   `PATH`).
+3. Add the key as a sensitive environment variable:
+   `vercel env add FINGERLY_PROXY_KEY production --sensitive` (it prompts for
+   the value), or **Settings > Environment Variables** in the project.
+4. Deploy.
+5. Point the browser SDK at the path:
+
+   ```ts
+   await load({
+     apiKey: 'fly_pk_production_...',
+     endpoints: '/k7x2qm4a',
+   })
+   ```
+
+On Next.js, use a route handler instead: `app/k7x2qm4a/route.ts` exporting
+`POST = Fingerly.createProxy(...)` from `@fingerly/node`, which leaves your
+Next.js middleware alone.
+
+## How the visitor's address is trusted
+
+The middleware sends `x-real-ip` as `x-fingerly-client-ip`, falling back to the
+first `x-forwarded-for` entry. Vercel sets both itself and overwrites
+`x-forwarded-for` with the client address, discarding what the visitor sent,
+so on Vercel they cannot be forged. Do not reuse this code on a platform that
+passes those headers through.
+
+## What it sends and relays
+
+Upstream, to `https://api.fingerly.io/api/v1/ingest` only, on headers built
+from scratch: `content-type`, `x-api-key`, `idempotency-key` when present, and
+the `x-fingerly-*` headers the middleware sets itself (the proxy key, the
+client address, the page origin, the user agent and
+`x-fingerly-proxy-version: vercel/1.0.0`, which the dashboard shows per proxy).
+Cookies, `Authorization` and any `x-fingerly-*` header a visitor forges never
+leave. Bodies over 1 MiB are refused with `413`, redirects are not followed,
+and a missing or malformed key answers `503` rather than forwarding.
+
+Back to the page: the API's status and body with only `content-type`,
+`x-request-id`, `ratelimit-limit`, `ratelimit-remaining` and `retry-after`,
+plus `cache-control: no-store`. Nothing relayed names Fingerly.

@@ -1,0 +1,6 @@
+# Add this to the netlify.toml at the root of your site. The path is the one the
+# Fingerly dashboard issued; keep it equal to PATH in
+# netlify/edge-functions/relay.ts.
+[[edge_functions]]
+  function = "relay"
+  path = "/k7x2qm4a"

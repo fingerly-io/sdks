@@ -1,0 +1,18 @@
+{
+  "name": "@fingerly/proxy-templates",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Ready-made first-party proxy templates for nginx, Caddy, Vercel, Netlify, AWS CloudFront and Google Cloud Run, with their conformance tests",
+  "type": "module",
+  "scripts": {
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "snippets": "node scripts/console-snippets.mjs",
+    "snippets:check": "node scripts/console-snippets.mjs --check"
+  },
+  "devDependencies": {
+    "@types/node": "26.4.0",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.9"
+  }
+}

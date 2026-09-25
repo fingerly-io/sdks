@@ -1,0 +1,17 @@
+# Fingerly first-party proxy behind Traefik, version 1.0.0: file provider.
+#
+# Dynamic configuration routing exactly `/k7x2qm4a`, the path the Fingerly
+# dashboard issued, to the container template running as `site-relay` on a
+# network Traefik can reach.
+http:
+  routers:
+    site-relay:
+      rule: "Path(`/k7x2qm4a`)"
+      # Above your site's catch-all router, whatever its rule length.
+      priority: 10000
+      service: site-relay
+  services:
+    site-relay:
+      loadBalancer:
+        servers:
+          - url: "http://site-relay:8080"

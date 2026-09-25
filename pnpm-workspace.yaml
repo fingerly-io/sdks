@@ -4,3 +4,6 @@ packages:
   - "client/mobile/lynx"
   - "server/*"
   - "contract"
+  # Ready-made proxy templates: private, never published, here for their tests.
+  # proxies/cloudflare is a separate repository with its own workspace.
+  - "proxies/templates"
