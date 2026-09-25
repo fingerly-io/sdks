@@ -1,23 +1,25 @@
 /**
  * Getting a submission to the server.
  *
- * The route is `POST /api/v1/identify`, authenticated by an SDK key in
- * `x-api-key` and answering `200 OK` with the verdict. See
- * `server/routers/sdk.go` for the registration and `server/app/app.go` for the
- * cross-origin policy that lets a browser read the answer.
+ * Both calls - the identification and the deferred report after it - are one
+ * `POST` to one URL, authenticated by an SDK key in `x-api-key`. Without custom
+ * endpoints that URL is `https://api.fingerly.io/api/v1/ingest`; see
+ * `server/handlers/ingest.go`, which tells the two apart by the deferred
+ * report's `token`, and `server/app/app.go` for the cross-origin policy that
+ * lets a browser read the answer.
  *
- * It used to answer `202 Accepted` with an identifier and nothing else, on the
- * grounds that the server's work - the address lookup, the identity match -
- * could not happen in the tens of milliseconds a page load can spare. It now
- * does happen there, so the answer comes back with the submission rather than
- * being fetched afterwards, and a caller needs one round trip instead of two.
+ * A custom endpoint is used exactly as given, with nothing appended, unless it
+ * is a bare origin, which names an API rather than a proxy. That is the point:
+ * a content blocker matches URLs, and a path added to every customer's proxy
+ * is a path one generic rule could match on all of them. A first-party proxy
+ * at an opaque path of the customer's own has nothing in common with any
+ * other site's.
  */
 
 import { validateApiVersion } from './routes.js'
 import { DEFAULT_ENDPOINT } from './routing.js'
 import type { DeferredSubmission, IdentifySubmission } from './types.js'
 
-export const IDENTIFY_PATH = '/api/v1/identify'
 export const SDK_KEY_HEADER = 'x-api-key'
 const IDEMPOTENCY_KEY_HEADER = 'Idempotency-Key'
 
@@ -133,9 +135,15 @@ export interface HttpTransportOptions {
   apiVersion?: string
   /** The SDK key. A public key in a page, a secret key on a backend. */
   apiKey: string
-  /** Origin of the API. Defaults to production. */
+  /** @deprecated One custom endpoint. Use `endpoints`, which means the same. */
   endpoint?: string
-  /** Ordered custom ingestion bases. Prefer this over endpoint. */
+  /**
+   * Ordered custom ingestion URLs, each posted to exactly as given: a
+   * root-relative path such as `/k7x2qm4a` for a first-party proxy on the
+   * page's own site, or an absolute URL. A bare origin such as
+   * `http://localhost:8099` is read as an API and gets the API's own path.
+   * Later ones are tried when an earlier one fails.
+   */
   endpoints?: string | readonly string[]
   /** Append the Fingerly API after custom endpoints, as a last resort. */
   fallbackToDefaultEndpoint?: boolean
@@ -159,15 +167,27 @@ function isRetryableStatus(status: number): boolean {
   return status === 404 || status === 405 || status === 408 || status === 425 || status === 429 || (status >= 500 && status <= 599)
 }
 
-function normalizeEndpoint(endpoint: string): string {
-  const value = endpoint.trim()
+/** An API's own URL for both calls, from its origin. */
+function apiUrl(origin: string, apiVersion: string): string {
+  return `${origin}/api/${apiVersion}/ingest`
+}
+
+function defaultUrl(apiVersion: string): string {
+  return apiUrl(DEFAULT_ENDPOINT, apiVersion)
+}
+
+function normalizeEndpoint(endpoint: string, apiVersion: string): string {
+  const value = endpoint.trim().replace(/\/+$/, '')
   if (value === '' || value.includes('?') || value.includes('#')) {
-    throw new TypeError('A Fingerly endpoint must be a non-empty base URL without a query or fragment')
+    throw new TypeError('A Fingerly endpoint must be a non-empty URL or path without a query or fragment')
   }
   if (!(value.startsWith('/') || /^https?:\/\//i.test(value))) {
     throw new TypeError('A Fingerly endpoint must be an absolute URL or a root-relative browser path')
   }
-  return value.replace(/\/+$/, '')
+  // A bare origin names an API - ours, or one running locally - rather than a
+  // proxy, which always sits at a path on the customer's site. The API's URL
+  // for both calls is under it; posting to its root would be a 404 nobody meant.
+  return /^https?:\/\/[^/]+$/i.test(value) ? apiUrl(value, apiVersion) : value
 }
 
 /**
@@ -219,17 +239,17 @@ export class HttpTransport implements Transport {
     }
 
     this.apiKey = options.apiKey
-    const configured = options.endpoints ?? options.endpoint
-    let bases = configured === undefined
-      ? [DEFAULT_ENDPOINT]
-      : (Array.isArray(configured) ? [...configured] : [configured as string])
-    if (bases.length === 0) throw new TypeError('The endpoints array must not be empty')
-    bases = bases.map(normalizeEndpoint)
-    if (configured !== undefined && options.fallbackToDefaultEndpoint) {
-      if (!bases.includes(DEFAULT_ENDPOINT)) bases.push(DEFAULT_ENDPOINT)
-    }
     const apiVersion = validateApiVersion(options.apiVersion)
-    this.urls = bases.map((base) => `${base}/api/${apiVersion}/identify`)
+    const configured = options.endpoints ?? options.endpoint
+    const listed = configured === undefined
+      ? [defaultUrl(apiVersion)]
+      : (Array.isArray(configured) ? [...configured] : [configured as string])
+    if (listed.length === 0) throw new TypeError('The endpoints array must not be empty')
+    const urls = listed.map((endpoint) => normalizeEndpoint(endpoint, apiVersion))
+    if (configured !== undefined && options.fallbackToDefaultEndpoint) {
+      if (!urls.includes(defaultUrl(apiVersion))) urls.push(defaultUrl(apiVersion))
+    }
+    this.urls = urls
     this.maxAttempts = Math.max(1, this.urls.length, options.maxAttempts ?? 3)
     this.requestTimeoutMs = options.requestTimeoutMs ?? 5000
 
@@ -298,8 +318,9 @@ export class HttpTransport implements Transport {
       if (signal?.aborted) throw new TransportError('The supplement was cancelled')
 
       try {
-        const url = `${this.urls[endpointIndex]!.replace(/\/identify$/, '')}/events/${encodeURIComponent(requestId)}/supplement`
-        await this.postJSON(url, body, signal)
+        // The same URL as the identification. The token in the body names the
+        // request, so nothing about this call shows in the URL.
+        await this.postJSON(this.urls[endpointIndex]!, body, signal)
         return
       } catch (error) {
         const failure = error instanceof TransportError

@@ -28,7 +28,6 @@ export { hash64 } from './hash.js'
 
 export {
   HttpTransport,
-  IDENTIFY_PATH,
   SDK_KEY_HEADER,
   TransportError,
   type HttpTransportOptions,

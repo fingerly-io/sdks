@@ -95,7 +95,7 @@ describe('HttpTransport retry idempotency', () => {
       apiKey: 'fly_pk_production_example', fetchImpl,
     }).submit(submission())
 
-    expect(requested).toEqual(['https://api.fingerly.io/api/v1/identify'])
+    expect(requested).toEqual(['https://api.fingerly.io/api/v1/ingest'])
   })
 
   it('fails over in order with the same body and idempotency key', async () => {
@@ -109,15 +109,15 @@ describe('HttpTransport retry idempotency', () => {
 
     await new HttpTransport({
       apiKey: 'fly_pk_production_example',
-      endpoints: '/neutral-route',
+      endpoints: '/k7x2qm4a',
       fallbackToDefaultEndpoint: true,
       maxAttempts: 2,
       fetchImpl,
     }).submit(submission())
 
     expect(calls.map((call) => call.url)).toEqual([
-      '/neutral-route/api/v1/identify',
-      'https://api.fingerly.io/api/v1/identify',
+      '/k7x2qm4a',
+      'https://api.fingerly.io/api/v1/ingest',
     ])
     expect(calls[1]?.init?.body).toBe(calls[0]?.init?.body)
     expect(header(calls[1]?.init, 'Idempotency-Key')).toBe(header(calls[0]?.init, 'Idempotency-Key'))
@@ -131,13 +131,39 @@ describe('HttpTransport retry idempotency', () => {
     }) as typeof fetch
 
     await expect(new HttpTransport({
-      apiKey: 'fly_pk_production_example', endpoints: '/neutral-route', maxAttempts: 2, fetchImpl,
+      apiKey: 'fly_pk_production_example', endpoints: '/k7x2qm4a', maxAttempts: 2, fetchImpl,
     }).submit(submission())).rejects.toBeInstanceOf(TransportError)
 
-    expect(requested).toEqual([
-      '/neutral-route/api/v1/identify',
-      '/neutral-route/api/v1/identify',
-    ])
+    expect(requested).toEqual(['/k7x2qm4a', '/k7x2qm4a'])
+  })
+
+  it('posts both calls to a custom endpoint exactly as given', async () => {
+    const fetchImpl = vi.fn(async () => new Response('{"request_id":"request-1"}')) as typeof fetch
+    const transport = new HttpTransport({
+      apiKey: 'fly_pk_production_example', endpoints: ['/k7x2qm4a/', 'https://edge.shop.example/q9r8'], fetchImpl,
+    })
+    await transport.submit(submission())
+    await transport.submitSupplement('request-1', { ...submission(), token: 'continuation' })
+
+    const calls = vi.mocked(fetchImpl).mock.calls
+    expect(calls.map(([url]) => url)).toEqual(['/k7x2qm4a', '/k7x2qm4a'])
+    // Nothing about the second call is in its URL; the token names the request.
+    expect(JSON.parse(String(calls[1]?.[1]?.body))).toMatchObject({ token: 'continuation' })
+  })
+
+  it('reads a bare origin as an API rather than as a proxy path', async () => {
+    const fetchImpl = vi.fn(async () => new Response('{"request_id":"request-1"}')) as typeof fetch
+    const transport = new HttpTransport({
+      apiKey: 'fly_pk_production_example', endpoints: ['http://localhost:8099/', 'https://api.fingerly.io'], maxAttempts: 2, fetchImpl,
+    })
+    await transport.submit(submission())
+    expect(vi.mocked(fetchImpl).mock.calls[0]?.[0]).toBe('http://localhost:8099/api/v1/ingest')
+    expect(() => new HttpTransport({ apiKey: 'key', endpoints: 'https://api.fingerly.io', fallbackToDefaultEndpoint: true }))
+      .not.toThrow()
+  })
+
+  it.each(['', '/', 'k7x2qm4a', '/k7?x=1', '/k7#x', 'ftp://edge.example/k7'])('rejects the endpoint %j', (endpoints) => {
+    expect(() => new HttpTransport({ apiKey: 'key', endpoints })).toThrow(TypeError)
   })
 
   it('rejects an empty endpoint list and conflicting option spellings', () => {
@@ -160,13 +186,13 @@ describe('HttpTransport retry idempotency', () => {
 })
 
 describe('API version configuration', () => {
-  it('uses the configured version for identify and deferred reports', async () => {
+  it('uses the configured version on the Fingerly API', async () => {
     const fetchImpl = vi.fn(async () => new Response('{"request_id":"request-version"}')) as typeof fetch
-    const transport = new HttpTransport({ apiKey: 'public-test-key', endpoint: '/metrics', apiVersion: 'v2', fetchImpl })
+    const transport = new HttpTransport({ apiKey: 'public-test-key', apiVersion: 'v2', fetchImpl })
     await transport.submit(submission())
     await transport.submitSupplement('request-version', { token: 'token', sdk: submission().sdk, signals: submission().signals })
     expect(vi.mocked(fetchImpl).mock.calls.map(([url]) => url)).toEqual([
-      '/metrics/api/v2/identify', '/metrics/api/v2/events/request-version/supplement',
+      'https://api.fingerly.io/api/v2/ingest', 'https://api.fingerly.io/api/v2/ingest',
     ])
   })
 

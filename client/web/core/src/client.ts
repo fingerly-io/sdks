@@ -39,9 +39,13 @@ export interface FingerlyClientOptions {
   apiVersion?: string
   /** The SDK key, from the dashboard. A public key is safe in a page. */
   apiKey: string
-  /** Origin of the API. Defaults to production. */
+  /** @deprecated One custom endpoint. Use `endpoints`, which means the same. */
   endpoint?: string
-  /** Ordered first-party ingestion endpoints. */
+  /**
+   * Ordered first-party ingestion URLs, posted to exactly as given, such as
+   * `/k7x2qm4a` for the proxy path the dashboard issued. See
+   * `HttpTransportOptions.endpoints`.
+   */
   endpoints?: string | readonly string[]
   /** Explicitly use the Fingerly API after custom endpoints fail. */
   fallbackToDefaultEndpoint?: boolean

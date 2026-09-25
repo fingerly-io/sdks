@@ -188,13 +188,13 @@ card change.
 
 ## What this deliberately does not do
 
-**It does not proxy the API through a route handler.** Serving the SDK's
-submissions from your own origin is a real technique — it survives filter lists
-that block third-party endpoints — but a naive proxy makes every event arrive
-from your server's address, and the address is what the IP enrichment,
-datacenter and Tor checks are computed from. Doing it properly needs the API to
-trust a forwarded address from your origin specifically, which is a decision
-that belongs on the server rather than in a client package.
+**It does not proxy the API itself.** Serving the SDK's submissions from your
+own origin is what gets them past content blockers, and the proxy for it lives
+in `@fingerly/node`, because it holds a server secret and has to forward the
+visitor's real address rather than your server's. Create a proxy in the
+dashboard, put `Fingerly.createProxy(...)` in the route file for the path it
+issued (such as `app/k7x2qm4a/route.ts`), and give the provider
+`endpoints="/k7x2qm4a"`.
 
 **It does not read events back.** It does not need to: `identify()` resolves
 with the server's verdict — `visitorId`, `suspectScore`, `suspectLevel` and the
