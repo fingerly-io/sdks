@@ -15,16 +15,27 @@ document is that list, checked against the code on 2026-09-25.
 
 ## 1. The short version
 
-The SDKs read characteristics of the device and browser in order to recognise
-the same device across visits and to judge whether it is being misrepresented.
-They do not read page content, form fields, keystrokes, mouse movement,
+The SDKs read characteristics of the device and browser in order to judge
+whether it is being misrepresented. How the same device is recognised across
+visits differs by platform:
+
+- **Browsers** are recognised by their device and browser characteristics
+  (§2).
+- **Native apps** (iOS, Android, and the React Native, Flutter and Lynx
+  bridges) are recognised **only** by the random install ID the SDK stores on
+  the device (§3.1). Hardware and operating system signals are never used to
+  recognise a device or a user in an app; they serve integrity checks and
+  scoring only. A native report without an install ID identifies nobody.
+
+The SDKs do not read page content, form fields, keystrokes, mouse movement,
 clipboard, contacts, photos, location services, or anything belonging to the
 person rather than to the device.
 
 What leaves the device is a set of signal values. What we add server-side is an
-IP-derived location and network classification, a visitor identifier and a risk
-score. The browser SDK leaves nothing behind on the device; the mobile SDKs keep
-one install identifier (§3.1).
+IP-derived, approximate location and network classification, a visitor
+identifier and a risk score. The browser SDK leaves nothing behind on the
+device; the mobile SDKs keep one install identifier (§3.1), which the app can
+delete (§3.2).
 
 ## 2. Browser (`web-js` and the framework bindings)
 
@@ -95,13 +106,50 @@ characteristics is in scope whether or not anything is written.
 
 ## 3. Mobile (`ios`, `android`, and the React Native, Flutter and Lynx bridges)
 
-The native SDKs read operating system and hardware characteristics (model,
-memory, CPU, display, storage totals, locale, accessibility settings, battery
-and thermal state, audio route, network interfaces including VPN tunnels and
-proxies), app installation details (bundle, signing), security settings
-(whether a passcode is set, whether biometrics are enrolled), and integrity
-indicators (jailbreak or root, emulator, debugger, hooking frameworks such as
-Frida, loaded libraries, cloned apps on Android).
+The native SDKs read operating system and hardware characteristics, app
+installation details, security settings and integrity indicators. None of it
+is used to recognise the device (§1); it is evidence for the integrity verdicts
+and the risk score.
+
+**iOS**
+
+- Model, memory, CPU, display, locale, battery and thermal state, audio route,
+  and network interfaces including VPN tunnels and proxies.
+- App installation details: bundle and signing, and the age of the app's own
+  container in whole days (`container_age_d`). No bundle creation date.
+- Security settings: whether a passcode is set, whether biometrics are
+  enrolled.
+- Accessibility: only how many settings differ from their defaults
+  (`settings_changed`) and whether the default text size is in use
+  (`default_text_size`). Never which features, such as VoiceOver, Switch
+  Control or AssistiveTouch, are on.
+- Fonts: only the number of installed font families, never their names or a
+  digest of them.
+- Attestation: only whether DeviceCheck and App Attest are supported. No
+  DeviceCheck token is requested or sent.
+- Integrity indicators: jailbreak, Simulator, debugger, hooking frameworks
+  such as Frida, loaded libraries. Jailbreak checks are read-only existence
+  tests (`access`, `readlink`); nothing is written or read outside the app's
+  container.
+- **Not read at all:** boot time, system uptime, and disk capacity or free
+  space.
+
+**Android**
+
+- Model, memory, CPU, display, storage totals, locale, accessibility settings
+  (how many differ from their defaults, never which services are on), battery
+  and thermal state, the mobile network operator's name, and network interfaces
+  including VPN tunnels and proxies.
+- App installation details: package, signing, the installing store.
+- Security settings: whether a lockscreen is set.
+- Integrity indicators: root, emulator, debugger, hooking frameworks such as
+  Frida, loaded libraries, key attestation.
+- **Other apps, as booleans only.** Whether a root manager is installed
+  (`root_manager_installed`), whether a hooking-framework manager is installed
+  (`hook_manager_installed`), whether a cloning app is installed
+  (`cloner_installed`), and whether this app runs inside another app's data
+  directory (`data_dir_in_other_app`, with a count of other apps' sandboxes
+  mapped into the process). No package name ever leaves the device.
 
 The React Native, Flutter and Lynx packages are bridges, not reimplementations:
 they call the native SDKs, so what is collected is whatever the native platform
@@ -111,16 +159,54 @@ they run on collects. Do not assume the JavaScript or Dart surface bounds it.
 
 | | iOS | Android |
 |---|---|---|
-| Stored on the device | One Keychain item (service `io.fingerly.sdk.install`) holding a random install ID, the first-seen time and a launch count. Device-only, so not in backups, and it **survives uninstall**, deliberately, to detect reinstalls | SharedPreferences file `io.fingerly.sdk.install` with a random install ID, first-seen time, launch count and signing signature. Removed on uninstall |
+| Stored on the device | One Keychain item (service `io.fingerly.sdk.install`) holding a random install ID, the first-seen time and a launch count. Device-only (`ThisDeviceOnly`), so not in backups, and it **survives uninstall**, so a reinstall keeps the same install ID | One file, `io.fingerly.sdk.install`, under the app's `noBackupFilesDir`, holding a random install ID, the first-seen time, the launch count and the signing certificate digest. Never copied by Auto Backup or device transfer, and **removed on uninstall**, so a reinstall starts a new install ID. A record left in SharedPreferences by an earlier version is moved there once and the preferences file deleted |
+| How the server recognises the device | By the install ID only | By the install ID only |
 | Platform identifier sent | `identifierForVendor`, as is | `ANDROID_ID`, hashed |
-| Calls other than to Fingerly | A DeviceCheck token from Apple (deferred tier) | Key attestation in the Android Keystore, with a key created and deleted in the same run |
+| Calls other than to Fingerly | None. The SDK asks only whether DeviceCheck and App Attest are supported | Key attestation in the Android Keystore, with a key created and deleted in the same run |
 | Connection probe | Opens a TLS connection to the configured endpoint to inspect its certificate chain | The same |
-| Permissions | None requested | `INTERNET` and `ACCESS_NETWORK_STATE`, which prompt nobody, plus a `<queries>` list naming 17 root, hooking and cloner packages (no `QUERY_ALL_PACKAGES`) |
+| Permissions | None requested | `INTERNET` and `ACCESS_NETWORK_STATE`, which prompt nobody, plus a `<queries>` list naming 17 root, hooking and cloner packages (no `QUERY_ALL_PACKAGES`). An app can drop any entry with `tools:node="remove"` in its own manifest |
+| Deleting the record | `Fingerly.deleteStoredIdentity()` | `Fingerly.deleteStoredIdentity(context)` |
 
-**iOS privacy manifest.** The iOS SDK does not ship a `PrivacyInfo.xcprivacy`
-yet. It uses required-reason APIs in the file timestamp, system boot time and
-disk space categories, and App Store Connect flags uploads without a
-declaration. This is being fixed; until it is, expect the warning on upload.
+**iOS privacy manifest.** The iOS SDK ships a `PrivacyInfo.xcprivacy`, in the
+Swift package's resources and in the pod's `Fingerly_Privacy` resource bundle,
+so Xcode includes it in the app's privacy report. It declares:
+
+- `NSPrivacyTracking` false, and no tracking domains. The SDK does not track,
+  so it needs no App Tracking Transparency prompt and asks for none.
+- Collected data types, each linked to the user, not used for tracking, for
+  the App Functionality purpose: Device ID, Coarse Location, Product
+  Interaction, Other Data Types.
+- One required-reason API: file timestamp, reason `C617.1`, for the creation
+  date of the app's own container. The SDK uses no boot time, disk space,
+  user defaults or active keyboard APIs.
+
+The React Native, Flutter and Lynx bridges depend on the Fingerly pod, so the
+manifest reaches those apps too.
+
+### 3.2 Deleting the stored identity
+
+Every mobile SDK has a call that deletes the install record from the device:
+`Fingerly.deleteStoredIdentity()` on iOS, `Fingerly.deleteStoredIdentity(context)`
+on Android, and `deleteStoredIdentity()` in the React Native, Flutter and Lynx
+packages. Use it for erasure requests and account deletion. It needs no client
+and no consent, sends nothing, and succeeds when there was no record. The next
+identification made with consent starts a new install ID that nothing links to
+the old one; set consent to `denied` first if nothing should be collected
+afterwards. On iOS this is the only way to remove the record, because it
+survives the app being deleted.
+
+Deleting the record on the device does not delete what we already hold; send
+that request to us as well (§4).
+
+### 3.3 Guidance for app stores
+
+- **Do not ship the SDK in Kids Category apps** (App Store Review Guideline
+  1.3) or in Google Play apps directed at children.
+- **Do not use the browser SDK inside a `WKWebView` in an iOS app.** Apple
+  treats reading browser properties there as fingerprinting. Use the native
+  SDK instead.
+- **Consent defaults to pending** (§4), which is what App Store Review
+  Guideline 5.1.1(ii) and Google Play's guidance on using SDKs safely ask for.
 
 ## 4. Consent: what you must do
 
@@ -164,7 +250,8 @@ So, for visitors in the EU or UK:
 3. **Disclose it.** Your notice needs to name device fingerprinting for fraud
    prevention, name us as a processor, and say how long the data is kept (§7).
 4. **Send erasure requests to us.** There is no self-service or API route to
-   delete a visitor's data yet; contact us and we handle it manually.
+   delete a visitor's data yet; contact us and we handle it manually. In an
+   app, also call `deleteStoredIdentity()` on the device (§3.2).
 
 ## 5. First-party proxies and hosted subdomains
 
@@ -187,7 +274,7 @@ Neither changes what is collected or what we keep about visitors.
 | Added | Source | Note |
 |---|---|---|
 | IP address | The request, or a proxy that forwards it (§5) | Stored at full precision |
-| Continent, country, region, city, coordinates | A geolocation database on our own servers | Falls back to the IP intelligence provider below for an address the database has no entry for |
+| Continent, country, region, city, coordinates | A geolocation database on our own servers | Falls back to the IP intelligence provider below for an address the database has no entry for. Coordinates are stored rounded to one decimal place (about 11 km), a city's reference point rather than the device's position, so this is approximate (coarse) location for the store forms |
 | VPN, proxy, Tor, datacenter, relay and mobile classification; ASN, network, ISP and organisation names | An IP intelligence provider | **Your visitors' IP addresses are sent to this provider**, except private-range addresses. Answers are cached in memory for up to an hour. The provider is named, with what it receives and where, in our sub-processor list |
 | Page origin, user agent, and your `tag` | The request | The user agent is also parsed into browser, OS and device type |
 | `visitor_id` | Minted by us | Never derived from a hash of the signals, never chosen by the client, and scoped to one organisation |
@@ -222,7 +309,16 @@ the dashboard or the API.
 ## 8. What we do not do
 
 - No cookies, and no identifier stored by the browser SDK; the mobile SDKs keep
-  one install identifier (§3.1)
+  one install identifier (§3.1), which the app can delete (§3.2)
+- No recognition of an app's device from its hardware: on iOS and Android the
+  server recognises a device by the stored install ID only, and hardware
+  signals serve integrity checks and scoring
+- No tracking: the iOS privacy manifest declares `NSPrivacyTracking` false, and
+  the SDKs need no App Tracking Transparency prompt
+- No precise location: no location services, and IP coordinates rounded to one
+  decimal place
+- No package names of other apps sent from Android; only whether any of a
+  fixed list of root, hooking or cloning apps is installed
 - No cross-customer identity graph: a `visitor_id` belongs to one organisation
   and is not shared between customers
 - No selling or sharing of visitor data
