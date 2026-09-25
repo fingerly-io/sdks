@@ -30,6 +30,7 @@ container forwards only the browser SDK's submissions to the Fingerly API.
    await load({
      apiKey: 'fly_pk_production_...',
      endpoints: '/k7x2qm4a',
+     consent: 'granted', // only once the visitor has agreed, or you have another lawful basis
    })
    ```
 

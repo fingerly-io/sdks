@@ -37,7 +37,7 @@ const browserStep = {
   title: 'Point the browser SDK at the path',
   text: 'Pass the path as the endpoint. The SDK posts to it exactly as given.',
   label: 'JavaScript',
-  code: `await load({\n  apiKey: 'fly_pk_production_…',\n  endpoints: '/k7x2qm4a',\n})\n`,
+  code: `await load({\n  apiKey: 'fly_pk_production_…',\n  endpoints: '/k7x2qm4a',\n  consent: 'granted', // only once the visitor has agreed, or you have another lawful basis\n})\n`,
 }
 
 export function build() {
