@@ -134,7 +134,8 @@ export const userAgentDataSource: Source<Record<string, unknown>> = {
       'bitness',
       'model',
       'platformVersion',
-      'uaFullVersion',
+      // Not uaFullVersion: deprecated in the client hints spec, and
+      // fullVersionList already carries the same version per brand.
       'fullVersionList',
       'wow64',
     ])
