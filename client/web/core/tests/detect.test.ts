@@ -8,6 +8,7 @@ import {
   detectShields,
   detectTor,
   trustedDeviceMemory,
+  farblesFingerprints,
 } from '../src/detect/index.js'
 import { SOURCE } from '../src/signals.js'
 import {
@@ -568,5 +569,14 @@ describe('Safari is not a spoofed Chromium', () => {
     )
 
     expect(detectAutomation(genuinelySpoofed).value).toBe(true)
+  })
+})
+
+describe('canvas noise', () => {
+  it('counts a noised canvas canary as a browser rewriting values', () => {
+    const noised = report({ [SOURCE.shields]: { status: 'ok', ms: 1, value: { canvas_noise: true } } })
+    const clean = report({ [SOURCE.shields]: { status: 'ok', ms: 1, value: { canvas_noise: false } } })
+    expect(farblesFingerprints(noised)).toBe(true)
+    expect(farblesFingerprints(clean)).toBe(false)
   })
 })

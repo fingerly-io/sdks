@@ -53,7 +53,7 @@ request but never changes the identity or the score.
 | Display | `screen`, `screen_frame`, `media_queries`, `color_gamut` | Screen and window geometry, colour depth, pixel ratio, orientation, and preference media queries (forced colours, reduced motion, HDR and similar) |
 | Device | `hardware`, `touch`, `network`, `intl`, `timezone` | Cores and memory, touch and pointer capability, connection type and speed estimates, time zone, locale, calendar and number formatting |
 | Storage | `storage`, `storage_quota` | Whether localStorage and sessionStorage are writable, IndexedDB and service worker presence, the storage quota estimate, whether storage is partitioned |
-| Environment | `shields`, `timing`, `permissions`, `automation` | Privacy-hardened browser markers, clock resolution, the **state** of the notification and geolocation permissions, and automation markers (headless browsers, WebDriver, Selenium and Playwright globals) |
+| Environment | `shields`, `timing`, `permissions`, `automation` | Privacy-hardened browser markers, whether canvas readback is noised (read from an 8x8 checkerboard the SDK draws itself), clock resolution, the **state** of the notification and geolocation permissions, and automation markers (headless browsers, WebDriver, Selenium and Playwright globals) |
 | Rendering | `webgl` | GPU vendor and renderer strings, WebGL version and limits |
 
 **Deferred tier**

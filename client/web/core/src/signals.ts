@@ -335,6 +335,19 @@ export interface ShieldsSignal {
   brave?: boolean
   /** Brave named itself in the UA-CH brand list. A claim, and separately removable. */
   brave_claimed?: boolean
+  /**
+   * A tiny checkerboard of two exact colours read back wrong: the browser adds
+   * noise to canvas readback.
+   *
+   * Safari does, per page, in Private Browsing and for scripts it classifies
+   * as fingerprinting; so do Brave, Firefox's fingerprinting resistance and
+   * Tor. Per-page noise is the dangerous kind: two readings inside one page
+   * agree, so nothing else notices, and every page load is a different device.
+   * The same protections also move screen dimensions and core counts, which is
+   * what the server stops trusting when this is true. Absent where there is no
+   * canvas to ask.
+   */
+  canvas_noise?: boolean
 }
 
 export interface DomBlockersSignal {

@@ -209,6 +209,7 @@ export function farblesFingerprints(report: SignalReport): boolean {
   return (
     shields?.brave === true ||
     shields?.brave_claimed === true ||
+    shields?.canvas_noise === true ||
     storage?.quota === BRAVE_SYNTHETIC_QUOTA ||
     (typeof nav?.plugin_count === 'number' && nav.plugin_count > CHROMIUM_PLUGIN_COUNT) ||
     canvas?.unstable === true
