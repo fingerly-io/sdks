@@ -245,16 +245,40 @@ export const mathSource: Source<MathSignal> = {
 // Error shapes.
 // ---------------------------------------------------------------------------
 
-/** The length of the message a throwing expression produces, if it throws. */
+/**
+ * The length of the message a throwing expression produces, if it throws.
+ *
+ * An EvalError is not the error being measured: it is a Content-Security-Policy
+ * without 'unsafe-eval' refusing `new Function` before the code ever ran, and
+ * its message is the browser's CSP wording. Measuring it would report that
+ * length as the engine's, and vote for the wrong engine.
+ */
 function thrownMessageLength(throwing: () => unknown): number | undefined {
   return attempt(() => {
     try {
       throwing()
     } catch (error) {
+      if (error instanceof EvalError) return undefined
       return error instanceof Error ? error.message.length : undefined
     }
     return undefined
   })
+}
+
+/**
+ * Whether this page lets code be compiled from a string.
+ *
+ * Learned from the first probe that tries, not asked up front: there is no way
+ * to ask a CSP without being refused by it. Every refusal also sends the page's
+ * CSP report, so once one probe has been refused the rest are not attempted.
+ */
+function evalAllowed(): boolean {
+  try {
+    new Function('')
+    return true
+  } catch {
+    return false
+  }
 }
 
 /** Whether a caught error carries a given non-standard property. */
@@ -371,23 +395,28 @@ export const errorsSource: Source<ErrorsSignal> = {
   tier: 'fast',
   timeoutMs: 50,
   run() {
+    // One attempt at compiling from a string, not one per probe: under a strict
+    // Content-Security-Policy each refusal is a violation report to the
+    // customer's endpoint, and both string probes are then skipped.
+    const compiles = evalAllowed()
     const shapes = compact<Omit<ErrorsSignal, 'observed'>>({
       null_property_length: thrownMessageLength(() => (null as unknown as { x: unknown }).x),
       // `new Function` rather than `eval`, because a page with a strict
       // Content-Security-Policy blocks both and this way the failure is one
       // probe reporting nothing rather than the source throwing.
-      syntax_length: thrownMessageLength(() => new Function('!')),
+      syntax_length: compiles ? thrownMessageLength(() => new Function('!')) : undefined,
       json_parse_length: thrownMessageLength(() => JSON.parse('{')),
       invalid_array_length: thrownMessageLength(() => {
         const array: number[] = []
         array.length = -1
       }),
-      const_assign_length: thrownMessageLength(() => {
-        // The only way to reach this error without a syntax error at parse
-        // time. Blocked by a strict CSP, like the probe above, and reported as
-        // absent rather than fatal when it is.
-        new Function('const c = 1; c = 2')()
-      }),
+      const_assign_length: compiles
+        ? thrownMessageLength(() => {
+            // The only way to reach this error without a syntax error at parse
+            // time. Skipped under a strict CSP, like the probe above.
+            new Function('const c = 1; c = 2')()
+          })
+        : undefined,
       own_properties: errorOwnProperties(),
       capture_stack_trace: attempt(
         () => typeof (Error as unknown as { captureStackTrace?: unknown }).captureStackTrace === 'function',

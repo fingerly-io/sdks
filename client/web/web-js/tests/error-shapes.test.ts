@@ -50,3 +50,36 @@ describe('error shapes name the engine', () => {
     expect(observedFromErrors({})).toBeUndefined()
   })
 })
+
+describe('under a Content-Security-Policy without unsafe-eval', () => {
+  it('reports nothing for the string probes, and tries compiling once', async () => {
+    const { errorsSource } = await import('../src/sources/engine.js')
+    const Real = globalThis.Function
+    let attempts = 0
+    // What a strict CSP does to `new Function`: refuse it with an EvalError
+    // whose message is the browser's CSP wording, not the engine's.
+    const Refused = function () {
+      attempts++
+      throw new EvalError("Refused to evaluate a string as JavaScript because 'unsafe-eval' is not allowed")
+    } as unknown as FunctionConstructor
+    globalThis.Function = Refused
+    try {
+      const shapes = errorsSource.run({} as Parameters<typeof errorsSource.run>[0]) as Record<string, unknown>
+      expect(shapes.syntax_length).toBeUndefined()
+      expect(shapes.const_assign_length).toBeUndefined()
+      // The rest still measure.
+      expect(shapes.json_parse_length).toBeTypeOf('number')
+      // One refusal is one violation report to the customer's endpoint.
+      expect(attempts).toBe(1)
+    } finally {
+      globalThis.Function = Real
+    }
+  })
+
+  it('measures both string probes where compiling is allowed', async () => {
+    const { errorsSource } = await import('../src/sources/engine.js')
+    const shapes = errorsSource.run({} as Parameters<typeof errorsSource.run>[0]) as Record<string, unknown>
+    expect(shapes.syntax_length).toBeTypeOf('number')
+    expect(shapes.const_assign_length).toBeTypeOf('number')
+  })
+})
