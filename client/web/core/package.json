@@ -1,6 +1,6 @@
 {
   "name": "@fingerly/core",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "Framework-agnostic device/event core shared by every Fingerly SDK",
   "type": "module",
