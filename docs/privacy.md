@@ -274,8 +274,8 @@ Neither changes what is collected or what we keep about visitors.
 | Added | Source | Note |
 |---|---|---|
 | IP address | The request, or a proxy that forwards it (§5) | Stored at full precision |
-| Continent, country, region, city, coordinates | A geolocation database on our own servers | Falls back to the IP intelligence provider below for an address the database has no entry for. Coordinates are stored rounded to one decimal place (about 11 km), a city's reference point rather than the device's position, so this is approximate (coarse) location for the store forms |
-| VPN, proxy, Tor, datacenter, relay and mobile classification; ASN, network, ISP and organisation names | An IP intelligence provider | **Your visitors' IP addresses are sent to this provider**, except private-range addresses. Answers are cached in memory for up to an hour. The provider is named, with what it receives and where, in our sub-processor list |
+| Continent, country, region, city, postal code, time zone, coordinates | Fingerly's own IP database, held on our own servers | Coordinates are stored rounded to one decimal place (about 11 km), a city's reference point rather than the device's position, so this is approximate (coarse) location for the store forms |
+| VPN, proxy, Tor, datacenter, relay and mobile classification; abuse and attack-source flags; ASN, network and organisation names | The same IP database | **Your visitors' IP addresses are not sent to any third party for this lookup.** The database is first-party, read from our own servers' disk, and refreshed daily |
 | Page origin, user agent, and your `tag` | The request | The user agent is also parsed into browser, OS and device type |
 | `visitor_id` | Minted by us | Never derived from a hash of the signals, never chosen by the client, and scoped to one organisation |
 | `suspect_score`, `suspect_level`, and the signals behind them | Our scoring | Every score is stored with the signals and weights that produced it, so it can be explained |
