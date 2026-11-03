@@ -10,8 +10,8 @@
  * Almost none of these tells are the *absence* of a signal. They are the
  * presence of specific standardised values, which is why the collectors report
  * `blocked` with a reason rather than dropping a source - see the note on
- * [[BlockedSignal]]. another library detects anti-fingerprinting only to skip
- * the affected sources, and throws the finding away.
+ * [[BlockedSignal]]. Detecting anti-fingerprinting only to skip the affected
+ * sources would throw the finding away.
  */
 
 import {

@@ -1,11 +1,9 @@
 /**
  * The budgeted source runner.
  *
- * another library has no equivalent of this file. Its `loadSource` wraps each
- * source in a promise with no timeout and no deadline of any kind - the only
- * `setTimeout` in the library is inside the audio source - so a source that
- * hangs hangs `get()` forever, and the caller has no upper bound on how long
- * identification takes. That is fine for an analytics beacon and not fine for
+ * Every source runs under a deadline. Wrapping each source in a promise with
+ * no timeout means a source that hangs hangs identification forever, and the
+ * caller has no upper bound on how long identification takes. That is fine for an analytics beacon and not fine for
  * a login form, which is the difference this file is here to make.
  *
  * Three guarantees:

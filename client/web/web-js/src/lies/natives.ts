@@ -2,10 +2,9 @@
  * Finding the builtins that are no longer builtin.
  *
  * A patched native does not stringify to `[native code]`. That is a one-line
- * check, and another library has it - `isFunctionNative` - and calls it exactly
- * once, on `window.print`, to work out whether a PDF viewer is installed. The
- * primitive that catches every stealth plugin and anti-detect browser is sitting
- * unused in the library.
+ * check, and it catches every stealth plugin and anti-detect browser that
+ * replaces a native, provided it is run on the natives they replace rather than
+ * on one or two.
  *
  * This file points it at everything worth pointing it at.
  *

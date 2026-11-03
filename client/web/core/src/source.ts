@@ -90,7 +90,7 @@ export class UnsupportedSignal extends Error {
 /**
  * The API is present and refused, or answered with deliberate noise.
  *
- * This is the status another library throws away. A `SecurityError` from canvas
+ * This is the status that is easiest to throw away. A `SecurityError` from canvas
  * readback, a suspended `AudioContext`, a permissions query that resolves to
  * `denied` without a prompt - each says the visitor is running a countermeasure,
  * and knowing *which* countermeasure is most of how Tor and hardened browsers

@@ -10,9 +10,9 @@
  *
  * So the weights here are deliberately inverted relative to how these tells are
  * usually presented. Tampering outweighs the flags. That is the whole argument
- * for the `lies/` layer in `@fingerly/web-js`, and it is the thing another library
- * has the primitive for - `isFunctionNative` - and calls exactly once, on
- * `window.print`, to detect the PDF viewer.
+ * for the `lies/` layer in `@fingerly/web-js`: checking whether a native has
+ * been patched is a one-line primitive, and it is worth running on every
+ * function an automation framework is known to replace.
  */
 
 import {

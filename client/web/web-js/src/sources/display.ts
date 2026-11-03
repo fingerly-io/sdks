@@ -1,8 +1,8 @@
 /**
  * Screen geometry, window chrome, and the `matchMedia` family.
  *
- * The media-query family is the one idea another library has that is genuinely
- * under-appreciated: eight independent signals, all synchronous, none behind a
+ * The media-query family is genuinely under-appreciated: eight independent
+ * signals, all synchronous, none behind a
  * permission, describing display capability and accessibility configuration
  * that nothing else in the browser exposes. Taken here, and extended.
  */

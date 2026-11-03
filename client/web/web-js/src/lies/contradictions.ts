@@ -1,12 +1,12 @@
 /**
  * Signals that disagree with each other.
  *
- * This is the check another library does not have anywhere. Its sources are
- * independent and land in a flat map; nothing asks whether the user-agent's
- * claimed operating system matches the GPU driver, whether a device claiming to
- * be a phone accepts hover, or whether the timezone is consistent with the
- * locale. A spoofer changes one string and leaves the entire stack behind it
- * untouched, and a flat map of independent sources cannot see that.
+ * Sources that are independent and land in a flat map never ask whether the
+ * user-agent's claimed operating system matches the GPU driver, whether a
+ * device claiming to be a phone accepts hover, or whether the timezone is
+ * consistent with the locale. A spoofer changes one string and leaves the
+ * entire stack behind it untouched, and a flat map of independent sources
+ * cannot see that.
  *
  * Everything here reads the outcomes of *other* sources, which is why it runs
  * after collection rather than as a source itself - and why it cannot be

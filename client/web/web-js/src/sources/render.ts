@@ -8,9 +8,8 @@
  * every anti-detect browser - and knowing that is worth strictly more than the
  * hash it invalidates.
  *
- * another library renders once and hashes. A noised canvas therefore gives it a
- * different visitor on every visit, and it has no way to tell that apart from a
- * genuinely new device.
+ * Rendering once and hashing would give a noised canvas a different visitor on
+ * every visit, with no way to tell that apart from a genuinely new device.
  */
 
 import {

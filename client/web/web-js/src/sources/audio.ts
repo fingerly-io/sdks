@@ -8,9 +8,9 @@
  * touched.
  *
  * As with canvas, it is rendered twice and compared. Safari 17 and Brave both
- * noise the output; another library responds by *skipping* the source on those
- * browsers, which throws away the fact that the browser is noising it. That
- * fact is worth more than the number.
+ * noise the output. Skipping the source on those browsers would throw away the
+ * fact that the browser is noising it, and that fact is worth more than the
+ * number.
  */
 
 import {

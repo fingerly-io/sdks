@@ -30,7 +30,7 @@ describe('collect', () => {
       }),
     ])
 
-    // This is the distinction another library collapses into one `error` token.
+    // Three different facts, never collapsed into one `error` token.
     expect(outcomes.missing).toMatchObject({ status: 'unsupported', reason: 'no-api' })
     expect(outcomes.refused).toMatchObject({ status: 'blocked', reason: 'SecurityError' })
     expect(outcomes.broken).toMatchObject({ status: 'error', reason: 'TypeError' })

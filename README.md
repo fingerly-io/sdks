@@ -162,10 +162,7 @@ written out there.
 ## Status
 
 `core`, `web-js`, Node, the framework bindings, `client/mobile/ios`, `client/mobile/android`, and
-the Flutter, React Native, and Lynx bridges are implemented. See [`todo.md`](todo.md)
-for what is done, what was measured, and what is left, and
-[`docs/another library-teardown.md`](docs/another library-teardown.md) for the
-another library teardown the design argues against.
+the Flutter, React Native, and Lynx bridges are implemented.
 
 ## One envelope, three platforms
 
