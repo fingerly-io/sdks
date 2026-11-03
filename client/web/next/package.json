@@ -1,7 +1,7 @@
 {
   "name": "@fingerly/next",
   "version": "0.1.0",
-  "private": true,
+  "publishConfig": { "access": "public" },
   "description": "Next.js integration wrapping @fingerly/react",
   "license": "Apache-2.0",
   "repository": {"type": "git", "url": "https://github.com/fingerly-io/sdks.git", "directory": "client/web/next"},
