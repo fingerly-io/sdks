@@ -28,7 +28,7 @@ export default defineWorkspace([
     test: {
       name: 'ssr',
       environment: 'node',
-      include: ['tests/ssr.test.ts'],
+      include: ['tests/ssr.test.ts', 'tests/package.test.ts'],
     },
   },
 ])
