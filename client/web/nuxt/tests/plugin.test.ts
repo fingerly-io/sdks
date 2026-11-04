@@ -185,6 +185,19 @@ describe('the runtime plugin', () => {
     await expect(identify()).rejects.toThrow(/SDK key is required/)
   })
 
+  it('prefers endpoints when the environment also sets the deprecated endpoint', async () => {
+    // fingerly.endpoints in nuxt.config.ts plus NUXT_PUBLIC_FINGERLY_ENDPOINT
+    // used to reach the SDK as both, which it refuses.
+    __setRuntimeConfig({
+      fingerly: { apiKey: 'pk_runtime', endpoint: '/from-env', endpoints: ['/k7x2qm4a'], consent: 'granted' },
+    })
+
+    const { identify } = mountWithPlugin(() => useIdentify())
+    await identify()
+
+    expect(loadMock).toHaveBeenCalledWith({ apiKey: 'pk_runtime', endpoints: ['/k7x2qm4a'], consent: 'granted' })
+  })
+
   it('tolerates a runtime config with no fingerly block', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     __setRuntimeConfig({})
