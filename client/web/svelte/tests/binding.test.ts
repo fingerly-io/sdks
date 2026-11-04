@@ -268,6 +268,20 @@ describe('useIdentify', () => {
     expect(page.text()).toContain('ready:true')
   })
 
+  it('keeps working when the client cannot be built', async () => {
+    // A synchronous throw out of load() used to escape the effect and leave
+    // isLoading stuck at true.
+    loadMock.mockImplementation(() => {
+      throw new Error('An SDK key is required')
+    })
+    const page = render({ options: { apiKey: '', consent: 'granted' }, immediate: true })
+
+    await settle()
+
+    expect(page.text()).toContain('error:An SDK key is required')
+    expect(page.text()).toContain('loading:false')
+  })
+
   it('retries after a failure rather than serving the rejection forever', async () => {
     identifyMock.mockRejectedValueOnce(new Error('collector exploded'))
     const page = render({ options: { apiKey: 'fly_pk_development_test', consent: 'granted' } })

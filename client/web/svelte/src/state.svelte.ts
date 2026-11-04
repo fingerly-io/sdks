@@ -183,7 +183,9 @@ export function createFingerly(options: FingerlyOptions): Fingerly {
     // Built once and memoised. `load()` is cheap today but is the documented
     // place for future warm-up work, and warming up per component would undo
     // it.
-    clientPromise ??= load({
+    // Through a promise even though load() returns one: a synchronous throw
+    // here would escape every caller's .catch and leave isLoading stuck.
+    clientPromise ??= Promise.resolve().then(() => load({
       apiKey: options.apiKey,
       ...(options.endpoint === undefined ? {} : { endpoint: options.endpoint }),
       ...(options.apiVersion === undefined ? {} : { apiVersion: options.apiVersion }),
@@ -199,7 +201,7 @@ export function createFingerly(options: FingerlyOptions): Fingerly {
       fingerly.onConsentChange(mirrorConsent)
       loaded = fingerly
       return fingerly
-    })
+    }))
     return clientPromise
   }
 
