@@ -37,6 +37,17 @@ Consent defaults to `pending`, and nothing is collected or sent until it is
 `granted`. A page with a consent banner passes the banner's answer instead of
 `"granted"`; see [Waiting for consent](#waiting-for-consent).
 
+## Serve it from your own site
+
+Content blockers refuse requests to third-party hosts. Mount a first-party
+proxy at the path the dashboard issued (see `@fingerly/node` or the proxy
+templates) and pass that path as `endpoints`, a string or an array compared by
+its contents:
+
+```tsx
+<FingerlyProvider apiKey="fly_pk_production_…" endpoints="/k7x2qm4a" consent="granted">
+```
+
 ## Identify
 
 ```tsx
@@ -64,10 +75,9 @@ function Checkout() {
 }
 ```
 
-`identify()` collects, scores locally, and submits. It resolves as soon as the
-server has a receipt — IP geolocation and the velocity windows are computed
-after the response, so what comes back is a `requestId` rather than a finished
-event.
+`identify()` collects, scores locally, and submits, and resolves with the
+server's verdict in the same round trip: the `requestId`, who the visitor is
+(`visitorId`), and the `suspectScore`, `suspectLevel` and triggers behind it.
 
 ### On mount instead
 

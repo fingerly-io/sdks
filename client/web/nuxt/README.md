@@ -40,9 +40,45 @@ The key is a **public** SDK key, scoped to the origins you list against it,
 which is what makes it safe in a page. A **secret** key is refused by the API
 whenever a request carries an `Origin`.
 
-The module also publishes `fingerly.endpoint`, `fingerly.submit` and
-`fingerly.consent`, overridable the same way with `NUXT_PUBLIC_FINGERLY_ENDPOINT`,
-`NUXT_PUBLIC_FINGERLY_SUBMIT` and `NUXT_PUBLIC_FINGERLY_CONSENT`.
+The module also publishes `fingerly.endpoints`, `fingerly.submit` and
+`fingerly.consent`, overridable the same way with
+`NUXT_PUBLIC_FINGERLY_ENDPOINTS` (a JSON array, such as `'["/k7x2qm4a"]'`),
+`NUXT_PUBLIC_FINGERLY_SUBMIT` and `NUXT_PUBLIC_FINGERLY_CONSENT`. The older
+single `endpoint` and `NUXT_PUBLIC_FINGERLY_ENDPOINT` still work, and are
+ignored whenever `endpoints` is set.
+
+### Serve it from your own site
+
+`endpoints` is the path of your first-party proxy, the one the dashboard
+issued. With `@fingerly/node` it is a Nitro route at that path:
+
+```ts
+// server/routes/k7x2qm4a.ts
+import { Fingerly } from '@fingerly/node'
+import { getRequestIP, toWebRequest } from 'h3'
+
+// Built on the first request rather than at import, so the build does not
+// need the proxy key.
+let proxy: ((request: Request) => Promise<Response>) | undefined
+const addresses = new WeakMap<Request, string>()
+
+export default defineEventHandler((event) => {
+  proxy ??= Fingerly.createProxy({
+    proxyKey: process.env.FINGERLY_PROXY_KEY!,
+    clientIp: (request) => addresses.get(request) ?? '',
+  })
+  const request = toWebRequest(event)
+  // The connection's peer address. Pass { xForwardedFor: true } only when the
+  // app can be reached through your own load balancer alone.
+  addresses.set(request, getRequestIP(event) ?? '')
+  return proxy(request)
+})
+```
+
+```ts
+// nuxt.config.ts
+fingerly: { endpoints: ['/k7x2qm4a'], consent: 'granted' },
+```
 
 ### Waiting for consent
 

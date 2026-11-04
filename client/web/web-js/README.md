@@ -40,6 +40,38 @@ Send `requestId` to your server and read the full result there with a secret
 key (see the server SDKs), rather than trusting what the page reports: the page
 runs code the visitor controls.
 
+## Serve it from your own site
+
+Content blockers refuse requests to third-party hosts and to paths they know.
+Create a proxy in the dashboard (**Integration > Proxy keys**), mount it at the
+path it issued with one of the server SDKs or proxy templates, and point the
+SDK at that path:
+
+```ts
+const fingerly = await load({
+  apiKey: 'fly_pk_production_…',
+  endpoints: '/k7x2qm4a',
+  consent: 'granted',
+})
+```
+
+The path is used exactly as given, with nothing appended. An array of paths
+or URLs is tried in order when one does not answer.
+
+## Content Security Policy
+
+With a first-party proxy the SDK needs nothing beyond what your page already
+allows: `connect-src 'self'` covers the proxy path, and the script itself is
+your own bundle or `script-src 'self'` for the script-tag build. Under a policy
+without `'unsafe-eval'`, one check that compiles a string is refused by the
+browser, once per page load; the SDK skips it and its sibling and carries on.
+That refusal is reported to your `report-uri` or `report-to` endpoint if you
+have one, as one `script-src` (`eval`) violation per page view.
+
+Firefox prints two deprecation warnings while the SDK reads the graphics
+renderer and the motion sensor. They come from the browser, change nothing
+for the visitor, and are not errors.
+
 ## Errors
 
 - `load()` rejects for a configuration mistake, such as a missing `apiKey`.
@@ -47,7 +79,10 @@ runs code the visitor controls.
   down with it.
 - `identify()` rejects with a `ConsentError` while consent is not `granted`,
   and with a `TransportError` when the request cannot be completed. Branch on
-  its `status` and `retryable`.
+  its `status` and `retryable`. When the server asks for patience (`429` or
+  `503` with `Retry-After`), `retryAfterMs` says how long; a wait of up to two
+  seconds is taken care of before the error would be raised. A retry reuses
+  the first attempt's idempotency key, so it is never counted twice.
 
 ## Without a bundler
 

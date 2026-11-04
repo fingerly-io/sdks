@@ -18,11 +18,37 @@ pnpm add @fingerly/svelte
 <script lang="ts">
   import { setupFingerly } from '@fingerly/svelte'
 
+  let { children } = $props()
+
   // consent: 'granted' only once you have consent (or another lawful basis)
-  setupFingerly({ apiKey: 'fly_pk_production_…', consent: 'granted' })
+  setupFingerly({ apiKey: 'fly_pk_production_…', endpoints: '/k7x2qm4a', consent: 'granted' })
 </script>
 
-<slot />
+{@render children()}
+```
+
+`endpoints` is the path of your first-party proxy, the one the dashboard
+issued. With `@fingerly/node` it is a SvelteKit endpoint at that path:
+
+```js
+// src/routes/k7x2qm4a/+server.js
+import { Fingerly } from '@fingerly/node'
+
+// Built on the first request rather than at import: the build imports this
+// module, and the proxy key is a runtime secret.
+let proxy
+const addresses = new WeakMap()
+
+export function POST(event) {
+  proxy ??= Fingerly.createProxy({
+    proxyKey: process.env.FINGERLY_PROXY_KEY,
+    clientIp: (request) => addresses.get(request) ?? '',
+  })
+  // The connection's peer address, which adapter-node takes from its
+  // ADDRESS_HEADER setting when the app runs behind a trusted proxy.
+  addresses.set(event.request, event.getClientAddress())
+  return proxy(event.request)
+}
 ```
 
 The key is a **public** SDK key from the dashboard, and it belongs in the page —
@@ -64,10 +90,9 @@ Consent defaults to `pending`, and nothing is collected or sent until it is
 {#if fingerly.error}<p>{fingerly.error.message}</p>{/if}
 ```
 
-`identify()` collects, scores locally, and submits. It resolves as soon as the
-server has a receipt — IP geolocation and the velocity windows are computed
-after the response, so what comes back is a `requestId` rather than a finished
-event.
+`identify()` collects, scores locally, and submits, and resolves with the
+server's verdict in the same round trip: the `requestId`, who the visitor is
+(`visitorId`), and the `suspectScore`, `suspectLevel` and triggers behind it.
 
 ### On mount instead
 
