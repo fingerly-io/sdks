@@ -37,6 +37,15 @@ The image runs as an unprivileged user.
    })
    ```
 
+## Exactly one path
+
+The service compares the raw request target, before any URL parsing: exactly
+`FINGERLY_PATH`, optionally followed by a query string. A doubled slash, a dot
+segment such as `/x/../k7x2qm4a`, an encoded slash or character, a trailing
+slash or another case answers `404` and is not forwarded. A front proxy that
+cleans paths before forwarding (Traefik does) hands the service the cleaned
+path, which it cannot tell apart from the real one.
+
 ## How the visitor's address is trusted
 
 `FINGERLY_CLIENT_IP_SOURCE` says where the visitor's address comes from. The

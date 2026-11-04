@@ -43,6 +43,16 @@ The router has `priority: 10000`. Traefik otherwise ranks routers by rule
 length, so a longer catch-all rule for your site would win over
 `Path(`/k7x2qm4a`)`.
 
+## Exactly one path
+
+`Path(`/k7x2qm4a`)` is case-sensitive and refuses a trailing slash, a doubled
+trailing slash and an encoded slash. Traefik cleans the path before routing,
+though: it resolves dot segments (`/x/../k7x2qm4a`), merges a leading doubled
+slash and decodes percent-encoded characters (`/k7x2qm4%61`), and forwards the
+cleaned path, so the container sees `/k7x2qm4a` for those and forwards them.
+They are the same resource, and no configuration of Traefik's routers changes
+it.
+
 ## How the visitor's address is trusted
 
 The container reads `X-Real-Ip` (`FINGERLY_CLIENT_IP_SOURCE=header:x-real-ip`).

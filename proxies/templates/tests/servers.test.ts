@@ -13,7 +13,7 @@
 import { execFileSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { createServer, type IncomingHttpHeaders, type Server } from 'node:http'
+import { createServer, request as httpRequest, type IncomingHttpHeaders, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -95,13 +95,17 @@ interface Deployment {
 /** Polls until the front door answers, and answers the way `ready` wants. */
 async function waitFor(deployment: Deployment, ready: (response: Response) => boolean, path = '/ready'): Promise<void> {
   const deadline = Date.now() + 60_000
+  let last = 'no answer'
   for (;;) {
     try {
-      if (ready(await fetch(`${deployment.base}${path}`))) return
-    } catch {
+      const response = await fetch(`${deployment.base}${path}`)
+      if (ready(response)) return
+      last = `${response.status} ${await response.text()}`
+    } catch (error) {
       // Not listening yet.
+      last = String((error as Error).cause ?? error)
     }
-    if (Date.now() > deadline) throw new Error(`the deployment did not become ready:\n${deployment.logs()}`)
+    if (Date.now() > deadline) throw new Error(`the deployment did not become ready (${deployment.base}${path}: ${last}):\n${deployment.logs()}`)
     await new Promise((resolve) => setTimeout(resolve, 250))
   }
 }
@@ -230,6 +234,14 @@ function composeClientIpSource(): string {
   return match[1]!
 }
 
+/**
+ * Traefik cleans the path before routing (dot segments, doubled slashes,
+ * percent-encoded unreserved characters) and forwards the cleaned path, so
+ * these reach the container as `/k7x2qm4a`. With sanitizePath off it still
+ * decodes the characters.
+ */
+const TRAEFIK_RESOLVES = ['/x/../k7x2qm4a', '/./k7x2qm4a', '/k7x2qm4a/.', '/k7x2qm4a/x/..', '/%2e%2e/k7x2qm4a', '//k7x2qm4a', '/%6B7x2qm4a', '/k7x2qm4%61']
+
 const relayReady = { path: '/k7x2qm4a', when: (response: Response) => response.status === 405 }
 
 interface Template {
@@ -244,6 +256,11 @@ interface Template {
   elsewhere: { status: number; body?: string }
   /** The origin sent upstream when the client sends none. */
   originFallback(base: string): string
+  /**
+   * Near targets the front server resolves to the issued path itself, before
+   * routing, and forwards cleaned: the relay behind it never sees them raw.
+   */
+  resolvedInFront?: string[]
 }
 
 const templates: Template[] = [
@@ -337,6 +354,7 @@ const templates: Template[] = [
     upstreamHost: (stubPort) => `host.docker.internal:${stubPort}`,
     elsewhere: { status: 502 },
     originFallback: (base) => base.replace('http:', 'https:'),
+    resolvedInFront: TRAEFIK_RESOLVES,
   },
   {
     kind: 'traefik (docker-compose labels)',
@@ -366,6 +384,7 @@ const templates: Template[] = [
     upstreamHost: (stubPort) => `host.docker.internal:${stubPort}`,
     elsewhere: { status: 404 },
     originFallback: (base) => base.replace('http:', 'https:'),
+    resolvedInFront: TRAEFIK_RESOLVES,
   },
 ]
 
@@ -383,6 +402,41 @@ const visitorHeaders = {
   'x-fingerly-proxy-key': 'fly_px_production_forged',
   'x-fingerly-proxy-version': 'forged/9.9.9',
   'x-fingerly-other': 'forged',
+}
+
+/**
+ * Request targets that are not the issued path but that URL parsing, path
+ * cleaning or percent-decoding would turn into it. fetch() normalises these
+ * before sending, so they go out verbatim through node:http.
+ */
+const NEAR_TARGETS = [
+  '/x/../k7x2qm4a',
+  '/./k7x2qm4a',
+  '/k7x2qm4a/.',
+  '/k7x2qm4a/x/..',
+  '/%2e%2e/k7x2qm4a',
+  '//k7x2qm4a',
+  '/k7x2qm4a//',
+  '/k7x2qm4a%2F',
+  '/k7x2qm4a%2f',
+  '/%6B7x2qm4a',
+  '/k7x2qm4%61',
+  '/K7X2QM4A',
+]
+
+/** A POST with the request target sent exactly as given. */
+function rawPost(base: string, target: string): Promise<{ status: number; body: string }> {
+  const { hostname, port } = new URL(base)
+  return new Promise((resolve, reject) => {
+    const req = httpRequest({ host: hostname, port, agent: false, method: 'POST', path: target, headers: { ...visitorHeaders, 'content-length': '2' } }, (res) => {
+      const chunks: Buffer[] = []
+      res.on('data', (chunk: Buffer) => chunks.push(chunk))
+      res.on('end', () => resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString() }))
+      res.on('error', reject)
+    })
+    req.on('error', reject)
+    req.end('{}')
+  })
 }
 
 afterAll(() => {
@@ -461,6 +515,17 @@ describe.skipIf(!docker).each(templates)('$kind template', (template) => {
       if (template.elsewhere.body !== undefined) expect(await response.text(), path).toBe(template.elsewhere.body)
     }
     expect(stub.seen).toHaveLength(0)
+  })
+
+  it('forwards nothing for a request target that only resolves to the issued path', async () => {
+    stub.seen = []
+    for (const target of NEAR_TARGETS.filter((near) => !template.resolvedInFront?.includes(near))) {
+      const response = await rawPost(proxy!.base, target)
+      expect.soft(response.body, target).not.toBe('{"request_id":"req_stub"}')
+      expect.soft(stub.seen.splice(0).map((seen) => seen.url), target).toEqual([])
+    }
+    // The query string is not part of the path.
+    expect((await rawPost(proxy!.base, '/k7x2qm4a?v=1')).status).toBe(200)
   })
 
   it('answers 405 with Allow: POST for every other method', async () => {

@@ -51,11 +51,17 @@ function isProxyKey(key) {
   return /^fly_px_(?:production|staging|development)_[A-Za-z0-9_-]+$/.test(key)
 }
 
-/** Whether the request is for the one configured path. */
-function isProxyPath(pathname, configured) {
+/**
+ * Whether the request target is for the one configured path. The raw target
+ * is compared, before any URL parsing could resolve dot segments, merge
+ * slashes or decode characters into the path: exactly the path, then nothing
+ * or a query string. No trailing slash, nothing under it, case-sensitive.
+ */
+function isProxyPath(target, configured) {
   const path = configured.trim().replace(/\/+$/, '')
-  // Exactly: no trailing slash, nothing under it, case-sensitive.
-  return path.startsWith('/') && path.length > 1 && pathname === path
+  if (!path.startsWith('/') || path.length < 2) return false
+  const end = target.indexOf('?')
+  return (end === -1 ? target : target.slice(0, end)) === path
 }
 
 function header(req, name) {
@@ -151,8 +157,7 @@ export function createRelay(env = process.env) {
   const clientIp = clientIpReader(env.FINGERLY_CLIENT_IP_SOURCE || PRESET.clientIpSource)
   return createServer(async (req, res) => {
     try {
-      const url = new URL(req.url ?? '/', 'http://relay.invalid')
-      if (!isProxyPath(url.pathname, env.FINGERLY_PATH ?? '')) return plain(res, 404, 'Not Found')
+      if (!isProxyPath(req.url ?? '', env.FINGERLY_PATH ?? '')) return plain(res, 404, 'Not Found')
       if (req.method !== 'POST') return plain(res, 405, 'Method Not Allowed', { allow: 'POST' })
 
       const proxyKey = env.FINGERLY_PROXY_KEY ?? ''

@@ -17,12 +17,14 @@ export const OUTPUT = `${ROOT}console-snippets.json`
 const KEY = 'fly_px_production_…'
 const read = (path) => readFileSync(`${ROOT}${path}`, 'utf8')
 
-/** The Caddyfile's handle block, without the example site around it. */
+/** The Caddyfile's matcher and handle block, without the example site around them. */
 function caddyHandleBlock() {
   const lines = read('caddy/Caddyfile').split('\n')
-  const start = lines.findIndex((line) => line.startsWith('\thandle /k7x2qm4a {'))
+  const start = lines.indexOf('www.example.com {') + 1
   const end = lines.findIndex((line, index) => index > start && line === '\t}')
-  if (start < 0 || end < 0) throw new Error('caddy/Caddyfile: handle block not found')
+  if (start < 1 || end < 0 || !lines.slice(start, end).some((line) => line.startsWith('\thandle @fingerly {'))) {
+    throw new Error('caddy/Caddyfile: handle block not found')
+  }
   return `${lines.slice(start, end + 1).map((line) => line.replace(/^\t/, '')).join('\n')}\n`
 }
 

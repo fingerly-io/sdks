@@ -33,6 +33,14 @@ upstream is a constant in the code, and every other path and method is refused.
    })
    ```
 
+## Exactly one path
+
+The function answers only when the request path is exactly `PATH`: no
+trailing or doubled slash, no encoded slash or character, case-sensitive; a
+query string is ignored. Dot segments such as `/x/../k7x2qm4a` are resolved
+before the function reads the request URL, so those reach it as the path
+itself.
+
 ## How the visitor's address is trusted
 
 The function sends `context.ip`, the address Netlify's edge accepted the

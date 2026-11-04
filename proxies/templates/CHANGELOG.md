@@ -4,6 +4,10 @@
 
 - Every template answers exactly the issued path: no trailing slash, nothing
   under it, case-sensitive.
+- The container, Cloud Run, nginx and Caddy templates compare the raw request
+  target, so a doubled slash, a dot segment or a percent-encoded character
+  that would clean up to the issued path is no longer forwarded. Caddy's path
+  match is no longer case-insensitive.
 - The Vercel, Netlify, container and Cloud Run templates forward nothing and
   answer 500 when the client IP source holds no valid address, logging it once.
 - The same four read the API's answer whole, capped at 4 MiB and under one

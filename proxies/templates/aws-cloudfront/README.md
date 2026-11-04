@@ -48,6 +48,14 @@ stays out of the template and out of version control. Anyone allowed to read
 the distribution's configuration can still read the origin header, so limit
 `cloudfront:GetDistributionConfig` accordingly.
 
+## Exactly one path
+
+CloudFront normalizes a copy of the path (dot segments, doubled slashes) only
+to pick the cache behavior. The function compares `request.uri`, the path as
+the viewer sent it, with `PATH` exactly, so `/x/../k7x2qm4a`, a doubled or
+trailing slash, an encoded slash or character and another case answer `404`
+and are not forwarded.
+
 ## How the visitor's address is trusted
 
 The function sends `event.viewer.ip`, the address CloudFront accepted the

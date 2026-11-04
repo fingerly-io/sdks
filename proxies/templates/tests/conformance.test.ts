@@ -7,7 +7,7 @@
  */
 import { readFileSync } from 'node:fs'
 import type { AddressInfo } from 'node:net'
-import type { Server } from 'node:http'
+import { request as httpRequest, type Server } from 'node:http'
 import vm from 'node:vm'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import vercel from '../vercel/middleware'
@@ -89,6 +89,12 @@ interface Target {
   /** Features the platform takes over, so the template has none of its own. */
   bodyCap: boolean
   missingKey: boolean
+  /**
+   * Whether the template sees the request target as sent. A web-standard
+   * Request has already resolved dot segments (`/x/../`, `%2e%2e`) by the time
+   * Vercel or Netlify code reads request.url.
+   */
+  rawTarget: boolean
   setKey(key: string | undefined): void
   call(call: Call): Promise<Outcome>
 }
@@ -110,6 +116,7 @@ const vercelTarget: Target = {
   kind: 'vercel',
   bodyCap: true,
   missingKey: true,
+  rawTarget: false,
   setKey(key) {
     if (key === undefined) delete process.env.FINGERLY_PROXY_KEY
     else process.env.FINGERLY_PROXY_KEY = key
@@ -123,6 +130,7 @@ const netlifyTarget: Target = {
   kind: 'netlify',
   bodyCap: true,
   missingKey: true,
+  rawTarget: false,
   setKey(key) { netlifyKey = key },
   call: async (call) => outcome(await netlify(webRequest(call), { ip: call.ip ?? '' })),
 }
@@ -131,6 +139,7 @@ const netlifyTarget: Target = {
 class NodeService implements Target {
   bodyCap = true
   missingKey = true
+  rawTarget = true
   server: Server | undefined
   base = ''
   readonly env: Record<string, string | undefined>
@@ -157,14 +166,30 @@ class NodeService implements Target {
 
   setKey(key: string | undefined): void { this.env.FINGERLY_PROXY_KEY = key }
 
+  /** Sent through node:http, so the request target goes out exactly as given. */
   async call(call: Call): Promise<Outcome> {
     const method = call.method ?? 'POST'
     const headers: Record<string, string> = { ...call.headers }
     if (call.ip) this.front(headers, call.ip)
-    const response = await realFetch(`${this.base}${call.path ?? '/k7x2qm4a'}`, {
-      method, headers, body: method === 'GET' || method === 'HEAD' ? null : call.body ?? '{}',
+    const body = method === 'GET' || method === 'HEAD' ? undefined : Buffer.from(call.body ?? '{}')
+    if (body) headers['content-length'] = String(body.byteLength)
+    const { port } = new URL(this.base)
+    return new Promise((resolve, reject) => {
+      const req = httpRequest({ host: '127.0.0.1', port, method, path: call.path ?? '/k7x2qm4a', headers }, (res) => {
+        const chunks: Buffer[] = []
+        res.on('data', (chunk: Buffer) => chunks.push(chunk))
+        res.on('end', () => {
+          const out = new Headers()
+          for (const [name, value] of Object.entries(res.headers)) {
+            for (const one of [value ?? []].flat()) out.append(name, one)
+          }
+          resolve({ status: res.statusCode ?? 0, headers: out, body: Buffer.concat(chunks).toString() })
+        })
+        res.on('error', reject)
+      })
+      req.on('error', reject)
+      req.end(body)
     })
-    return outcome(response)
   }
 }
 
@@ -219,6 +244,7 @@ const cloudFrontTarget: Target = {
   kind: 'aws-cloudfront',
   bodyCap: false,
   missingKey: false,
+  rawTarget: true,
   setKey(key) { cloudFrontOriginKey = key },
   async call(call) {
     const request = webRequest(call)
@@ -228,8 +254,11 @@ const cloudFrontTarget: Target = {
       viewer: { ip: call.ip ?? '198.51.100.1' },
       request: {
         method: request.method,
-        uri: new URL(request.url).pathname,
-        querystring: {},
+        // The path as the viewer sent it. CloudFront normalizes a copy to
+        // pick the cache behavior, then passes the raw path on.
+        // The query string arrives apart, in querystring.
+        uri: (call.path ?? '/k7x2qm4a').split('?')[0],
+        querystring: Object.fromEntries([...new URLSearchParams((call.path ?? '').split('?')[1] ?? '')].map(([name, value]) => [name, { value }])),
         headers: { host: { value: 'shop.example' }, ...toCfHeaders(request.headers) },
         cookies: toCfCookies(request.headers.get('cookie')),
       },
@@ -315,6 +344,18 @@ describe.each(targets)('$kind template', (target) => {
     }
     expect(upstreamCalls).toHaveLength(0)
     expect((await target.call({ path: '/k7x2qm4a', headers: visitor, ip: TRUSTED_IP })).status).toBe(200)
+  })
+
+  it('forwards nothing for a request target that only resolves to the issued path', async () => {
+    const encoded = ['//k7x2qm4a', '/k7x2qm4a//', '/k7x2qm4a%2f', '/%6B7x2qm4a', '/k7x2qm4%61', '/k7x2qm4a%3F']
+    const dotted = ['/x/../k7x2qm4a', '/./k7x2qm4a', '/k7x2qm4a/.', '/k7x2qm4a/x/..', '/%2e%2e/k7x2qm4a', '/x/%2E%2E/k7x2qm4a']
+    for (const path of target.rawTarget ? [...encoded, ...dotted] : encoded) {
+      const result = await target.call({ path, headers: visitor, ip: TRUSTED_IP })
+      expect(result.status, path).toBe(404)
+    }
+    expect(upstreamCalls).toHaveLength(0)
+    // The query string is not part of the path.
+    expect((await target.call({ path: '/k7x2qm4a?v=1', headers: visitor, ip: TRUSTED_IP })).status).toBe(200)
   })
 
   it('answers 405 with Allow: POST for every other method', async () => {

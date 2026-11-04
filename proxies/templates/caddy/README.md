@@ -10,8 +10,9 @@ refused.
 
 1. In the dashboard, open **Integration > Proxy keys**, create a proxy and copy
    the key it shows once. Note the path it issued, such as `/k7x2qm4a`.
-2. Copy the `handle /k7x2qm4a { ... }` block from `Caddyfile` into your site
-   block, first among its handlers, and replace `/k7x2qm4a` with your path.
+2. Copy the `@fingerly` matcher and the `handle @fingerly { ... }` block from
+   `Caddyfile` into your site block, first among its handlers, and replace
+   `/k7x2qm4a` with your path in the matcher.
 3. Give the Caddy process the key as the `FINGERLY_PROXY_KEY` environment
    variable, never in the Caddyfile. With systemd, run
    `sudo systemctl edit caddy` and add:
@@ -36,6 +37,16 @@ refused.
 
 `header_up Host {upstream_hostport}` is automatic for HTTPS upstreams since
 Caddy 2.11; it stays in the block for older versions.
+
+## Exactly one path
+
+Caddy's `path` matcher ignores case and matches after resolving dot segments
+such as `/x/../k7x2qm4a`, merging doubled slashes and decoding characters such
+as `%61`. The `@fingerly` matcher compares the raw request target,
+`{http.request.orig_uri}`, instead: exactly the path, optionally followed by a
+query string. Anything else falls through to the rest of your site, so no
+prefix, trailing slash, doubled slash, dot segment or encoded character is
+forwarded, and the match is case-sensitive.
 
 ## How the visitor's address is trusted
 

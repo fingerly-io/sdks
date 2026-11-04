@@ -30,6 +30,14 @@ On Next.js, use a route handler instead: `app/k7x2qm4a/route.ts` exporting
 `POST = Fingerly.createProxy(...)` from `@fingerly/node`, which leaves your
 Next.js middleware alone.
 
+## Exactly one path
+
+The middleware answers only when the request path is exactly `PATH`: no
+trailing or doubled slash, no encoded slash or character, case-sensitive; a
+query string is ignored. Dot segments such as `/x/../k7x2qm4a` are resolved
+before the middleware reads the request URL, so those reach it as the path
+itself.
+
 ## How the visitor's address is trusted
 
 The middleware sends `x-real-ip` as `x-fingerly-client-ip`, falling back to the

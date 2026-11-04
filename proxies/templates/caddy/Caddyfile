@@ -1,13 +1,19 @@
 # Fingerly first-party proxy for Caddy, version 1.0.0.
 #
-# Put the `handle` block first in the site block that serves your pages, so the
-# browser SDK posts to your own host. `/k7x2qm4a` is the path the Fingerly
-# dashboard issued for this proxy; the block answers exactly that path, nothing
-# under or beside it. The proxy key comes from the FINGERLY_PROXY_KEY
-# environment variable of the Caddy process, never from this file.
+# Put the `@fingerly` matcher and the `handle` block first in the site block
+# that serves your pages, so the browser SDK posts to your own host.
+# `/k7x2qm4a` is the path the Fingerly dashboard issued for this proxy; the
+# block answers exactly that path, nothing under or beside it. The proxy key
+# comes from the FINGERLY_PROXY_KEY environment variable of the Caddy process,
+# never from this file.
 
 www.example.com {
-	handle /k7x2qm4a {
+	# Exactly the issued path, compared on the raw request target, then
+	# nothing or a query string. A plain path matcher would ignore case and
+	# match after resolving dot segments, merging slashes and decoding
+	# characters.
+	@fingerly vars_regexp {http.request.orig_uri} ^/k7x2qm4a(?:[?].*)?$
+	handle @fingerly {
 		# Deferred, so it replaces whatever the API sends and also covers the
 		# responses Caddy writes itself.
 		header >Cache-Control no-store

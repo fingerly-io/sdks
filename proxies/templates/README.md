@@ -26,7 +26,14 @@ to the container.
 ## What every template does
 
 - Answers exactly the issued path (`/k7x2qm4a` in the examples), nothing under
-  or beside it, and only `POST` (`405` with `Allow: POST` otherwise).
+  or beside it, and only `POST` (`405` with `Allow: POST` otherwise). The raw
+  request target is compared, so a doubled slash, a dot segment such as
+  `/x/../k7x2qm4a`, an encoded slash or character, or another case is not
+  forwarded; a query string is ignored. Two platforms clean the path before
+  the template sees it: Traefik resolves dot segments, doubled slashes and
+  encoded characters before routing, and on Vercel and Netlify the request URL
+  arrives with dot segments already resolved. Those forms reach the API as the
+  issued path itself.
 - Forwards to the one constant upstream, never anywhere else, and follows no
   redirects.
 - Sends `content-type`, `x-api-key`, `idempotency-key` when present, and sets

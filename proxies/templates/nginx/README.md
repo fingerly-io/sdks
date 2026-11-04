@@ -11,7 +11,8 @@ method is refused.
 1. In the dashboard, open **Integration > Proxy keys**, create a proxy and copy
    the key it shows once. Note the path it issued, such as `/k7x2qm4a`.
 2. Copy `fingerly.conf` to `/etc/nginx/snippets/fingerly.conf` and replace
-   `/k7x2qm4a` with your path.
+   `/k7x2qm4a` with your path in both places: the `location` and the
+   `$request_uri` check inside it.
 3. Put the key in its own file, readable only by root, and keep it out of
    version control:
 
@@ -47,6 +48,15 @@ method is refused.
 your system keeps it elsewhere, such as `/etc/pki/tls/certs/ca-bundle.crt`,
 change the path. nginx resolves `api.fingerly.io` when it
 loads the configuration, so a reload picks up address changes.
+
+## Exactly one path
+
+nginx picks the `location` on the cleaned path: after resolving dot segments
+such as `/x/../k7x2qm4a`, merging doubled slashes and decoding characters such
+as `%61`. The block therefore also compares the raw request target,
+`$request_uri`, and answers `404` unless it is exactly the path, optionally
+followed by a query string. No prefix, trailing slash, doubled slash, dot
+segment or encoded character is forwarded, and the match is case-sensitive.
 
 ## How the visitor's address is trusted
 
