@@ -154,7 +154,7 @@ function AutomationNotice() {
 }
 ```
 
-Names: `incognito` · `shields` · `tor` · `emulator` · `automation` · `farm`. `shields` says anti-fingerprinting protection is rewriting some values, which is not a finding about the visitor on its own.
+Names: `incognito` · `shields` · `tor` · `emulator` · `automation` · `farm`. `shields` says anti-fingerprinting protection is rewriting some values, which is not a finding about the visitor on its own. `isSuspicious` never counts it, so a privacy browser alone never makes a session look suspicious.
 
 `matched` requires **medium confidence or better** by default. A
 `low`-confidence verdict is a single weak tell (one removable flag, or one
@@ -261,7 +261,7 @@ const {
   consent,           // ConsentState        (granted, pending or denied)
   isLoading,    // boolean
   isReady,      // boolean:              finished, successfully or not
-  isSuspicious, // boolean:              any verdict at medium+
+  isSuspicious, // boolean:              any verdict but shields at medium+
   identify,     // () => Promise<IdentifyResult>
   refresh,      // () => Promise<IdentifyResult>
 } = useIdentify()

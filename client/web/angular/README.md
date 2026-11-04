@@ -132,7 +132,7 @@ export class AutomationNotice {
 }
 ```
 
-Names: `incognito` · `shields` · `tor` · `emulator` · `automation` · `farm`. `shields` says anti-fingerprinting protection is rewriting some values, which is not a finding about the visitor on its own.
+Names: `incognito` · `shields` · `tor` · `emulator` · `automation` · `farm`. `shields` says anti-fingerprinting protection is rewriting some values, which is not a finding about the visitor on its own. `isSuspicious` never counts it, so a privacy browser alone never makes a session look suspicious.
 
 `matched()` requires **medium confidence or better** by default. A
 `low`-confidence verdict is a single weak tell (one removable flag, or one
@@ -237,7 +237,7 @@ fingerly.error()             // Error | null
 fingerly.consent()           // ConsentState        (granted, pending or denied)
 fingerly.isLoading()    // boolean
 fingerly.isReady()      // boolean:              finished, successfully or not
-fingerly.isSuspicious() // boolean:              any verdict at medium+
+fingerly.isSuspicious() // boolean:              any verdict but shields at medium+
 fingerly.identify()     // Promise<IdentifyResult>
 fingerly.refresh()      // Promise<IdentifyResult>
 fingerly.setConsent('granted')

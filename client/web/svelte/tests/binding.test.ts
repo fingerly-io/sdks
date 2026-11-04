@@ -201,6 +201,40 @@ describe('useIdentify', () => {
     expect(page.state.reason).toBeNull()
   })
 
+  it('never counts shields in isSuspicious, which only says a privacy browser is in use', async () => {
+    identifyMock.mockResolvedValueOnce({
+      ...RESULT,
+      verdicts: {
+        incognito: verdict(false, 'low'),
+        shields: verdict(true, 'high', ['brave-api']),
+        tor: verdict(false, 'low'),
+        emulator: verdict(false, 'low'),
+        automation: verdict(false, 'low'),
+        farm: verdict(false, 'low'),
+      },
+    })
+    const page = render({ options: { apiKey: 'fly_pk_development_test', consent: 'granted' } })
+
+    await page.state.identify()
+    await settle()
+
+    expect(page.state.verdicts?.shields.value).toBe(true)
+    expect(page.state.isSuspicious).toBe(false)
+    expect(page.text()).toContain('suspicious:false')
+  })
+
+  it('still counts another verdict in isSuspicious when shields is also set', async () => {
+    identifyMock.mockResolvedValueOnce({
+      ...RESULT,
+      verdicts: { ...RESULT.verdicts, shields: verdict(true, 'high', ['brave-api']) },
+    })
+    const page = render({ options: { apiKey: 'fly_pk_development_test', consent: 'granted' } })
+
+    await page.state.identify()
+
+    expect(page.state.isSuspicious).toBe(true)
+  })
+
   it('reports an unscored check as null, not zero', async () => {
     // Null and zero are different answers. Zero is "we scored it and found
     // nothing"; null is "nobody scored it". A binding that collapsed them

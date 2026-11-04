@@ -100,8 +100,10 @@ export interface Fingerly {
    *
    * Deliberately conservative: it requires `medium` confidence or better,
    * because a `low`-confidence verdict is one weak tell and blocking on it
-   * would be blocking real users. Anything more nuanced should read `verdicts`
-   * directly - this is the "should I even look?" flag, not a policy.
+   * would be blocking real users. It never counts `shields`: that verdict says
+   * a privacy browser is rewriting some values, which is not a reason to
+   * challenge anyone. Anything more nuanced should read `verdicts` directly -
+   * this is the "should I even look?" flag, not a policy.
    */
   readonly isSuspicious: boolean
   /**
@@ -182,10 +184,14 @@ export function createFingerly(options: FingerlyOptions): Fingerly {
   let consent = $state<ConsentState>(options.consent ?? 'pending')
 
   const isReady = $derived(report !== null || error !== null)
+  // `shields` is skipped: it says a privacy browser is rewriting values,
+  // which is never on its own a reason to challenge anyone.
   const isSuspicious = $derived(
     verdicts === null
       ? false
-      : Object.values(verdicts).some((verdict) => verdict.value && verdict.confidence !== 'low'),
+      : Object.entries(verdicts).some(
+          ([name, verdict]) => name !== 'shields' && verdict.value && verdict.confidence !== 'low',
+        ),
   )
 
   let clientPromise: Promise<FingerlyClient> | undefined

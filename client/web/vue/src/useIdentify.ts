@@ -47,11 +47,13 @@ export interface UseIdentifyReturn extends ReadonlyState {
   /**
    * True when the verdicts contain anything worth acting on.
    *
-   * A convenience over the six verdicts, and deliberately conservative: it
+   * A convenience over the verdicts, and deliberately conservative: it
    * requires `medium` confidence or better, because a `low`-confidence verdict
-   * is one weak tell and blocking on it would be blocking real users. Anything
-   * more nuanced should read `verdicts` directly - this is the "should I even
-   * look?" flag, not a policy.
+   * is one weak tell and blocking on it would be blocking real users. It never
+   * counts `shields`: that verdict says a privacy browser is rewriting some
+   * values, which is not a reason to challenge anyone. Anything more nuanced
+   * should read `verdicts` directly - this is the "should I even look?" flag,
+   * not a policy.
    */
   isSuspicious: ComputedRef<boolean>
   /** Collect, score and submit. Reuses a completed run unless `force`. */
@@ -123,8 +125,10 @@ export function useIdentify(options: UseIdentifyOptions = {}): UseIdentifyReturn
     isSuspicious: computed(() => {
       const verdicts = state.verdicts.value
       if (!verdicts) return false
-      return Object.values(verdicts).some(
-        (verdict) => verdict.value && verdict.confidence !== 'low',
+      // `shields` is skipped: it says a privacy browser is rewriting values,
+      // which is never on its own a reason to challenge anyone.
+      return Object.entries(verdicts).some(
+        ([name, verdict]) => name !== 'shields' && verdict.value && verdict.confidence !== 'low',
       )
     }),
     identify,

@@ -477,6 +477,34 @@ describe('useIdentify', () => {
       expect(result.isSuspicious.value).toBe(false)
     })
 
+    it('never counts shields, which only says a privacy browser is in use', async () => {
+      identifyMock.mockResolvedValueOnce({
+        ...RESULT,
+        verdicts: {
+          ...RESULT.verdicts,
+          automation: verdict(false, 'low'),
+          shields: verdict(true, 'high', ['brave-api']),
+        },
+      })
+
+      const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'fly_pk_development_test', consent: 'granted' }))
+      await result.identify()
+
+      expect(result.isSuspicious.value).toBe(false)
+    })
+
+    it('still counts another verdict when shields is also set', async () => {
+      identifyMock.mockResolvedValueOnce({
+        ...RESULT,
+        verdicts: { ...RESULT.verdicts, shields: verdict(true, 'high', ['brave-api']) },
+      })
+
+      const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'fly_pk_development_test', consent: 'granted' }))
+      await result.identify()
+
+      expect(result.isSuspicious.value).toBe(true)
+    })
+
     it('is false before anything has been collected', () => {
       const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'fly_pk_development_test', consent: 'granted' }))
       expect(result.isSuspicious.value).toBe(false)

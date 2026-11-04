@@ -195,6 +195,40 @@ describe('injectIdentify', () => {
     expect(fingerly.reason()).toBeNull()
   })
 
+  it('never counts shields in isSuspicious, which only says a privacy browser is in use', async () => {
+    identifyMock.mockResolvedValueOnce({
+      ...RESULT,
+      verdicts: {
+        incognito: verdict(false, 'low'),
+        shields: verdict(true, 'high', ['brave-api']),
+        tor: verdict(false, 'low'),
+        emulator: verdict(false, 'low'),
+        automation: verdict(false, 'low'),
+        farm: verdict(false, 'low'),
+      },
+    })
+    application({ apiKey: 'fly_pk_development_test', consent: 'granted' })
+    const fingerly = TestBed.runInInjectionContext(() => injectIdentify({ immediate: true }))
+
+    await render()
+
+    expect(fingerly.verdicts()?.shields.value).toBe(true)
+    expect(fingerly.isSuspicious()).toBe(false)
+  })
+
+  it('still counts another verdict in isSuspicious when shields is also set', async () => {
+    identifyMock.mockResolvedValueOnce({
+      ...RESULT,
+      verdicts: { ...RESULT.verdicts, shields: verdict(true, 'high', ['brave-api']) },
+    })
+    application({ apiKey: 'fly_pk_development_test', consent: 'granted' })
+    const fingerly = TestBed.runInInjectionContext(() => injectIdentify({ immediate: true }))
+
+    await render()
+
+    expect(fingerly.isSuspicious()).toBe(true)
+  })
+
   it('reports an unscored check as null, not zero', async () => {
     // Null and zero are different answers. Zero is "we scored it and found
     // nothing"; null is "nobody scored it". A binding that collapsed them

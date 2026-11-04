@@ -532,6 +532,23 @@ describe('useIdentify', () => {
       expect(latest().isSuspicious).toBe(false)
     })
 
+    it('never counts shields, which only says a privacy browser is in use', async () => {
+      const latest = await withVerdicts({
+        incognito: verdict(false, 'low'),
+        shields: verdict(true, 'high', ['brave-api']),
+        automation: verdict(false, 'low'),
+      })
+      expect(latest().isSuspicious).toBe(false)
+    })
+
+    it('still counts another verdict when shields is also set', async () => {
+      const latest = await withVerdicts({
+        shields: verdict(true, 'high', ['brave-api']),
+        automation: verdict(true, 'medium', ['navigator-webdriver-true']),
+      })
+      expect(latest().isSuspicious).toBe(true)
+    })
+
     it('is false before anything has been collected', () => {
       const { latest, element } = probe(() => useIdentify())
       render(<FingerlyProvider apiKey="fly_pk_development_test" consent="granted">{element}</FingerlyProvider>)
