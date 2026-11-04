@@ -22,9 +22,24 @@ container forwards only the browser SDK's submissions to the Fingerly API.
    `/k7x2qm4a` with your path in `FINGERLY_PATH` and in the router rule. If
    your other routers name `entrypoints` or `tls` in their labels, add the same
    to this one.
-4. Provide the key from the shell or an `.env` file kept out of version
-   control, then start it: `FINGERLY_PROXY_KEY=fly_px_production_... docker compose up -d --build site-relay`.
-5. Point the browser SDK at the path:
+4. Beside your compose file, put the key in `site-relay.env`, readable only by
+   you, and keep it out of version control. The prompt does not echo: paste
+   the key and press Enter. The key never appears on a command line, so it
+   stays out of your shell history and the process list:
+
+   ```sh
+   install -m 600 /dev/null site-relay.env
+   printf 'Proxy key: ' && read -rs proxy_key && echo &&
+     printf 'FINGERLY_PROXY_KEY=%s\n' "$proxy_key" > site-relay.env; unset proxy_key
+   ```
+
+5. Start it:
+
+   ```sh
+   docker compose up -d --build site-relay
+   ```
+
+6. Point the browser SDK at the path:
 
    ```ts
    await load({
@@ -35,9 +50,25 @@ container forwards only the browser SDK's submissions to the Fingerly API.
    ```
 
 With the file provider, run the container as `site-relay` on a network Traefik
-can reach and add `dynamic.yml` to your dynamic configuration. On Kubernetes,
-push the image to your registry, create the Secret named in
-`kubernetes.yaml` and apply it.
+can reach and add `dynamic.yml` to your dynamic configuration.
+
+On Kubernetes, push the image to your registry, and put its name and your
+path in place of the examples in `kubernetes.yaml`. Write the key to a file only you can read, from the same
+kind of prompt (without a trailing newline, which would make it an invalid
+key):
+
+```sh
+install -m 600 /dev/null site-relay-key
+printf 'Proxy key: ' && read -rs proxy_key && echo &&
+  printf '%s' "$proxy_key" > site-relay-key; unset proxy_key
+```
+
+Then create the Secret from the file, remove the file and apply the manifest:
+
+```sh
+kubectl create secret generic site-relay --from-file=proxy-key=site-relay-key; rm -f site-relay-key
+kubectl apply -f kubernetes.yaml
+```
 
 The router has `priority: 10000`. Traefik otherwise ranks routers by rule
 length, so a longer catch-all rule for your site would win over

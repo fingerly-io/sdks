@@ -2,9 +2,10 @@
 #
 # The container template as a Deployment, and an IngressRoute sending exactly
 # `/k7x2qm4a`, the path the Fingerly dashboard issued, to it. Build and push
-# the image from the container template first. Create the key's Secret from
-# your secret store, never from a file in version control:
-#   kubectl create secret generic site-relay --from-literal=proxy-key=fly_px_...
+# the image from the container template first. Create the key's Secret with
+# `kubectl create secret generic site-relay --from-file=proxy-key=<file>`, from
+# a file only you can read and never in version control, as the README shows;
+# never with --from-literal, which puts the key on the command line.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

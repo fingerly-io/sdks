@@ -215,13 +215,19 @@
         "title": "Add it to your compose project",
         "text": "In the project Traefik routes with its Docker provider, on a network Traefik can reach. Add entrypoints and tls labels if your other routers have them.",
         "label": "docker-compose.yml",
-        "code": "# Fingerly first-party proxy behind Traefik, version 1.0.0.\n#\n# Add this service to the compose project Traefik already routes with its\n# Docker provider. `/k7x2qm4a` is the path the Fingerly dashboard issued; the\n# router answers exactly that path and sends it to the container, which\n# forwards the browser SDK's submissions to the Fingerly API. Put the\n# container template's Dockerfile and server.mjs in ./site-relay.\nservices:\n  site-relay:\n    build: ./site-relay\n    restart: unless-stopped\n    environment:\n      FINGERLY_PATH: /k7x2qm4a\n      # Traefik replaces X-Real-Ip with the address of the connection it\n      # accepted. Read the README before trusting forwarded headers upstream.\n      FINGERLY_CLIENT_IP_SOURCE: header:x-real-ip\n      # From the shell or an .env file kept out of version control.\n      FINGERLY_PROXY_KEY: ${FINGERLY_PROXY_KEY:?set FINGERLY_PROXY_KEY}\n    labels:\n      - \"traefik.enable=true\"\n      - \"traefik.http.routers.site-relay.rule=Path(`/k7x2qm4a`)\"\n      # Above your site's catch-all router, whatever its rule length.\n      - \"traefik.http.routers.site-relay.priority=10000\"\n      - \"traefik.http.services.site-relay.loadbalancer.server.port=8080\"\n"
+        "code": "# Fingerly first-party proxy behind Traefik, version 1.0.0.\n#\n# Add this service to the compose project Traefik already routes with its\n# Docker provider. `/k7x2qm4a` is the path the Fingerly dashboard issued; the\n# router answers exactly that path and sends it to the container, which\n# forwards the browser SDK's submissions to the Fingerly API. Put the\n# container template's Dockerfile and server.mjs in ./site-relay.\nservices:\n  site-relay:\n    build: ./site-relay\n    restart: unless-stopped\n    environment:\n      FINGERLY_PATH: /k7x2qm4a\n      # Traefik replaces X-Real-Ip with the address of the connection it\n      # accepted. Read the README before trusting forwarded headers upstream.\n      FINGERLY_CLIENT_IP_SOURCE: header:x-real-ip\n    # FINGERLY_PROXY_KEY, from a file beside this one that only you can read,\n    # kept out of version control. The README shows how to write it.\n    env_file: site-relay.env\n    labels:\n      - \"traefik.enable=true\"\n      - \"traefik.http.routers.site-relay.rule=Path(`/k7x2qm4a`)\"\n      # Above your site's catch-all router, whatever its rule length.\n      - \"traefik.http.routers.site-relay.priority=10000\"\n      - \"traefik.http.services.site-relay.loadbalancer.server.port=8080\"\n"
+      },
+      {
+        "title": "Store the proxy key",
+        "text": "In site-relay.env beside your compose file, readable only by you. Keep it out of version control. The prompt does not echo: paste the proxy key and press Enter. It never appears on a command line, so it stays out of your shell history and the process list.",
+        "label": "Terminal",
+        "code": "install -m 600 /dev/null site-relay.env\nprintf 'Proxy key: ' && read -rs proxy_key && echo &&\n  printf 'FINGERLY_PROXY_KEY=%s\\n' \"$proxy_key\" > site-relay.env; unset proxy_key\n"
       },
       {
         "title": "Start it",
-        "text": "Take the key from your secret store or an .env file kept out of version control.",
+        "text": "Compose passes the key from site-relay.env to the container.",
         "label": "Terminal",
-        "code": "FINGERLY_PROXY_KEY='fly_px_production_…' docker compose up -d --build site-relay\n"
+        "code": "docker compose up -d --build site-relay\n"
       },
       {
         "title": "Point the browser SDK at the path",

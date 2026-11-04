@@ -14,8 +14,9 @@ services:
       # Traefik replaces X-Real-Ip with the address of the connection it
       # accepted. Read the README before trusting forwarded headers upstream.
       FINGERLY_CLIENT_IP_SOURCE: header:x-real-ip
-      # From the shell or an .env file kept out of version control.
-      FINGERLY_PROXY_KEY: ${FINGERLY_PROXY_KEY:?set FINGERLY_PROXY_KEY}
+    # FINGERLY_PROXY_KEY, from a file beside this one that only you can read,
+    # kept out of version control. The README shows how to write it.
+    env_file: site-relay.env
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.site-relay.rule=Path(`/k7x2qm4a`)"

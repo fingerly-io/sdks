@@ -388,6 +388,8 @@ const templates: Template[] = [
       const project = join(dir, `compose-${id()}`)
       mkdirSync(project)
       copyFileSync(join(ROOT, 'traefik/docker-compose.yml'), join(project, 'docker-compose.yml'))
+      // The key file the README writes beside the compose file.
+      writeFileSync(join(project, 'site-relay.env'), `FINGERLY_PROXY_KEY=${key}\n`, { mode: 0o600 })
       // The documented layout: the container template in ./site-relay.
       const context = relayContext(dir, stubPort)
       mkdirSync(join(project, 'site-relay'))
@@ -403,7 +405,7 @@ const templates: Template[] = [
         '    extra_hosts: ["host.docker.internal:host-gateway"]',
         '',
       ].join('\n'))
-      return new Compose(project, ['docker-compose.yml', 'traefik.yml'], { FINGERLY_PROXY_KEY: key }, { service: 'traefik', port: 8080 }, relayReady)
+      return new Compose(project, ['docker-compose.yml', 'traefik.yml'], {}, { service: 'traefik', port: 8080 }, relayReady)
     },
     upstreamHost: (stubPort) => `host.docker.internal:${stubPort}`,
     elsewhere: { status: 404 },

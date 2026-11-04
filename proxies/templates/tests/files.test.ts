@@ -39,6 +39,22 @@ function codeBlocks(markdown: string): string[] {
 const KEY_STEPS: Record<string, string[]> = {
   nginx: ['Store the proxy key'],
   container: ['Store the proxy key', 'Run it'],
+  traefik: ['Store the proxy key', 'Start it'],
+}
+
+/** A dashboard step's code. */
+function snippet(kind: string, title: string): string {
+  const snippets = JSON.parse(readFileSync(OUTPUT, 'utf8')) as Snippets
+  const step = snippets[kind]?.steps.find((each) => each.title === title)
+  if (!step?.code) throw new Error(`${kind}: no step "${title}"`)
+  return step.code
+}
+
+/** The one code block of a template's README that contains `text`. */
+function readmeBlock(kind: string, text: string): string {
+  const blocks = codeBlocks(readFileSync(join(ROOT, kind, 'README.md'), 'utf8')).filter((block) => block.includes(text))
+  if (blocks.length !== 1) throw new Error(`${kind}/README.md: ${blocks.length} blocks contain ${text}`)
+  return blocks[0]!
 }
 
 /**
@@ -46,9 +62,12 @@ const KEY_STEPS: Record<string, string[]> = {
  * file they write, relative to the folder they run in once `sudo`, root
  * ownership and absolute paths are taken out, and what it must hold.
  */
-const PROMPTED: Array<{ kind: string; title: string; file: string; holds: (key: string) => string }> = [
-  { kind: 'nginx', title: 'Store the proxy key', file: 'fingerly-proxy-key.conf', holds: (key) => `set $fingerly_proxy_key "${key}";\n` },
-  { kind: 'container', title: 'Store the proxy key', file: 'site-relay.env', holds: (key) => `FINGERLY_PROXY_KEY=${key}\n` },
+const PROMPTED: Array<{ name: string; code: () => string; file: string; holds: (key: string) => string }> = [
+  { name: 'nginx', code: () => snippet('nginx', 'Store the proxy key'), file: 'fingerly-proxy-key.conf', holds: (key) => `set $fingerly_proxy_key "${key}";\n` },
+  { name: 'container', code: () => snippet('container', 'Store the proxy key'), file: 'site-relay.env', holds: (key) => `FINGERLY_PROXY_KEY=${key}\n` },
+  { name: 'traefik (compose)', code: () => snippet('traefik', 'Store the proxy key'), file: 'site-relay.env', holds: (key) => `FINGERLY_PROXY_KEY=${key}\n` },
+  // A Secret value is the file's bytes: a trailing newline would make the key invalid.
+  { name: 'traefik (Kubernetes)', code: () => readmeBlock('traefik', '> site-relay-key'), file: 'site-relay-key', holds: (key) => key },
 ]
 
 const SHELLS = ['bash', 'zsh'].filter((shell) => spawnSync(shell, ['-c', 'true']).status === 0)
@@ -105,10 +124,8 @@ describe('shipped files', () => {
     }
   })
 
-  it.each(PROMPTED)('the $kind step "$title" writes the key it was given at the prompt, readable only by its owner', ({ kind, title, file, holds }) => {
-    const snippets = JSON.parse(readFileSync(OUTPUT, 'utf8')) as Snippets
-    const code = snippets[kind]!.steps.find((each) => each.title === title)!.code!
-    const local = code.replaceAll('sudo ', '').replaceAll(' -o root -g root', '').replace(/\/etc\/\w+\//g, '')
+  it.each(PROMPTED)('the $name prompt writes the key it was given, readable only by its owner', ({ code, file, holds }) => {
+    const local = code().replaceAll('sudo ', '').replaceAll(' -o root -g root', '').replace(/\/etc\/\w+\//g, '')
     const key = 'fly_px_production_k3yFromThePrompt'
     expect(SHELLS.length).toBeGreaterThan(0)
     for (const shell of SHELLS) {

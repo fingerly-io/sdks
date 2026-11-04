@@ -26,6 +26,10 @@
 - The container README and the dashboard snippet write the key to an
   environment file readable only by its owner, from a prompt, and pass it with
   `docker run --env-file`, instead of `export FINGERLY_PROXY_KEY=<key>`.
+- The Traefik compose service reads the key from `site-relay.env` (`env_file`),
+  written the same way, instead of `FINGERLY_PROXY_KEY=<key> docker compose
+  up`. On Kubernetes the Secret is created with `--from-file` from a file
+  written from a prompt and then removed, instead of `--from-literal`.
 - The Vercel, Netlify, container and Cloud Run templates read the API's answer
   whole, capped at 4 MiB and under one 5-second deadline, before relaying it:
   a timeout answers 504, and an unreachable API, a broken answer or one over
