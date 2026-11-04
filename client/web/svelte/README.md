@@ -265,8 +265,14 @@ try {
 {#if fingerly.error}<p>{fingerly.error.message}</p>{/if}
 ```
 
-A failed identification is forgotten rather than remembered, so the next call
-tries again instead of being handed the same rejection.
+A failed identification is not repeated behind your back. When the server
+answers `429` with `Retry-After`, every call, `refresh()` included, gets the
+same error until that time has passed; the error carries it as
+`retryAfterMs`. After a transient failure without one (a `5xx`, a network
+error), components that identify automatically wait 5 seconds, doubling per
+consecutive failure up to a minute, so route changes during an outage send
+nothing; a call you make yourself, such as on a click, still tries at once.
+Any other failure, such as a wrong key, is tried again on the next call.
 
 `TransportError` carries a `status`. The two worth branching on are `401` (the
 key is wrong, or was used from an origin it does not list) and `402` (the

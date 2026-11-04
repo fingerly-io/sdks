@@ -94,6 +94,8 @@ interface Mounted {
   // The whole binding surface, not the one method the tests started with: a
   // stub type here would let a field be added to Fingerly and never asserted on.
   state: Fingerly
+  /** What setupFingerly() returned: the shared state, without the hook's tag wrapper. */
+  shared: Fingerly
   destroy: () => void
 }
 
@@ -103,6 +105,7 @@ function render(props: Record<string, unknown>): Mounted {
 
   const component = mount(Page, { target, props }) as unknown as Mounted['state'] & {
     state: Mounted['state']
+    shared: Mounted['shared']
   }
   flushSync()
 
@@ -110,6 +113,7 @@ function render(props: Record<string, unknown>): Mounted {
     target,
     text: () => target.textContent?.replace(/\s+/g, ' ').trim() ?? '',
     state: component.state,
+    shared: component.shared,
     destroy: () => void unmount(component),
   }
 }
@@ -290,6 +294,48 @@ describe('useIdentify', () => {
     await page.state.identify()
 
     expect(identifyMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('holds every identification for as long as Retry-After asked', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      const limited = Object.assign(new Error('The server refused the submission (429)'), { status: 429, retryable: true, retryAfterMs: 30_000 })
+      identifyMock.mockRejectedValue(limited)
+      const page = render({ options: { apiKey: 'fly_pk_development_test', consent: 'granted' }, immediate: true })
+      await settle()
+
+      for (let i = 0; i < 5; i++) await page.shared.identify({ automatic: true }).catch(() => undefined)
+      await expect(page.state.refresh()).rejects.toBe(limited)
+      expect(identifyMock).toHaveBeenCalledTimes(1)
+
+      vi.setSystemTime(Date.now() + 30_001)
+      identifyMock.mockResolvedValue(RESULT)
+      await page.state.refresh()
+      expect(identifyMock).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('holds automatic identifications after a transient failure, but not a click', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      identifyMock.mockRejectedValue(Object.assign(new Error('Failed to fetch'), { retryable: true }))
+      const page = render({ options: { apiKey: 'fly_pk_development_test', consent: 'granted' }, immediate: true })
+      await settle()
+      // What a component mounting with immediate does, as on a route change.
+      for (let i = 0; i < 4; i++) await page.shared.identify({ automatic: true }).catch(() => undefined)
+      expect(identifyMock).toHaveBeenCalledTimes(1)
+
+      await expect(page.state.identify()).rejects.toThrow('Failed to fetch')
+      expect(identifyMock).toHaveBeenCalledTimes(2)
+
+      vi.setSystemTime(Date.now() + 60_001)
+      await page.shared.identify({ automatic: true }).catch(() => undefined)
+      expect(identifyMock).toHaveBeenCalledTimes(3)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('leaves requestId null when submit is off, and still shares the run', async () => {
