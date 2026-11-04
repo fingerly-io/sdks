@@ -38,6 +38,7 @@ function codeBlocks(markdown: string): string[] {
  */
 const KEY_STEPS: Record<string, string[]> = {
   nginx: ['Store the proxy key'],
+  container: ['Store the proxy key', 'Run it'],
 }
 
 /**
@@ -47,6 +48,7 @@ const KEY_STEPS: Record<string, string[]> = {
  */
 const PROMPTED: Array<{ kind: string; title: string; file: string; holds: (key: string) => string }> = [
   { kind: 'nginx', title: 'Store the proxy key', file: 'fingerly-proxy-key.conf', holds: (key) => `set $fingerly_proxy_key "${key}";\n` },
+  { kind: 'container', title: 'Store the proxy key', file: 'site-relay.env', holds: (key) => `FINGERLY_PROXY_KEY=${key}\n` },
 ]
 
 const SHELLS = ['bash', 'zsh'].filter((shell) => spawnSync(shell, ['-c', 'true']).status === 0)

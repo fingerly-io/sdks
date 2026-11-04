@@ -166,10 +166,22 @@
         "code": "# Fingerly first-party proxy container, version 1.0.0.\n# No dependencies to install: the image is Node and one file, run as the\n# image's unprivileged `node` user. Numeric, so Kubernetes' runAsNonRoot can\n# check it.\nFROM node:24-alpine\nWORKDIR /app\nCOPY server.mjs ./\nENV NODE_ENV=production PORT=8080\nUSER 1000:1000\nEXPOSE 8080\nCMD [\"node\", \"server.mjs\"]\n"
       },
       {
-        "title": "Build and run it",
-        "text": "Take the key from your secret store. remote trusts the connection address; behind a proxy use header:<name> for a header that proxy overwrites, or xff:<n> for the n-th X-Forwarded-For entry from the right.",
+        "title": "Build the image",
+        "text": "From the folder.",
         "label": "Terminal",
-        "code": "docker build -t site-relay .\nexport FINGERLY_PROXY_KEY='fly_px_production_…'\ndocker run -d --name site-relay --restart unless-stopped -p 8080:8080 \\\n  -e FINGERLY_PATH=/k7x2qm4a -e FINGERLY_PROXY_KEY \\\n  -e FINGERLY_CLIENT_IP_SOURCE=remote \\\n  site-relay\n"
+        "code": "docker build -t site-relay .\n"
+      },
+      {
+        "title": "Store the proxy key",
+        "text": "In an environment file only you can read. Keep it out of version control. The prompt does not echo: paste the proxy key and press Enter. It never appears on a command line, so it stays out of your shell history and the process list.",
+        "label": "Terminal",
+        "code": "install -m 600 /dev/null site-relay.env\nprintf 'Proxy key: ' && read -rs proxy_key && echo &&\n  printf 'FINGERLY_PROXY_KEY=%s\\n' \"$proxy_key\" > site-relay.env; unset proxy_key\n"
+      },
+      {
+        "title": "Run it",
+        "text": "remote trusts the connection address; behind a proxy use header:<name> for a header that proxy overwrites, or xff:<n> for the n-th X-Forwarded-For entry from the right.",
+        "label": "Terminal",
+        "code": "docker run -d --name site-relay --restart unless-stopped -p 8080:8080 \\\n  --env-file site-relay.env \\\n  -e FINGERLY_PATH=/k7x2qm4a -e FINGERLY_CLIENT_IP_SOURCE=remote \\\n  site-relay\n"
       },
       {
         "title": "Route the path to it",

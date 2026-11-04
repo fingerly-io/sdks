@@ -237,11 +237,16 @@ function relayImage(dir: string, stubPort: number): string {
   return tag
 }
 
-/** The environment a template's own files tell the container to use. */
-function relayEnv(key: string, source?: string): string[] {
+/**
+ * The environment a template's own files tell the container to use, with the
+ * key in an environment file readable only by its owner, as the README has it.
+ */
+function relayEnv(dir: string, key: string, source?: string): string[] {
+  const envFile = join(dir, `site-relay-${id()}.env`)
+  if (key) writeFileSync(envFile, `FINGERLY_PROXY_KEY=${key}\n`, { mode: 0o600 })
   return [
+    ...(key ? ['--env-file', envFile] : []),
     '-e', 'FINGERLY_PATH=/k7x2qm4a',
-    ...(key ? ['-e', `FINGERLY_PROXY_KEY=${key}`] : []),
     ...(source ? ['-e', `FINGERLY_CLIENT_IP_SOURCE=${source}`] : []),
   ]
 }
@@ -332,7 +337,7 @@ const templates: Template[] = [
     version: 'container/1.0.0',
     keyless: true,
     // Reached directly, so the default source, the connection itself.
-    deploy: (stubPort, dir, key) => new Stack([{ args: [...relayEnv(key), relayImage(dir, stubPort)] }], 8080, relayReady),
+    deploy: (stubPort, dir, key) => new Stack([{ args: [...relayEnv(dir, key), relayImage(dir, stubPort)] }], 8080, relayReady),
     upstreamHost: (stubPort) => `host.docker.internal:${stubPort}`,
     elsewhere: { status: 404 },
     originFallback: (base) => base.replace('http:', 'https:'),
@@ -367,7 +372,7 @@ const templates: Template[] = [
             '--entrypoints.web.address=:8080', '--providers.file.directory=/etc/traefik/dynamic',
           ],
         },
-        { alias: 'site-relay', args: [...relayEnv(key, composeClientIpSource()), relayImage(dir, stubPort)] },
+        { alias: 'site-relay', args: [...relayEnv(dir, key, composeClientIpSource()), relayImage(dir, stubPort)] },
       ], 8080, relayReady)
     },
     upstreamHost: (stubPort) => `host.docker.internal:${stubPort}`,

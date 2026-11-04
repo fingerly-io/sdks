@@ -23,6 +23,9 @@
 - The nginx README and the dashboard snippet write the key file from a
   prompt (`read -rs`) instead of `echo '...key...' | sudo tee`, which put the
   key in the shell history.
+- The container README and the dashboard snippet write the key to an
+  environment file readable only by its owner, from a prompt, and pass it with
+  `docker run --env-file`, instead of `export FINGERLY_PROXY_KEY=<key>`.
 - The Vercel, Netlify, container and Cloud Run templates read the API's answer
   whole, capped at 4 MiB and under one 5-second deadline, before relaying it:
   a timeout answers 504, and an unreachable API, a broken answer or one over

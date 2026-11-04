@@ -25,6 +25,14 @@ const read = (path) => readFileSync(`${ROOT}${path}`, 'utf8')
  */
 const PROMPT = 'The prompt does not echo: paste the proxy key and press Enter. It never appears on a command line, so it stays out of your shell history and the process list.'
 
+/** Writes FINGERLY_PROXY_KEY=<key> to an environment file only its owner can read, from the prompt. */
+const envFilePrompt = (file) => [
+  `install -m 600 /dev/null ${file}`,
+  "printf 'Proxy key: ' && read -rs proxy_key && echo &&",
+  `  printf 'FINGERLY_PROXY_KEY=%s\\n' "$proxy_key" > ${file}; unset proxy_key`,
+  '',
+].join('\n')
+
 /** The Caddyfile's matcher and handle block, without the example site around them. */
 function caddyHandleBlock() {
   const lines = read('caddy/Caddyfile').split('\n')
@@ -214,15 +222,25 @@ export function build() {
           code: read('container/Dockerfile'),
         },
         {
-          title: 'Build and run it',
-          text: 'Take the key from your secret store. remote trusts the connection address; behind a proxy use header:<name> for a header that proxy overwrites, or xff:<n> for the n-th X-Forwarded-For entry from the right.',
+          title: 'Build the image',
+          text: 'From the folder.',
+          label: 'Terminal',
+          code: 'docker build -t site-relay .\n',
+        },
+        {
+          title: 'Store the proxy key',
+          text: `In an environment file only you can read. Keep it out of version control. ${PROMPT}`,
+          label: 'Terminal',
+          code: envFilePrompt('site-relay.env'),
+        },
+        {
+          title: 'Run it',
+          text: 'remote trusts the connection address; behind a proxy use header:<name> for a header that proxy overwrites, or xff:<n> for the n-th X-Forwarded-For entry from the right.',
           label: 'Terminal',
           code: [
-            'docker build -t site-relay .',
-            `export FINGERLY_PROXY_KEY='${KEY}'`,
             'docker run -d --name site-relay --restart unless-stopped -p 8080:8080 \\',
-            '  -e FINGERLY_PATH=/k7x2qm4a -e FINGERLY_PROXY_KEY \\',
-            '  -e FINGERLY_CLIENT_IP_SOURCE=remote \\',
+            '  --env-file site-relay.env \\',
+            '  -e FINGERLY_PATH=/k7x2qm4a -e FINGERLY_CLIENT_IP_SOURCE=remote \\',
             '  site-relay',
             '',
           ].join('\n'),

@@ -12,22 +12,33 @@ The image runs as an unprivileged user.
 1. In the dashboard, open **Integration > Proxy keys**, create a proxy and copy
    the key it shows once. Note the path it issued, such as `/k7x2qm4a`.
 2. Build the image from this folder: `docker build -t site-relay .`
-3. Run it with the path, the key from your secret store (never a file in
-   version control) and the client address source that fits what sits in
-   front of it (see below; `remote` is right only when visitors connect to the
-   container directly):
+3. Put the key in an environment file only you can read, and keep it out of
+   version control. The prompt does not echo: paste the key and press Enter.
+   The key never appears on a command line, so it stays out of your shell
+   history and the process list:
 
    ```sh
-   export FINGERLY_PROXY_KEY=fly_px_production_...   # from your secret store
+   install -m 600 /dev/null site-relay.env
+   printf 'Proxy key: ' && read -rs proxy_key && echo &&
+     printf 'FINGERLY_PROXY_KEY=%s\n' "$proxy_key" > site-relay.env; unset proxy_key
+   ```
+
+4. Run it with the path, the key from that file and the client address source
+   that fits what sits in front of it (see below; `remote` is right only when
+   visitors connect to the container directly):
+
+   ```sh
    docker run -d --name site-relay --restart unless-stopped -p 8080:8080 \
-     -e FINGERLY_PATH=/k7x2qm4a -e FINGERLY_PROXY_KEY \
-     -e FINGERLY_CLIENT_IP_SOURCE=remote \
+     --env-file site-relay.env \
+     -e FINGERLY_PATH=/k7x2qm4a -e FINGERLY_CLIENT_IP_SOURCE=remote \
      site-relay
    ```
 
-4. Route exactly `/k7x2qm4a` on your site's host to the container, `POST`
+   Docker reads the file when it creates the container. Keep it to create the
+   container again, or delete it and repeat step 3 when you do.
+5. Route exactly `/k7x2qm4a` on your site's host to the container, `POST`
    bodies included, from the proxy or load balancer in front of it.
-5. Point the browser SDK at the path:
+6. Point the browser SDK at the path:
 
    ```ts
    await load({
