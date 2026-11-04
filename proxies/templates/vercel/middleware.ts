@@ -41,14 +41,15 @@ function isProxyPath(pathname: string): boolean {
 }
 
 /**
- * The visitor's address. Vercel sets x-real-ip and overwrites x-forwarded-for
- * with the client address itself, discarding what the visitor sent, so either
- * one is trustworthy here (and only here).
+ * The visitor's address: x-real-ip, which Vercel sets on every request to the
+ * address its edge accepted the connection from, replacing whatever the
+ * visitor sent. Nothing else is read. x-forwarded-for in particular is not a
+ * fallback: anywhere its entries are passed along rather than rewritten, the
+ * left-most one is whatever the visitor chose to write. Without a valid
+ * x-real-ip nothing is forwarded.
  */
 function clientIp(request: Request): string {
-  const real = request.headers.get('x-real-ip')
-  if (real) return real.trim()
-  return (request.headers.get('x-forwarded-for') ?? '').split(',')[0]?.trim() ?? ''
+  return (request.headers.get('x-real-ip') ?? '').trim()
 }
 
 function plain(status: number, message: string, extra: Record<string, string> = {}): Response {
@@ -74,9 +75,9 @@ let reportedMissingAddress = false
 function noAddress(): Response {
   if (!reportedMissingAddress) {
     reportedMissingAddress = true
-    console.error('proxy: the client IP source held no valid address; nothing was forwarded')
+    console.error('proxy: the client IP callback returned no valid address; nothing was forwarded')
   }
-  return plain(500, 'The client IP source returned no valid address')
+  return plain(500, 'The client IP callback returned no valid address')
 }
 
 /** The most of an answer relayed: an answer is a few kilobytes. */
@@ -116,7 +117,7 @@ export default async function middleware(request: Request): Promise<Response> {
   if (!isProxyKey(proxyKey)) return plain(503, 'Service Unavailable')
   const publicKey = request.headers.get('x-api-key')
   if (!publicKey) return plain(401, 'Unauthorized')
-  const visitorIp = (clientIp(request) ?? '').trim()
+  const visitorIp = clientIp(request)
   if (!isIpLiteral(visitorIp)) return noAddress()
   const declaredLength = Number(request.headers.get('content-length') ?? '0')
   if (Number.isFinite(declaredLength) && declaredLength > MAX_BODY_BYTES) return plain(413, 'Payload Too Large')

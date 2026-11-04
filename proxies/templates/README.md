@@ -41,9 +41,14 @@ to the container.
   source, never the left-most `X-Forwarded-For`), `x-fingerly-origin`,
   `x-fingerly-user-agent` and `x-fingerly-proxy-version` itself, overwriting
   anything the visitor sent under those names.
-- Forwards nothing and answers `500` ("The client IP source returned no valid
-  address") when the trusted source does not hold exactly one IPv4 or IPv6
-  address, and logs that once rather than per request.
+- Forwards nothing and answers `500` ("The client IP callback returned no
+  valid address") when the trusted source does not hold exactly one IPv4 or
+  IPv6 address, and logs that once rather than per request. Vercel reads only
+  `x-real-ip`, Netlify `context.ip`, CloudFront `event.viewer.ip`, nginx and
+  Caddy the connection address (through the realip module or
+  `trusted_proxies_strict` behind a load balancer), and the container and
+  Cloud Run the source `FINGERLY_CLIENT_IP_SOURCE` names, with
+  `X-Forwarded-For` counted from the right.
 - Never forwards cookies or `Authorization`, and caps bodies at 1 MiB where the
   platform can see them.
 - Gives the whole upstream exchange one 5-second deadline and reads the answer

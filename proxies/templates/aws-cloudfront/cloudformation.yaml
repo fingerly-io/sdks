@@ -61,6 +61,14 @@ Resources:
           'warning': true
         };
 
+        // One IPv4 or IPv6 literal and nothing else.
+        var IPV4 = /^(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])(\.(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])){3}$/;
+        var IPV6 = /^[0-9A-Fa-f:.]{2,45}$/;
+
+        function isIpLiteral(value) {
+          return typeof value === 'string' && (IPV4.test(value) || (IPV6.test(value) && value.indexOf(':') !== -1));
+        }
+
         function plain(statusCode, statusDescription, extra) {
           var headers = { 'cache-control': { value: 'no-store' } };
           for (var name in extra) headers[name] = extra[name];
@@ -94,6 +102,10 @@ Resources:
           for (var cookie in request.cookies) delete request.cookies[cookie];
 
           // The address CloudFront accepted the connection from, not a header.
+          // CloudFront always sets it; anything else forwards nothing.
+          if (!isIpLiteral(event.viewer.ip)) {
+            return plain(500, 'The client IP callback returned no valid address', {});
+          }
           headers['x-fingerly-client-ip'] = { value: event.viewer.ip };
           headers['x-fingerly-origin'] = { value: headers.origin ? headers.origin.value : 'https://' + headers.host.value };
           if (headers['user-agent']) headers['x-fingerly-user-agent'] = { value: headers['user-agent'].value };

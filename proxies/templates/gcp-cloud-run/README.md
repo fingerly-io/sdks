@@ -102,6 +102,11 @@ through the load balancer, which is what
 `--ingress=internal-and-cloud-load-balancing` enforces. If another proxy sits
 in front of the load balancer, the second-to-last entry is that proxy.
 
+When the second-to-last entry is not exactly one IPv4 or IPv6 address, or
+there are fewer than two entries, nothing is forwarded: the service answers
+`500` ("The client IP callback returned no valid address") and logs that once
+per process.
+
 Firebase Hosting rewrites to Cloud Run are not supported yet: Firebase
 documents no client address header for Cloud Run that a visitor cannot forge.
 

@@ -175,9 +175,9 @@ export function createRelay(env = process.env) {
         req.resume()
         if (!reportedMissingAddress) {
           reportedMissingAddress = true
-          console.error('proxy: the client IP source held no valid address; nothing was forwarded')
+          console.error('proxy: the client IP callback returned no valid address; nothing was forwarded')
         }
-        return plain(res, 500, 'The client IP source returned no valid address')
+        return plain(res, 500, 'The client IP callback returned no valid address')
       }
       const body = await readBody(req)
       if (body === null) return plain(res, 413, 'Payload Too Large')

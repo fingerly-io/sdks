@@ -67,9 +67,9 @@ let reportedMissingAddress = false
 function noAddress(): Response {
   if (!reportedMissingAddress) {
     reportedMissingAddress = true
-    console.error('proxy: the client IP source held no valid address; nothing was forwarded')
+    console.error('proxy: the client IP callback returned no valid address; nothing was forwarded')
   }
-  return plain(500, 'The client IP source returned no valid address')
+  return plain(500, 'The client IP callback returned no valid address')
 }
 
 /** The most of an answer relayed: an answer is a few kilobytes. */

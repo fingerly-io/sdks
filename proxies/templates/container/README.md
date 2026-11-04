@@ -60,11 +60,26 @@ is not one of these:
 
 Only a header the front proxy overwrites is safe. A header it merely passes
 along, or the left-most `X-Forwarded-For` entry, is whatever the visitor chose
-to send. Behind one proxy that appends the connection address to
-`X-Forwarded-For`, `xff:1` is right; behind a load balancer and then a proxy
-that each append one, `xff:2`. A repeated header, or a value that is not an IP
-address, is sent as empty, and the API then refuses the call rather than
-guessing.
+to send. `X-Forwarded-For` is counted from the right because each proxy appends
+the address it accepted the connection from; entries to the left of yours are
+not vouched for by anyone. Which position is the visitor depends on what is in
+front:
+
+| In front of the container | Source |
+| --- | --- |
+| nothing: visitors connect to it directly | `remote` |
+| one proxy that appends the connection address (nginx with `$proxy_add_x_forwarded_for`, Caddy, Traefik, an AWS Application Load Balancer in its default append mode) | `xff:1` |
+| Traefik, reached directly, in its default configuration | `header:x-real-ip` (see the Traefik template) |
+| a Google Cloud external Application Load Balancer, which appends `<client-ip>,<load-balancer-ip>` | `xff:2` |
+| a load balancer that appends one entry, then a proxy that appends one | `xff:2` |
+
+Count only hops you run and that every request passes through: anything that
+can reach the container another way can write the entries you count on. When
+the source does not hold exactly one IPv4 or IPv6 address (the header is
+missing or repeated, there are too few `X-Forwarded-For` entries, or the value
+is not an address), nothing is forwarded: the service answers `500` ("The
+client IP callback returned no valid address") and logs that once per
+process.
 
 ## What it sends and relays
 

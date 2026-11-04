@@ -40,11 +40,16 @@ itself.
 
 ## How the visitor's address is trusted
 
-The middleware sends `x-real-ip` as `x-fingerly-client-ip`, falling back to the
-first `x-forwarded-for` entry. Vercel sets both itself and overwrites
-`x-forwarded-for` with the client address, discarding what the visitor sent,
-so on Vercel they cannot be forged. Do not reuse this code on a platform that
-passes those headers through.
+The middleware sends `x-real-ip` as `x-fingerly-client-ip`, and reads nothing
+else. Vercel sets that header on every request to the address its edge
+accepted the connection from, replacing whatever the visitor sent, so on
+Vercel it cannot be forged. `x-forwarded-for` is never a fallback: wherever its
+entries are passed along rather than rewritten, the left-most one is whatever
+the visitor chose to write. When `x-real-ip` is missing or is not exactly one
+IPv4 or IPv6 address, nothing is forwarded: the middleware answers `500` ("The
+client IP callback returned no valid address") and logs that once per
+instance. Do not reuse this code on a platform that passes `x-real-ip` through
+from the visitor.
 
 ## What it sends and relays
 

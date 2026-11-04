@@ -508,14 +508,21 @@ describe('a client IP source with no valid address', () => {
   beforeAll(() => stubUpstream())
   afterEach(() => { upstreamCalls = [] })
 
-  it.each([vercelTarget, netlifyTarget])('$kind: forwards nothing and answers 500', async (target) => {
+  it.each(targets)('$kind: forwards nothing and answers 500', async (target) => {
     target.setKey(KEY)
     const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-    for (const ip of ['', 'null', '1.2.3.4, 5.6.7.8', 'not-an-address']) {
-      const headers = target.kind === 'vercel' ? { ...visitor, 'x-real-ip': ip, 'x-forwarded-for': ip } : visitor
-      const result = await target.call({ headers, ip })
-      expect(result.status, ip).toBe(500)
-      expect(result.body).toMatch(/no valid address/)
+    // Cloud Run's load balancer always writes the client entry, so an empty
+    // one or a comma inside it cannot reach the second-to-last position.
+    const values = ['null', 'not-an-address', '999.1.1.1', '1.2.3.4 5.6.7.8', 'unknown', ...(target === cloudRunTarget ? [] : ['', '1.2.3.4, 5.6.7.8'])]
+    for (const ip of values) {
+      const call: Call = target === vercelTarget
+        // Vercel's own header is wrong; a well-formed x-forwarded-for is no fallback.
+        ? { headers: { ...visitor, ...(ip ? { 'x-real-ip': ip } : {}), 'x-forwarded-for': TRUSTED_IP } }
+        : { headers: visitor, ip }
+      const result = await target.call(call)
+      expect(result.status, `${target.kind} ${JSON.stringify(ip)}`).toBe(500)
+      // A CloudFront Function answers with its status line alone.
+      if (target !== cloudFrontTarget) expect(result.body).toBe('The client IP callback returned no valid address')
       expect(result.headers.get('cache-control')).toBe('no-store')
     }
     expect(upstreamCalls).toHaveLength(0)
@@ -528,12 +535,17 @@ describe('platform specifics', () => {
   beforeAll(() => stubUpstream())
   afterEach(() => { upstreamCalls = [] })
 
-  it('vercel: falls back to the first x-forwarded-for entry Vercel wrote', async () => {
+  it('vercel: reads x-real-ip, never the x-forwarded-for a visitor can write to', async () => {
     vercelTarget.setKey(KEY)
-    await vercel(new Request('https://shop.example/k7x2qm4a', {
-      method: 'POST', headers: { 'x-api-key': 'fly_pk_production_public', 'x-forwarded-for': TRUSTED_IP }, body: '{}',
+    const post = (headers: Record<string, string>) => vercel(new Request('https://shop.example/k7x2qm4a', {
+      method: 'POST', headers: { 'x-api-key': 'fly_pk_production_public', ...headers }, body: '{}',
     }))
-    expect(upstreamCalls[0]!.headers.get('x-fingerly-client-ip')).toBe(TRUSTED_IP)
+    expect((await post({ 'x-real-ip': TRUSTED_IP, 'x-forwarded-for': `6.6.6.6, ${TRUSTED_IP}` })).status).toBe(200)
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const alone = await post({ 'x-forwarded-for': TRUSTED_IP })
+    errors.mockRestore()
+    expect(upstreamCalls.map((call) => call.headers.get('x-fingerly-client-ip'))).toEqual([TRUSTED_IP])
+    expect(alone.status).toBe(500)
   })
 
   it('gcp-cloud-run: takes the second-to-last x-forwarded-for entry and nothing a visitor can forge', async () => {

@@ -45,7 +45,9 @@ itself.
 
 The function sends `context.ip`, the address Netlify's edge accepted the
 connection from, as `x-fingerly-client-ip`. It is not read from any header, so
-the visitor cannot change it.
+the visitor cannot change it. Should it ever not be exactly one IPv4 or IPv6
+address, nothing is forwarded: the function answers `500` ("The client IP
+callback returned no valid address") and logs that once per instance.
 
 ## What it sends and relays
 

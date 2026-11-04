@@ -61,7 +61,9 @@ and are not forwarded.
 The function sends `event.viewer.ip`, the address CloudFront accepted the
 connection from, as `x-fingerly-client-ip`. It is not read from any header, so
 the visitor cannot change it. Put nothing in front of CloudFront for this path:
-behind another proxy, that address would be the proxy's.
+behind another proxy, that address would be the proxy's. CloudFront always
+sets it; should it ever not be one IPv4 or IPv6 address, the function answers
+`500` and forwards nothing.
 
 ## What it sends and relays
 
