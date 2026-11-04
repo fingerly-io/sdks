@@ -110,9 +110,9 @@ export function build() {
         },
         {
           title: 'Add the proxy key',
-          text: 'As a sensitive environment variable.',
+          text: 'As a sensitive environment variable. The CLI prompts for the value: paste the proxy key, so it stays out of your shell history.',
           label: 'Terminal',
-          code: `vercel env add FINGERLY_PROXY_KEY production --value "${KEY}" --sensitive --yes\n`,
+          code: 'vercel env add FINGERLY_PROXY_KEY production --sensitive\n',
         },
         {
           title: 'Deploy',

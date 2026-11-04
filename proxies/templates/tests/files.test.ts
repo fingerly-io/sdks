@@ -38,6 +38,14 @@ describe('shipped files', () => {
     }
   })
 
+  it('the Vercel README and the dashboard add the proxy key with the same command', () => {
+    const snippets = JSON.parse(readFileSync(OUTPUT, 'utf8')) as Record<string, { steps: Array<Record<string, string>> }>
+    const command = snippets.vercel!.steps.find((step) => step.title === 'Add the proxy key')?.code?.trim()
+    expect(command).toBe('vercel env add FINGERLY_PROXY_KEY production --sensitive')
+    const readme = readFileSync(join(ROOT, 'vercel/README.md'), 'utf8')
+    expect(readme.match(/^\s*vercel env add .*$/gm)?.map((line) => line.trim())).toEqual([command])
+  })
+
   it('contain no em or en dashes', () => {
     for (const path of shipped) {
       expect(readFileSync(path, 'utf8'), relative(ROOT, path)).not.toMatch(/[\u2013\u2014]/)

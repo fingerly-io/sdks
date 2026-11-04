@@ -12,9 +12,15 @@ upstream is a constant in the code, and every other path and method is refused.
 2. Save `middleware.ts` at the root of your project, beside `package.json`, and
    replace `/k7x2qm4a` with your path in both places (`config.matcher` and
    `PATH`).
-3. Add the key as a sensitive environment variable:
-   `vercel env add FINGERLY_PROXY_KEY production --sensitive` (it prompts for
-   the value), or **Settings > Environment Variables** in the project.
+3. Add the key as a sensitive environment variable. The CLI prompts for the
+   value, so the key stays out of your shell history:
+
+   ```sh
+   vercel env add FINGERLY_PROXY_KEY production --sensitive
+   ```
+
+   Or use **Settings > Environment Variables** in the project, with
+   **Sensitive** on.
 4. Deploy.
 5. Point the browser SDK at the path:
 

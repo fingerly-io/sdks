@@ -14,8 +14,11 @@
 - The Vercel template reads only `x-real-ip`, which Vercel sets itself. It no
   longer falls back to the left-most `x-forwarded-for` entry, which a visitor
   can write.
-- The same four read the API's answer whole, capped at 4 MiB and under one
-  5-second deadline, before relaying it: a timeout answers 504, and an
-  unreachable API, a broken answer or one over the cap answers 502.
+- The Vercel README and the dashboard snippet add the key the same way: `vercel
+  env add FINGERLY_PROXY_KEY production --sensitive`, which prompts for it.
+- The Vercel, Netlify, container and Cloud Run templates read the API's answer
+  whole, capped at 4 MiB and under one 5-second deadline, before relaying it:
+  a timeout answers 504, and an unreachable API, a broken answer or one over
+  the cap answers 502.
 - `console-snippets.json` is regenerated from the templates, including the
   Cloud Run `package.json` licence line.
