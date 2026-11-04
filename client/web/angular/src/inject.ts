@@ -117,7 +117,10 @@ export function injectIdentify(options: InjectIdentifyOptions = {}): Fingerly {
               // which is where a component that opted into `immediate` will
               // look for it. A caller who wants to await the outcome calls
               // identify() themselves.
-              void identify().catch(() => undefined)
+              // Marked automatic, so a failure's hold applies: a component
+              // created while the API is refusing must not send another.
+              const tag = resolveTag()
+              void fingerly.identify({ ...(tag === undefined ? {} : { tag }), automatic: true }).catch(() => undefined)
             })
           },
           { injector },

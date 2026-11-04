@@ -118,7 +118,7 @@ export interface Fingerly {
    */
   setConsent(state: ConsentState): void
   /** Collect, score and submit. Reuses a completed run unless `force`. */
-  identify(options?: { tag?: string; force?: boolean }): Promise<IdentifyResult>
+  identify(options?: { tag?: string; force?: boolean; automatic?: boolean }): Promise<IdentifyResult>
   /** Identify again from scratch, ignoring any previous result. */
   refresh(options?: { tag?: string }): Promise<IdentifyResult>
   /** The underlying client, built on first use. */
@@ -145,6 +145,24 @@ export class FingerlyServerError extends Error {
  * every server render, and would take the choice of *when* away from the
  * component that knows.
  */
+/**
+ * How long a failed identification holds off the next one.
+ *
+ * Without this a failure was forgotten at once, and every component created
+ * with `immediate` started another identification - three requests per route
+ * change while the API was answering 429. A `Retry-After` the server sent
+ * holds every call, forced or not, until it passes. A transient failure
+ * without one (a 5xx, a network error) holds automatic calls only, for 5 s
+ * doubling per consecutive failure up to a minute; a click still tries at
+ * once. Anything else holds nothing.
+ */
+export function failureHold(error: unknown, consecutive: number, now: number): { until: number; automaticUntil: number } {
+  const failure = error as { retryAfterMs?: unknown; retryable?: unknown } | null
+  const retryAfter = typeof failure?.retryAfterMs === 'number' && failure.retryAfterMs > 0 ? failure.retryAfterMs : 0
+  const backoff = failure?.retryable === true ? Math.min(60_000, 5_000 * 2 ** Math.max(0, consecutive - 1)) : 0
+  return { until: now + retryAfter, automaticUntil: now + Math.max(retryAfter, backoff) }
+}
+
 export function createFingerly(options: FingerlyOptions): Fingerly {
   const requestId = signal<string | null>(null)
   const visitorId = signal<string | null>(null)
@@ -173,6 +191,8 @@ export function createFingerly(options: FingerlyOptions): Fingerly {
   let clientPromise: Promise<FingerlyClient> | undefined
   let loaded: FingerlyClient | undefined
   let current: Promise<IdentifyResult> | undefined
+  let held: { error: Error; until: number; automaticUntil: number } | undefined
+  let consecutiveFailures = 0
 
   const client = (): Promise<FingerlyClient> => {
     if (typeof window === 'undefined') return Promise.reject(new FingerlyServerError())
@@ -221,6 +241,12 @@ export function createFingerly(options: FingerlyOptions): Fingerly {
     // whole fingerprint. A promise has an identity either way.
     if (current && !identifyOptions.force) return current
 
+    // Holding off after a failure; see failureHold.
+    const now = Date.now()
+    if (held && (now < held.until || (identifyOptions.automatic && now < held.automaticUntil))) {
+      return Promise.reject(held.error)
+    }
+
     isLoading.set(true)
     error.set(null)
 
@@ -245,6 +271,8 @@ export function createFingerly(options: FingerlyOptions): Fingerly {
         triggers.set(result.triggers)
         verdicts.set(result.verdicts)
         report.set(result.report)
+        held = undefined
+        consecutiveFailures = 0
         return result
       })
       .catch((cause: unknown) => {
@@ -253,6 +281,8 @@ export function createFingerly(options: FingerlyOptions): Fingerly {
         // Forgotten, so the next caller retries rather than being handed a
         // rejected promise forever.
         if (current === run) current = undefined
+        consecutiveFailures += 1
+        held = { error: failure, ...failureHold(failure, consecutiveFailures, Date.now()) }
         // Rethrown as well as stored: a caller that awaited identify() should
         // be able to try/catch it, and a template that only reads `error`
         // should not have to.

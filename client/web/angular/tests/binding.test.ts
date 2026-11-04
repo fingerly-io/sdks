@@ -301,6 +301,54 @@ describe('injectIdentify', () => {
     expect(fingerly.requestId()).toBe('req_1')
   })
 
+  it('holds every identification for as long as Retry-After asked', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      const limited = Object.assign(new Error('The server refused the submission (429)'), { status: 429, retryable: true, retryAfterMs: 30_000 })
+      identifyMock.mockRejectedValue(limited)
+      application({ apiKey: 'fly_pk_development_test', consent: 'granted' })
+      const fingerly = TestBed.runInInjectionContext(() => injectIdentify())
+      await expect(fingerly.identify()).rejects.toBe(limited)
+
+      // Components created with immediate, as route changes bring them.
+      for (let i = 0; i < 5; i++) TestBed.runInInjectionContext(() => injectIdentify({ immediate: true }))
+      await render()
+      await expect(fingerly.refresh()).rejects.toBe(limited)
+      expect(identifyMock).toHaveBeenCalledTimes(1)
+
+      vi.setSystemTime(Date.now() + 30_001)
+      identifyMock.mockResolvedValue(RESULT)
+      await fingerly.refresh()
+      expect(identifyMock).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('holds automatic identifications after a transient failure, but not a click', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      identifyMock.mockRejectedValue(Object.assign(new Error('Failed to fetch'), { retryable: true }))
+      application({ apiKey: 'fly_pk_development_test', consent: 'granted' })
+      TestBed.runInInjectionContext(() => injectIdentify({ immediate: true }))
+      await render()
+      for (let i = 0; i < 4; i++) TestBed.runInInjectionContext(() => injectIdentify({ immediate: true }))
+      await render()
+      expect(identifyMock).toHaveBeenCalledTimes(1)
+
+      const fingerly = TestBed.runInInjectionContext(() => injectIdentify())
+      await expect(fingerly.identify()).rejects.toThrow('Failed to fetch')
+      expect(identifyMock).toHaveBeenCalledTimes(2)
+
+      vi.setSystemTime(Date.now() + 60_001)
+      TestBed.runInInjectionContext(() => injectIdentify({ immediate: true }))
+      await render()
+      expect(identifyMock).toHaveBeenCalledTimes(3)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('leaves requestId null when submit is off, and still shares the run', async () => {
     identifyMock.mockResolvedValue({ ...RESULT, requestId: '' })
     application({ apiKey: 'fly_pk_development_test', consent: 'granted', submit: false })
