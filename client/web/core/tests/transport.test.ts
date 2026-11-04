@@ -321,4 +321,21 @@ describe('HttpTransport under rate limiting and bad answers', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1)
   })
 
+  it('reads the supplement answer to the end', async () => {
+    let read = false
+    const fetchImpl = vi.fn(async () => {
+      const body = new ReadableStream({
+        pull(controller) {
+          read = true
+          controller.enqueue(new TextEncoder().encode('{}'))
+          controller.close()
+        },
+      })
+      return new Response(body, { status: 202 })
+    }) as typeof fetch
+    const transport = new HttpTransport({ apiKey: 'public-test-key', endpoint: 'https://example.test', fetchImpl })
+
+    await transport.submitSupplement('request-1', { ...submission(), token: 'continuation' })
+    expect(read).toBe(true)
+  })
 })

@@ -464,6 +464,10 @@ export class HttpTransport implements Transport {
         signal: controller.signal,
       })
       if (!response.ok) throw refusal(response, await refusalCode(response))
+      // Read to the end even though nothing in it is needed: an unread body
+      // keeps its loader alive in Chromium for the life of the page, about
+      // 7 KB per identification in a long-lived single-page app.
+      await response.arrayBuffer().catch(() => undefined)
       return response
     } finally {
       clearTimeout(timer)
