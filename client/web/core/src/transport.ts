@@ -223,7 +223,9 @@ function retryDelay(failure: TransportError, attempt: number): number | null {
   const backoff = backoffMs(attempt, Math.random)
   if (failure.retryAfterMs === undefined) return backoff
   if (failure.retryAfterMs > MAX_RETRY_WAIT_MS) return null
-  return Math.max(backoff, failure.retryAfterMs)
+  // On top of the wait, not instead of it: every page told "1 second" by the
+  // same limiter would otherwise come back on the same tick.
+  return failure.retryAfterMs + backoff
 }
 
 export interface HttpTransportOptions {

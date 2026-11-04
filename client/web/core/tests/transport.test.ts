@@ -272,6 +272,19 @@ describe('HttpTransport under rate limiting and bad answers', () => {
     expect(header(sent[1], 'Idempotency-Key')).toBe(header(sent[0], 'Idempotency-Key'))
   })
 
+  it('spreads retries out past Retry-After rather than all on the same tick', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.5)
+    vi.useFakeTimers()
+    const fetchImpl = vi.fn(async () => (fetchImpl.mock.calls.length === 1 ? limited('1') : ok())) as unknown as typeof fetch & { mock: { calls: unknown[] } }
+    const transport = new HttpTransport({ apiKey: 'public-test-key', endpoint: 'https://example.test', fetchImpl })
+
+    const pending = transport.submit(submission())
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(50)
+    await expect(pending).resolves.toMatchObject({ request_id: 'request-ok' })
+  })
+
   it('reads Retry-After given as an HTTP date', async () => {
     const at = new Date(Date.now() + 60_000).toUTCString()
     const fetchImpl = vi.fn(async () => limited(at)) as typeof fetch
