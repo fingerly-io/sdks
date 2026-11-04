@@ -17,6 +17,14 @@ export const OUTPUT = `${ROOT}console-snippets.json`
 const KEY = 'fly_px_production_…'
 const read = (path) => readFileSync(`${ROOT}${path}`, 'utf8')
 
+/**
+ * What the steps that prompt for the key say. The key is read with `read -rs`
+ * and written by shell builtins, so it never sits on a command line: not in
+ * the shell history, not in the process list. The prompt comes last in its
+ * block, so lines pasted after it cannot be read as the key.
+ */
+const PROMPT = 'The prompt does not echo: paste the proxy key and press Enter. It never appears on a command line, so it stays out of your shell history and the process list.'
+
 /** The Caddyfile's matcher and handle block, without the example site around them. */
 function caddyHandleBlock() {
   const lines = read('caddy/Caddyfile').split('\n')
@@ -54,11 +62,12 @@ export function build() {
         },
         {
           title: 'Store the proxy key',
-          text: 'In its own file, readable only by root. Keep it out of version control.',
+          text: `In its own file, readable only by root. Keep it out of version control. ${PROMPT}`,
           label: 'Terminal',
           code: [
             'sudo install -m 600 -o root -g root /dev/null /etc/nginx/fingerly-proxy-key.conf',
-            `echo 'set $fingerly_proxy_key "${KEY}";' | sudo tee /etc/nginx/fingerly-proxy-key.conf >/dev/null`,
+            "printf 'Proxy key: ' && read -rs proxy_key && echo &&",
+            `  printf 'set $fingerly_proxy_key "%s";\\n' "$proxy_key" | sudo tee /etc/nginx/fingerly-proxy-key.conf >/dev/null; unset proxy_key`,
             '',
           ].join('\n'),
         },

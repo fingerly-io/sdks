@@ -9,9 +9,9 @@
       },
       {
         "title": "Store the proxy key",
-        "text": "In its own file, readable only by root. Keep it out of version control.",
+        "text": "In its own file, readable only by root. Keep it out of version control. The prompt does not echo: paste the proxy key and press Enter. It never appears on a command line, so it stays out of your shell history and the process list.",
         "label": "Terminal",
-        "code": "sudo install -m 600 -o root -g root /dev/null /etc/nginx/fingerly-proxy-key.conf\necho 'set $fingerly_proxy_key \"fly_px_production_…\";' | sudo tee /etc/nginx/fingerly-proxy-key.conf >/dev/null\n"
+        "code": "sudo install -m 600 -o root -g root /dev/null /etc/nginx/fingerly-proxy-key.conf\nprintf 'Proxy key: ' && read -rs proxy_key && echo &&\n  printf 'set $fingerly_proxy_key \"%s\";\\n' \"$proxy_key\" | sudo tee /etc/nginx/fingerly-proxy-key.conf >/dev/null; unset proxy_key\n"
       },
       {
         "title": "Include it in your site",

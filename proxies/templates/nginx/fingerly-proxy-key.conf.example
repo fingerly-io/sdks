@@ -1,4 +1,5 @@
-# Copy to /etc/nginx/fingerly-proxy-key.conf, paste the key the dashboard showed
-# you, and keep that copy out of version control:
-#     sudo install -m 600 -o root -g root fingerly-proxy-key.conf.example /etc/nginx/fingerly-proxy-key.conf
+# The format of /etc/nginx/fingerly-proxy-key.conf, which holds the key the
+# dashboard showed you, is readable only by root and stays out of version
+# control. The README writes it from a prompt, so the key never sits on a
+# command line.
 set $fingerly_proxy_key "fly_px_production_...";

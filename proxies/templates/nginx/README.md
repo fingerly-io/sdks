@@ -14,11 +14,14 @@ method is refused.
    `/k7x2qm4a` with your path in both places: the `location` and the
    `$request_uri` check inside it.
 3. Put the key in its own file, readable only by root, and keep it out of
-   version control:
+   version control. The prompt does not echo: paste the key and press Enter.
+   The key never appears on a command line, so it stays out of your shell
+   history and the process list:
 
    ```sh
    sudo install -m 600 -o root -g root /dev/null /etc/nginx/fingerly-proxy-key.conf
-   echo 'set $fingerly_proxy_key "fly_px_production_...";' | sudo tee /etc/nginx/fingerly-proxy-key.conf >/dev/null
+   printf 'Proxy key: ' && read -rs proxy_key && echo &&
+     printf 'set $fingerly_proxy_key "%s";\n' "$proxy_key" | sudo tee /etc/nginx/fingerly-proxy-key.conf >/dev/null; unset proxy_key
    ```
 
    If `/etc/nginx` is in a repository, add `fingerly-proxy-key.conf` to its

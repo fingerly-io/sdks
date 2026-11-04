@@ -2,7 +2,9 @@
  * Checks on the shipped files themselves: the console snippets match them, the
  * wording rules hold, and every template reports the same version.
  */
-import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { OUTPUT, render } from '../scripts/console-snippets.mjs'
@@ -19,6 +21,35 @@ function files(dir: string): string[] {
 }
 
 const shipped = [...TEMPLATES.flatMap((name) => files(join(ROOT, name))), join(ROOT, 'README.md'), join(ROOT, 'console-snippets.json')]
+
+type Snippets = Record<string, { steps: Array<Record<string, string>> }>
+
+/** The fenced code blocks of a Markdown file, with their list indentation removed. */
+function codeBlocks(markdown: string): string[] {
+  return [...markdown.matchAll(/^( *)```[^\n]*\n([\s\S]*?)^\1```$/gm)].map(([, indent, body]) =>
+    body!.split('\n').map((line) => line.slice(indent!.length)).join('\n'),
+  )
+}
+
+/**
+ * The dashboard steps that put the proxy key in place, per template. Each one's
+ * code must appear in that template's README as a code block, verbatim, so the
+ * two never teach different ways of handling the key.
+ */
+const KEY_STEPS: Record<string, string[]> = {
+  nginx: ['Store the proxy key'],
+}
+
+/**
+ * The steps that prompt for the key, run for real with the key on stdin: the
+ * file they write, relative to the folder they run in once `sudo`, root
+ * ownership and absolute paths are taken out, and what it must hold.
+ */
+const PROMPTED: Array<{ kind: string; title: string; file: string; holds: (key: string) => string }> = [
+  { kind: 'nginx', title: 'Store the proxy key', file: 'fingerly-proxy-key.conf', holds: (key) => `set $fingerly_proxy_key "${key}";\n` },
+]
+
+const SHELLS = ['bash', 'zsh'].filter((shell) => spawnSync(shell, ['-c', 'true']).status === 0)
 
 describe('shipped files', () => {
   it('console-snippets.json is generated from the current templates', () => {
@@ -59,6 +90,38 @@ describe('shipped files', () => {
     for (const text of [readme, ...snippets.netlify!.steps.map((each) => each.code)]) {
       expect(text).not.toMatch(/^\s*(netlify\s+env:(set|import)|ntl\s+env:)/m)
       expect(text).not.toMatch(/env:set\s+FINGERLY_PROXY_KEY\s+\S/)
+    }
+  })
+
+  it.each(Object.entries(KEY_STEPS))('the %s README and the dashboard put the proxy key in place with the same commands', (kind, titles) => {
+    const snippets = JSON.parse(readFileSync(OUTPUT, 'utf8')) as Snippets
+    const blocks = codeBlocks(readFileSync(join(ROOT, kind, 'README.md'), 'utf8'))
+    for (const title of titles) {
+      const step = snippets[kind]!.steps.find((each) => each.title === title)
+      expect(step, `${kind}: ${title}`).toBeDefined()
+      expect(blocks, `${kind}: ${title}`).toContain(step!.code)
+    }
+  })
+
+  it.each(PROMPTED)('the $kind step "$title" writes the key it was given at the prompt, readable only by its owner', ({ kind, title, file, holds }) => {
+    const snippets = JSON.parse(readFileSync(OUTPUT, 'utf8')) as Snippets
+    const code = snippets[kind]!.steps.find((each) => each.title === title)!.code!
+    const local = code.replaceAll('sudo ', '').replaceAll(' -o root -g root', '').replace(/\/etc\/\w+\//g, '')
+    const key = 'fly_px_production_k3yFromThePrompt'
+    expect(SHELLS.length).toBeGreaterThan(0)
+    for (const shell of SHELLS) {
+      const dir = mkdtempSync(join(tmpdir(), 'prompted-'))
+      try {
+        // A stale file with open permissions, as a second run would find.
+        writeFileSync(join(dir, file), 'stale\n', { mode: 0o644 })
+        const run = spawnSync(shell, ['-c', local], { cwd: dir, input: `${key}\n`, encoding: 'utf8' })
+        expect(run.status, `${shell}: ${run.stderr}`).toBe(0)
+        expect(run.stdout, shell).not.toContain(key)
+        expect(readFileSync(join(dir, file), 'utf8'), shell).toBe(holds(key))
+        expect(statSync(join(dir, file)).mode & 0o777, shell).toBe(0o600)
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
     }
   })
 
