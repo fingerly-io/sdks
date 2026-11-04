@@ -30,6 +30,9 @@
   written the same way, instead of `FINGERLY_PROXY_KEY=<key> docker compose
   up`. On Kubernetes the Secret is created with `--from-file` from a file
   written from a prompt and then removed, instead of `--from-literal`.
+- A test holds every README and dashboard step except Cloud Run's (out of
+  scope for now) to never carrying the key on a command line, and runs each
+  prompt in bash and zsh to check the file it writes.
 - The Vercel, Netlify, container and Cloud Run templates read the API's answer
   whole, capped at 4 MiB and under one 5-second deadline, before relaying it:
   a timeout answers 504, and an unreachable API, a broken answer or one over

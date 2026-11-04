@@ -62,7 +62,10 @@ to the container.
   nginx and Caddy drop `Set-Cookie` and pin `no-store`; the API sends nothing
   naming Fingerly to proxied callers, so that is defense in depth.
 - Keeps the proxy key out of shipped files: an environment variable, a secret
-  store, a root-only include file or a `NoEcho` parameter.
+  store, a root-only include file or a `NoEcho` parameter. The nginx, Caddy,
+  Vercel, Netlify, CloudFront, container and Traefik steps never put it on a
+  command line, where it would land in the shell history: they prompt for it,
+  read it from a file only its owner can read, or use the platform's UI.
 
 Point the browser SDK at the path with `endpoints: '/k7x2qm4a'`.
 

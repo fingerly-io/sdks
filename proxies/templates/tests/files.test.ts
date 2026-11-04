@@ -72,6 +72,35 @@ const PROMPTED: Array<{ name: string; code: () => string; file: string; holds: (
 
 const SHELLS = ['bash', 'zsh'].filter((shell) => spawnSync(shell, ['-c', 'true']).status === 0)
 
+/**
+ * The templates whose READMEs and dashboard steps must never carry the key on
+ * a command line. The Cloud Run template is out of scope for now and keeps its
+ * current steps, so it is left out until it is revisited.
+ */
+const KEY_OFF_COMMAND_LINE = TEMPLATES.filter((name) => name !== 'gcp-cloud-run')
+
+/**
+ * A command that carries the key itself: any proxy key or placeholder for one,
+ * a variable assigned a value, or a flag that takes the value as an argument.
+ * `printf 'FINGERLY_PROXY_KEY=%s'` writing the prompted value is allowed.
+ */
+const KEY_ON_COMMAND = [
+  /fly_px_/,
+  /FINGERLY_PROXY_KEY=(?!%s)\S/,
+  /--from-literal/,
+  /env:set\s+FINGERLY_PROXY_KEY\s+\S/,
+  /--parameter-overrides\b.*ProxyKey/,
+]
+
+/** The shell commands a README shows: its shell code blocks, and inline code that runs a command. */
+function readmeCommands(markdown: string): string[] {
+  const blocks = [...markdown.matchAll(/^( *)```(sh|bash|shell|console)\n([\s\S]*?)^\1```$/gm)].flatMap((match) => match[3]!.split('\n'))
+  const inline = [...markdown.replace(/^( *)```[\s\S]*?^\1```$/gm, '').matchAll(/`([^`\n]+)`/g)]
+    .map((match) => match[1]!)
+    .filter((span) => /^(\S+=\S+\s+)*(sudo|echo|printf|export|docker|kubectl|gcloud|netlify|ntl|vercel|aws|install|tee)\s/.test(span))
+  return [...blocks, ...inline]
+}
+
 describe('shipped files', () => {
   it('console-snippets.json is generated from the current templates', () => {
     expect(readFileSync(OUTPUT, 'utf8')).toBe(render())
@@ -141,6 +170,31 @@ describe('shipped files', () => {
       } finally {
         rmSync(dir, { recursive: true, force: true })
       }
+    }
+  })
+
+  it.each(KEY_OFF_COMMAND_LINE)('the %s README and dashboard steps never put the proxy key on a command line', (kind) => {
+    const snippets = JSON.parse(readFileSync(OUTPUT, 'utf8')) as Snippets
+    const commands = [
+      ...readmeCommands(readFileSync(join(ROOT, kind, 'README.md'), 'utf8')),
+      ...snippets[kind]!.steps.filter((step) => step.label === 'Terminal').flatMap((step) => step.code!.split('\n')),
+    ]
+    for (const line of commands) {
+      for (const pattern of KEY_ON_COMMAND) expect(line, kind).not.toMatch(pattern)
+    }
+    // Nor in a comment that shows a command, in the files the template ships.
+    for (const path of files(join(ROOT, kind))) {
+      for (const line of readFileSync(path, 'utf8').split('\n')) {
+        if (/\b(echo|printf|export|kubectl|gcloud|docker|netlify|vercel|aws)\b/.test(line)) {
+          for (const pattern of KEY_ON_COMMAND) expect(line, relative(ROOT, path)).not.toMatch(pattern)
+        }
+      }
+    }
+  })
+
+  it('the top-level README never puts the proxy key on a command line', () => {
+    for (const line of readmeCommands(readFileSync(join(ROOT, 'README.md'), 'utf8'))) {
+      for (const pattern of KEY_ON_COMMAND) expect(line).not.toMatch(pattern)
     }
   })
 
