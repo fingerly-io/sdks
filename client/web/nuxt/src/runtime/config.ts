@@ -19,10 +19,15 @@ import type { FingerlyPublicConfig } from '../options.js'
  * that fails - with the SDK's own message about a missing key, at the moment
  * somebody is looking for it.
  */
+let warnedMissingKey = false
+
 export function toVueOptions(config: Partial<FingerlyPublicConfig> | undefined): FingerlyVueOptions {
   const apiKey = config?.apiKey ?? ''
 
-  if (!apiKey) {
+  if (!apiKey && !warnedMissingKey) {
+    // Once per process: the plugin runs on every server render, and a line
+    // per request buries the logs it is meant to stand out in.
+    warnedMissingKey = true
     console.warn(
       '[fingerly] No SDK key. Set NUXT_PUBLIC_FINGERLY_API_KEY in the environment, ' +
         'or fingerly.apiKey in nuxt.config.ts. Identification will fail until one is set.',

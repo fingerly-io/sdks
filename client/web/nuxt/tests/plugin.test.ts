@@ -198,6 +198,15 @@ describe('the runtime plugin', () => {
     expect(loadMock).toHaveBeenCalledWith({ apiKey: 'pk_runtime', endpoints: ['/k7x2qm4a'], consent: 'granted' })
   })
 
+  it('warns about a missing key once per process, not once per render', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    __setRuntimeConfig({ fingerly: { apiKey: '' } })
+
+    for (let i = 0; i < 5; i++) mountWithPlugin(() => useIdentify())
+
+    expect(warn.mock.calls.length).toBeLessThanOrEqual(1)
+  })
+
   it('tolerates a runtime config with no fingerly block', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     __setRuntimeConfig({})
