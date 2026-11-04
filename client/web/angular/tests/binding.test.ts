@@ -274,6 +274,21 @@ describe('injectIdentify', () => {
     expect(fingerly.isLoading()).toBe(false)
   })
 
+  it('stops loading and reports the error when the client cannot be built', async () => {
+    // A synchronous throw out of load() used to reach Angular's ErrorHandler
+    // instead, and isLoading() stayed true for good.
+    loadMock.mockImplementation(() => {
+      throw new Error('An SDK key is required')
+    })
+    application({ apiKey: '', consent: 'granted' })
+    const fingerly = TestBed.runInInjectionContext(() => injectIdentify({ immediate: true }))
+
+    await render()
+
+    expect(fingerly.error()?.message).toBe('An SDK key is required')
+    expect(fingerly.isLoading()).toBe(false)
+  })
+
   it('retries after a failure rather than serving the rejection forever', async () => {
     identifyMock.mockRejectedValueOnce(new Error('collector exploded'))
     application({ apiKey: 'fly_pk_development_test', consent: 'granted' })
