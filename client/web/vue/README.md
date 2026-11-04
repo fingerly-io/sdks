@@ -230,7 +230,7 @@ const {
   identifiable,      // Ref<boolean>:              false when the signals were too thin
   duplicate,         // Ref<boolean>:              answered before; this is the first answer
   state,             // Ref<string | null>:        the server's disposition
-  reason,            // Ref<string | null>:        why, when state needs explaining
+  reason,            // Ref<string | null>:        always null (deprecated); your backend reads it on the event
   suspectScore,      // Ref<number | null>:        null when nothing scored it
   suspectLevel,      // Ref<string | null>:        low, medium, high
   triggers,          // Ref<IdentifyTrigger[]>:    what the server scored on

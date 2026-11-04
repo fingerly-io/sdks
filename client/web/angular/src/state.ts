@@ -75,7 +75,11 @@ export interface Fingerly {
   readonly duplicate: Signal<boolean>
   /** The server's disposition of the check. */
   readonly state: Signal<string | null>
-  /** Why, when `state` needs explaining. */
+  /**
+   * @deprecated Always `null`. A browser is no longer told why a check went
+   * unscored; your backend reads `reason` on the server-side event read, by
+   * `requestId`. Kept so code written against 0.1.0 still compiles.
+   */
   readonly reason: Signal<string | null>
   /**
    * The server's score, 0-100, or null when it did not score.
@@ -271,7 +275,6 @@ export function createFingerly(options: FingerlyOptions): Fingerly {
         identifiable.set(result.identifiable)
         duplicate.set(result.duplicate)
         state.set(result.state === '' ? null : result.state)
-        reason.set(result.reason === '' ? null : result.reason)
         suspectScore.set(result.suspectScore)
         suspectLevel.set(result.suspectLevel)
         triggers.set(result.triggers)

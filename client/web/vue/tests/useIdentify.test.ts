@@ -71,7 +71,6 @@ const RESULT = {
   identifiable: true,
   duplicate: false,
   state: 'scored',
-  reason: '',
   suspectScore: 41,
   suspectLevel: 'medium',
   triggers: [{ signal: 'patched-natives', group: 'automation', weight: 22, confidence: 'high', reason: '' }],
@@ -300,8 +299,26 @@ describe('useIdentify', () => {
     expect(result.suspectLevel.value).toBe('medium')
     expect(result.triggers.value).toHaveLength(1)
     expect(result.triggers.value[0]?.signal).toBe('patched-natives')
-    // Empty on the wire means "nothing to say", and null is how this binding
-    // says that - so a template can use `reason ?? fallback`.
+    // A 0.1.1 result has no reason at all. The deprecated field is null, not
+    // undefined, so it still matches its type.
+    expect(result.reason.value).toBeNull()
+  })
+
+  it('never surfaces why a check went unscored, which only a backend is told', async () => {
+    identifyMock.mockResolvedValueOnce({
+      ...RESULT,
+      state: 'unavailable',
+      // As an older core passed it on. The binding does not.
+      reason: 'ip-database-not-loaded',
+      suspectScore: null,
+      suspectLevel: null,
+      triggers: [],
+    })
+    const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'fly_pk_development_test', consent: 'granted' }))
+
+    await result.identify()
+
+    expect(result.state.value).toBe('unavailable')
     expect(result.reason.value).toBeNull()
   })
 

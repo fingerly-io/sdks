@@ -78,6 +78,11 @@ export interface FingerlyState {
   /** This submission was answered before; the fields above are empty. */
   duplicate: boolean
   state: string | null
+  /**
+   * @deprecated Always `null`. A browser is no longer told why a check went
+   * unscored; your backend reads `reason` on the server-side event read, by
+   * `requestId`. Kept so code written against 0.1.0 still compiles.
+   */
   reason: string | null
   /** Null when not scored, which is a different answer from zero. */
   suspectScore: number | null
@@ -306,7 +311,7 @@ export function createFingerlyStore(options: FingerlyReactOptions): FingerlyStor
           identifiable: result.identifiable,
           duplicate: result.duplicate,
           state: result.state === '' ? null : result.state,
-          reason: result.reason === '' ? null : result.reason,
+          reason: null,
           suspectScore: result.suspectScore,
           suspectLevel: result.suspectLevel,
           triggers: result.triggers,

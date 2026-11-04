@@ -227,7 +227,7 @@ fingerly.visitorConfidence() // number:               0 to 100
 fingerly.identifiable()      // boolean:              false when the signals were too thin
 fingerly.duplicate()         // boolean:              answered before; this is the first answer
 fingerly.state()             // string | null:        the server's disposition
-fingerly.reason()            // string | null:        why, when state needs explaining
+fingerly.reason()            // string | null:        always null (deprecated); your backend reads it on the event
 fingerly.suspectScore()      // number | null:        null when nothing scored it
 fingerly.suspectLevel()      // string | null:        low, medium, high
 fingerly.triggers()          // IdentifyTrigger[]:    what the server scored on

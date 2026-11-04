@@ -72,6 +72,11 @@ export interface FingerlyState {
   identifiable: ShallowRef<boolean>
   duplicate: ShallowRef<boolean>
   state: ShallowRef<string | null>
+  /**
+   * @deprecated Always `null`. A browser is no longer told why a check went
+   * unscored; your backend reads `reason` on the server-side event read, by
+   * `requestId`. Kept so code written against 0.1.0 still compiles.
+   */
   reason: ShallowRef<string | null>
   suspectScore: ShallowRef<number | null>
   suspectLevel: ShallowRef<string | null>
@@ -274,7 +279,6 @@ export function createFingerly(options: FingerlyVueOptions): Plugin {
         state.identifiable.value = result.identifiable
         state.duplicate.value = result.duplicate
         state.state.value = result.state === '' ? null : result.state
-        state.reason.value = result.reason === '' ? null : result.reason
         state.suspectScore.value = result.suspectScore
         state.suspectLevel.value = result.suspectLevel
         state.triggers.value = result.triggers
@@ -327,6 +331,7 @@ export type ReadonlyState = {
   identifiable: Readonly<ShallowRef<boolean>>
   duplicate: Readonly<ShallowRef<boolean>>
   state: Readonly<ShallowRef<string | null>>
+  /** @deprecated Always `null`; see [[FingerlyState.reason]]. */
   reason: Readonly<ShallowRef<string | null>>
   suspectScore: Readonly<ShallowRef<number | null>>
   suspectLevel: Readonly<ShallowRef<string | null>>

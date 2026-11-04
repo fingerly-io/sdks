@@ -7,6 +7,7 @@
 - No source maps are shipped; they pointed at sources the package does not include.
 - The README's layout uses `{@render children()}` and shows a SvelteKit proxy endpoint.
 - `isSuspicious` no longer counts the `shields` verdict. It says a privacy browser is rewriting some values, which is never a reason to challenge anyone, so a privacy-conscious visitor no longer reads as suspicious on that alone. The other five verdicts count as before.
+- `reason` is deprecated and always `null`, never `undefined`: a browser is no longer told why a check went unscored. Your backend reads it on the server-side event read, by `requestId`.
 - Uses @fingerly/web-js 0.1.1.
 
 ## 0.1.0
