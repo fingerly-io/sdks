@@ -231,3 +231,94 @@ describe('API version configuration', () => {
     expect(() => new HttpTransport({ apiKey: 'public-test-key', apiVersion })).toThrow(TypeError)
   })
 })
+
+describe('HttpTransport under rate limiting and bad answers', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.useRealTimers()
+  })
+
+  const ok = () => new Response('{"request_id":"request-ok"}', { status: 200, headers: { 'content-type': 'application/json' } })
+  const limited = (retryAfter?: string) =>
+    new Response('{"error":{"code":"rate_limited"}}', {
+      status: 429,
+      headers: { 'content-type': 'application/json', ...(retryAfter === undefined ? {} : { 'retry-after': retryAfter }) },
+    })
+
+  it('returns a long Retry-After to the caller after one request instead of retrying', async () => {
+    const fetchImpl = vi.fn(async () => limited('7')) as typeof fetch
+    const transport = new HttpTransport({ apiKey: 'public-test-key', endpoint: 'https://example.test', fetchImpl })
+
+    await expect(transport.submit(submission())).rejects.toMatchObject({ status: 429, retryable: true, retryAfterMs: 7000 })
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+
+  it('waits out a short Retry-After before the retry, with the same idempotency key', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    vi.useFakeTimers()
+    const sent: RequestInit[] = []
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      sent.push(init ?? {})
+      return sent.length === 1 ? limited('1') : ok()
+    }) as typeof fetch
+    const transport = new HttpTransport({ apiKey: 'public-test-key', endpoint: 'https://example.test', fetchImpl })
+
+    const pending = transport.submit(submission())
+    await vi.advanceTimersByTimeAsync(999)
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1)
+    await expect(pending).resolves.toMatchObject({ request_id: 'request-ok' })
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+    expect(header(sent[1], 'Idempotency-Key')).toBe(header(sent[0], 'Idempotency-Key'))
+  })
+
+  it('reads Retry-After given as an HTTP date', async () => {
+    const at = new Date(Date.now() + 60_000).toUTCString()
+    const fetchImpl = vi.fn(async () => limited(at)) as typeof fetch
+    const transport = new HttpTransport({ apiKey: 'public-test-key', endpoint: 'https://example.test', fetchImpl })
+
+    const error = (await transport.submit(submission()).catch((e: unknown) => e)) as TransportError
+    expect(error.retryAfterMs).toBeGreaterThan(50_000)
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not ask a single endpoint again after a 404', async () => {
+    const fetchImpl = vi.fn(async () => new Response('Not Found', { status: 404 })) as typeof fetch
+    const transport = new HttpTransport({ apiKey: 'public-test-key', endpoints: '/k7x2qm4a', fetchImpl })
+
+    await expect(transport.submit(submission())).rejects.toMatchObject({ status: 404, retryable: false })
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+
+  it('moves on to the next endpoint after a 404, once', async () => {
+    const urls: string[] = []
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      urls.push(String(input))
+      return urls.length === 1 ? new Response('', { status: 404 }) : ok()
+    }) as typeof fetch
+    const transport = new HttpTransport({ apiKey: 'public-test-key', endpoints: ['/first', '/second'], fetchImpl })
+
+    await expect(transport.submit(submission())).resolves.toMatchObject({ request_id: 'request-ok' })
+    expect(urls).toEqual(['/first', '/second'])
+  })
+
+  it('never retries a 2xx that is not JSON, and never quotes it', async () => {
+    const fetchImpl = vi.fn(async () => new Response('<html>portal secret-token</html>', { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch
+    const transport = new HttpTransport({ apiKey: 'public-test-key', endpoint: 'https://example.test', fetchImpl })
+
+    const error = (await transport.submit(submission()).catch((e: unknown) => e)) as TransportError
+    expect(error).toBeInstanceOf(TransportError)
+    expect(error.retryable).toBe(false)
+    expect(error.message).not.toContain('portal')
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+
+  it('refuses an answer over 4 MiB without reading it', async () => {
+    const fetchImpl = vi.fn(async () => new Response('{}', { status: 200, headers: { 'content-length': String(5 * 1024 * 1024) } })) as typeof fetch
+    const transport = new HttpTransport({ apiKey: 'public-test-key', endpoint: 'https://example.test', fetchImpl })
+
+    await expect(transport.submit(submission())).rejects.toMatchObject({ retryable: false })
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+
+})

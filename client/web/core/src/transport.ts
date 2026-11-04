@@ -127,9 +127,33 @@ export class TransportError extends Error {
     readonly retryable = false,
     /** The server's error code, such as `consent_required`, when it sent one. */
     readonly code?: string,
+    /**
+     * How long the server asked the caller to wait, from `Retry-After`, in
+     * milliseconds. Present on a 429 or 503 that said; absent otherwise.
+     */
+    readonly retryAfterMs?: number,
   ) {
     super(message)
   }
+}
+
+/** The most of a response this SDK reads: an answer is a few kilobytes. */
+const MAX_RESPONSE_BYTES = 4 * 1024 * 1024
+
+/**
+ * The longest `Retry-After` an identification waits out by itself. Longer
+ * than this and the visitor is better served by the page deciding, so the
+ * refusal is returned with `retryAfterMs` instead of being retried.
+ */
+const MAX_RETRY_WAIT_MS = 2000
+
+/** `Retry-After` as delta-seconds or an HTTP date, in milliseconds. */
+function retryAfterMs(response: Response): number | undefined {
+  const value = response.headers.get('retry-after')?.trim()
+  if (!value) return undefined
+  if (/^\d+$/.test(value)) return Number(value) * 1000
+  const at = Date.parse(value)
+  return Number.isFinite(at) ? Math.max(0, at - Date.now()) : undefined
 }
 
 /**
@@ -154,7 +178,47 @@ function refusal(response: Response, code: string | undefined): TransportError {
     response.status,
     isRetryableStatus(response.status),
     code,
+    retryAfterMs(response),
   )
+}
+
+/**
+ * Reads a successful answer, refusing anything that is not this API's JSON.
+ *
+ * Never retried: a captive portal or a proxy error page answers the same way
+ * the next time. The message never quotes the body, which is whatever that
+ * page happened to send.
+ */
+async function readAnswer(response: Response): Promise<Partial<SubmitResponse>> {
+  const unreadable = () =>
+    new TransportError('The server answered with a response this SDK cannot read', response.status, false)
+  if (Number(response.headers.get('content-length')) > MAX_RESPONSE_BYTES) {
+    void response.body?.cancel().catch(() => undefined)
+    throw unreadable()
+  }
+  const text = await response.text()
+  if (text.length > MAX_RESPONSE_BYTES) throw unreadable()
+  try {
+    const parsed: unknown = JSON.parse(text)
+    if (parsed === null || typeof parsed !== 'object') throw unreadable()
+    return parsed as Partial<SubmitResponse>
+  } catch {
+    throw unreadable()
+  }
+}
+
+/**
+ * How long to wait before the next attempt, or null when there should be none.
+ *
+ * A `Retry-After` is honoured when it is short, and ends the call when it is
+ * long: retrying sooner than the server asked only earns another 429, and
+ * every one of them counts against the customer's rate limit.
+ */
+function retryDelay(failure: TransportError, attempt: number): number | null {
+  const backoff = backoffMs(attempt, Math.random)
+  if (failure.retryAfterMs === undefined) return backoff
+  if (failure.retryAfterMs > MAX_RETRY_WAIT_MS) return null
+  return Math.max(backoff, failure.retryAfterMs)
 }
 
 export interface HttpTransportOptions {
@@ -185,13 +249,22 @@ export interface HttpTransportOptions {
 /**
  * Which failures are worth trying again.
  *
- * 429 and 5xx are the server asking for patience. A 4xx that is not 429 is the
+ * 408, 429 and 5xx are the server asking for patience. Any other 4xx is the
  * request being wrong, and repeating it only burns the visitor's battery and
  * the customer's rate limit - notably 401, where retrying a key that does not
  * match cannot make it match.
  */
 function isRetryableStatus(status: number): boolean {
-  return status === 404 || status === 405 || status === 408 || status === 425 || status === 429 || (status >= 500 && status <= 599)
+  return status === 408 || status === 429 || (status >= 500 && status <= 599)
+}
+
+/**
+ * A 404 or 405 from one configured endpoint says that endpoint is not there,
+ * which is a reason to try the next one in the list, and no reason to ask the
+ * same one again.
+ */
+function isMissingEndpoint(failure: TransportError): boolean {
+  return failure.status === 404 || failure.status === 405
 }
 
 /** An API's own URL for both calls, from its origin. */
@@ -316,12 +389,13 @@ export class HttpTransport implements Transport {
                 true,
               )
 
-        if (!failure.retryable || attempt === this.maxAttempts) throw failure
+        const delay = this.nextAttempt(failure, attempt, endpointIndex)
+        if (delay === null) throw failure
         lastError = failure
 
         endpointIndex = Math.min(endpointIndex + 1, this.urls.length - 1)
 
-        await new Promise((resolve) => setTimeout(resolve, backoffMs(attempt, Math.random)))
+        await new Promise((resolve) => setTimeout(resolve, delay))
       }
     }
 
@@ -353,13 +427,23 @@ export class HttpTransport implements Transport {
         const failure = error instanceof TransportError
           ? error
           : new TransportError(error instanceof Error ? error.message : 'The supplement could not be sent', undefined, true)
-        if (!failure.retryable || attempt === this.maxAttempts) throw failure
+        const delay = this.nextAttempt(failure, attempt, endpointIndex)
+        if (delay === null) throw failure
         lastError = failure
         endpointIndex = Math.min(endpointIndex + 1, this.urls.length - 1)
-        await new Promise((resolve) => setTimeout(resolve, backoffMs(attempt, Math.random)))
+        await new Promise((resolve) => setTimeout(resolve, delay))
       }
     }
     throw lastError ?? new TransportError('The supplement could not be sent')
+  }
+
+  /** The wait before another attempt after `failure`, or null for none. */
+  private nextAttempt(failure: TransportError, attempt: number, endpointIndex: number): number | null {
+    if (attempt === this.maxAttempts) return null
+    if (failure.retryable) return retryDelay(failure, attempt)
+    // Only onwards to another endpoint, and only once per endpoint.
+    if (isMissingEndpoint(failure) && endpointIndex < this.urls.length - 1) return 0
+    return null
   }
 
   private async postJSON(
@@ -417,7 +501,7 @@ export class HttpTransport implements Transport {
 
       if (!response.ok) throw refusal(response, await refusalCode(response))
 
-      const responseBody = (await response.json()) as Partial<SubmitResponse>
+      const responseBody = await readAnswer(response)
       if (typeof responseBody?.request_id !== 'string' || responseBody.request_id === '') {
         // A 2xx without an identifier means something answered that is not
         // this API - a captive portal or a proxy's error page. Not retryable:
