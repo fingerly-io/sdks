@@ -97,6 +97,9 @@ export function clientIpReader(source) {
   throw new Error(`FINGERLY_CLIENT_IP_SOURCE must be remote, header:<name> or xff:<n>, not ${JSON.stringify(source)}`)
 }
 
+/** Reported once per process rather than per request: it is configuration. */
+let reportedMissingAddress = false
+
 function plain(res, status, message, extra = {}) {
   res.writeHead(status, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', ...extra })
   res.end(message)
@@ -144,6 +147,15 @@ export function createRelay(env = process.env) {
         req.resume()
         return plain(res, 413, 'Payload Too Large')
       }
+      const visitorIp = clientIp(req)
+      if (!visitorIp) {
+        req.resume()
+        if (!reportedMissingAddress) {
+          reportedMissingAddress = true
+          console.error('proxy: the client IP source held no valid address; nothing was forwarded')
+        }
+        return plain(res, 500, 'The client IP source returned no valid address')
+      }
       const body = await readBody(req)
       if (body === null) return plain(res, 413, 'Payload Too Large')
 
@@ -153,7 +165,7 @@ export function createRelay(env = process.env) {
         'content-type': header(req, 'content-type') ?? 'application/json',
         'x-api-key': publicKey,
         'x-fingerly-proxy-key': proxyKey,
-        'x-fingerly-client-ip': clientIp(req),
+        'x-fingerly-client-ip': visitorIp,
         'x-fingerly-origin': header(req, 'origin') ?? `https://${header(req, 'host') ?? ''}`,
         'x-fingerly-user-agent': header(req, 'user-agent') ?? '',
         'x-fingerly-proxy-version': `${PRESET.kind}/${VERSION}`,

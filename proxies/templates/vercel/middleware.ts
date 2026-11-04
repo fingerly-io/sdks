@@ -52,7 +52,31 @@ function clientIp(request: Request): string {
 }
 
 function plain(status: number, message: string, extra: Record<string, string> = {}): Response {
-  return new Response(message, { status, headers: { 'cache-control': 'no-store', ...extra } })
+  return new Response(message, { status, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', ...extra } })
+}
+
+const IPV4 = /^(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/
+
+/** Whether the value is one IPv4 or IPv6 literal and nothing else. */
+function isIpLiteral(value: string): boolean {
+  if (IPV4.test(value)) return true
+  if (!/^[0-9A-Fa-f:.]+$/.test(value) || !value.includes(':')) return false
+  try {
+    return new URL(`http://[${value}]/`).hostname.length > 2
+  } catch {
+    return false
+  }
+}
+
+/** Reported once per instance rather than per request: it is configuration. */
+let reportedMissingAddress = false
+
+function noAddress(): Response {
+  if (!reportedMissingAddress) {
+    reportedMissingAddress = true
+    console.error('proxy: the client IP source held no valid address; nothing was forwarded')
+  }
+  return plain(500, 'The client IP source returned no valid address')
 }
 
 export default async function middleware(request: Request): Promise<Response> {
@@ -64,6 +88,8 @@ export default async function middleware(request: Request): Promise<Response> {
   if (!isProxyKey(proxyKey)) return plain(503, 'Service Unavailable')
   const publicKey = request.headers.get('x-api-key')
   if (!publicKey) return plain(401, 'Unauthorized')
+  const visitorIp = (clientIp(request) ?? '').trim()
+  if (!isIpLiteral(visitorIp)) return noAddress()
   const declaredLength = Number(request.headers.get('content-length') ?? '0')
   if (Number.isFinite(declaredLength) && declaredLength > MAX_BODY_BYTES) return plain(413, 'Payload Too Large')
   const body = await request.arrayBuffer()
@@ -75,7 +101,7 @@ export default async function middleware(request: Request): Promise<Response> {
     'content-type': request.headers.get('content-type') ?? 'application/json',
     'x-api-key': publicKey,
     'x-fingerly-proxy-key': proxyKey,
-    'x-fingerly-client-ip': clientIp(request),
+    'x-fingerly-client-ip': visitorIp,
     'x-fingerly-origin': request.headers.get('origin') ?? url.origin,
     'x-fingerly-user-agent': request.headers.get('user-agent') ?? '',
     'x-fingerly-proxy-version': `vercel/${VERSION}`,

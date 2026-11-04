@@ -411,6 +411,26 @@ describe.each(targets)('$kind template', (target) => {
   })
 })
 
+describe('a client IP source with no valid address', () => {
+  beforeAll(() => stubUpstream())
+  afterEach(() => { upstreamCalls = [] })
+
+  it.each([vercelTarget, netlifyTarget])('$kind: forwards nothing and answers 500', async (target) => {
+    target.setKey(KEY)
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    for (const ip of ['', 'null', '1.2.3.4, 5.6.7.8', 'not-an-address']) {
+      const headers = target.kind === 'vercel' ? { ...visitor, 'x-real-ip': ip, 'x-forwarded-for': ip } : visitor
+      const result = await target.call({ headers, ip })
+      expect(result.status, ip).toBe(500)
+      expect(result.body).toMatch(/no valid address/)
+      expect(result.headers.get('cache-control')).toBe('no-store')
+    }
+    expect(upstreamCalls).toHaveLength(0)
+    expect(errors.mock.calls.length).toBeLessThanOrEqual(1)
+    errors.mockRestore()
+  })
+})
+
 describe('platform specifics', () => {
   beforeAll(() => stubUpstream())
   afterEach(() => { upstreamCalls = [] })
@@ -430,8 +450,10 @@ describe('platform specifics', () => {
     })
     await post(`1.1.1.1, 6.6.6.6,${TRUSTED_IP},34.120.0.1`)
     await post(`${TRUSTED_IP},34.120.0.1`)
-    await post('6.6.6.6')
-    expect(upstreamCalls.map((call) => call.headers.get('x-fingerly-client-ip'))).toEqual([TRUSTED_IP, TRUSTED_IP, ''])
+    const alone = await post('6.6.6.6')
+    expect(upstreamCalls.map((call) => call.headers.get('x-fingerly-client-ip'))).toEqual([TRUSTED_IP, TRUSTED_IP])
+    // Too few entries to hold the load balancer's: nothing is forwarded.
+    expect(alone.status).toBe(500)
   })
 
   it('gcp-cloud-run: answers nothing when FINGERLY_PATH is unset', async () => {
