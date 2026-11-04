@@ -140,14 +140,18 @@ export function useIdentify(options: UseIdentifyOptions = {}): UseIdentifyReturn
     // one: the failure is already in `error`, which is where a component that
     // opted into `immediate` will look for it. A caller who wants to await the
     // outcome calls identify() themselves.
-    void identify().catch(() => undefined)
-  }, [immediate, consented, identify])
+    // Marked automatic, so a failure's hold applies: a remount while the API
+    // is refusing must not send another identification.
+    const tag = resolveTag(tagRef.current)
+    void fingerly.identify({ ...(tag === undefined ? {} : { tag }), automatic: true }).catch(() => undefined)
+  }, [immediate, consented, fingerly])
 
   // Suspending reads the same memoised promise the store hands everyone else,
   // which is what makes this legal: `use()` recognises a pending value by the
   // promise's identity, and a fresh promise per render would suspend forever.
   if (suspend && consented && typeof window !== 'undefined' && state.report === null) {
-    use(identify())
+    const tag = resolveTag(tagRef.current)
+    use(fingerly.identify({ ...(tag === undefined ? {} : { tag }), automatic: true }))
   }
 
   const isReady = state.report !== null || state.error !== null

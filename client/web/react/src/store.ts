@@ -155,7 +155,28 @@ export interface FingerlyStore {
    * `force` starts a fresh identification, which is what a long-lived SPA
    * wants before a second checkout.
    */
-  identify(options?: { tag?: string; force?: boolean }): Promise<IdentifyResult>
+  identify(options?: { tag?: string; force?: boolean; automatic?: boolean }): Promise<IdentifyResult>
+}
+
+/**
+ * How long a failed identification holds off the next one.
+ *
+ * Without this a failure was forgotten at once, and every component mounting
+ * with `immediate` started another identification - three requests per route
+ * change while the API was answering 429, each one counting against the
+ * customer's limit. A `Retry-After` the server sent holds every call, forced
+ * or not, until it passes. A transient failure without one (a 5xx, a network
+ * error, a 429 with no header) holds automatic calls only, for 5 s doubling
+ * per consecutive failure up to a minute; a click still tries straight away.
+ * Anything else - a bad key, a refusal - holds nothing, because waiting
+ * cannot change it and the first answer costs nothing.
+ */
+export function failureHold(error: unknown, consecutive: number, now: number): { until: number; automaticUntil: number } {
+  const failure = error as { retryAfterMs?: unknown; retryable?: unknown } | null
+  const retryAfter = typeof failure?.retryAfterMs === 'number' && failure.retryAfterMs > 0 ? failure.retryAfterMs : 0
+  const transient = failure?.retryable === true
+  const backoff = transient ? Math.min(60_000, 5_000 * 2 ** Math.max(0, consecutive - 1)) : 0
+  return { until: now + retryAfter, automaticUntil: now + Math.max(retryAfter, backoff) }
 }
 
 /** Thrown when the SDK is asked to collect somewhere there is no browser. */
@@ -200,6 +221,8 @@ export function createFingerlyStore(options: FingerlyReactOptions): FingerlyStor
   let clientPromise: Promise<FingerlyClient> | undefined
   let loaded: FingerlyClient | undefined
   let current: Promise<IdentifyResult> | undefined
+  let held: { promise: Promise<IdentifyResult>; until: number; automaticUntil: number } | undefined
+  let consecutiveFailures = 0
 
   const mirrorConsent = (consent: ConsentState): void => {
     if (state.consent !== consent) setState({ consent })
@@ -254,6 +277,11 @@ export function createFingerlyStore(options: FingerlyReactOptions): FingerlyStor
     // the whole fingerprint. A promise has an identity either way.
     if (current && !identifyOptions.force) return current
 
+    // Holding off after a failure; see failureHold. The same rejected promise
+    // each time, so a suspended component sees one stable value.
+    const now = Date.now()
+    if (held && (now < held.until || (identifyOptions.automatic && now < held.automaticUntil))) return held.promise
+
     // Deferred by a microtask, and this one is not cosmetic. A component using
     // `suspend` calls identify() *during render*, and a store that notified
     // its subscribers there would be updating other components mid-render -
@@ -285,6 +313,8 @@ export function createFingerlyStore(options: FingerlyReactOptions): FingerlyStor
           verdicts: result.verdicts,
           report: result.report,
         })
+        held = undefined
+        consecutiveFailures = 0
         return result
       })
       .catch((cause: unknown) => {
@@ -294,6 +324,10 @@ export function createFingerlyStore(options: FingerlyReactOptions): FingerlyStor
         // rejected promise forever. A failed identification is worth another
         // attempt; a suspended component would otherwise never get one.
         if (current === run) current = undefined
+        consecutiveFailures += 1
+        const rejected = Promise.reject(error)
+        rejected.catch(() => undefined)
+        held = { promise: rejected, ...failureHold(error, consecutiveFailures, Date.now()) }
         // Rethrown as well as stored: a caller that awaited identify() should
         // be able to try/catch it, and a component that only reads `error`
         // should not have to.

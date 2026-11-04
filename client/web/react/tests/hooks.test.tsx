@@ -429,6 +429,68 @@ describe('useIdentify', () => {
     expect(latest().requestId).toBe('req_1')
   })
 
+  it('holds every identification for as long as Retry-After asked', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      const limited = Object.assign(new Error('The server refused the submission (429)'), { status: 429, retryable: true, retryAfterMs: 30_000 })
+      identifyMock.mockRejectedValue(limited)
+      const remounts = probe(() => useIdentify({ immediate: true }))
+      const shared = probe(() => useIdentify())
+      const { root } = render(
+        <FingerlyProvider apiKey="fly_pk_development_test" consent="granted">{shared.element}</FingerlyProvider>,
+      )
+      await act(async () => {
+        await shared.latest().identify().catch(() => undefined)
+      })
+      for (let i = 0; i < 5; i++) {
+        await act(async () => root.render(<FingerlyProvider apiKey="fly_pk_development_test" consent="granted">{shared.element}{i % 2 ? remounts.element : null}</FingerlyProvider>))
+      }
+      await act(async () => {
+        await shared.latest().refresh().catch(() => undefined)
+      })
+      expect(identifyMock).toHaveBeenCalledTimes(1)
+      expect(shared.latest().error).toBe(limited)
+
+      vi.setSystemTime(Date.now() + 30_001)
+      identifyMock.mockResolvedValue(RESULT)
+      await act(() => shared.latest().refresh())
+      expect(identifyMock).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('holds automatic identifications after a transient failure, but not a click', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      identifyMock.mockRejectedValue(Object.assign(new Error('Failed to fetch'), { retryable: true }))
+      const shared = probe(() => useIdentify())
+      const page = probe(() => useIdentify({ immediate: true }))
+      const { root } = render(<FingerlyProvider apiKey="fly_pk_development_test" consent="granted">{page.element}</FingerlyProvider>)
+      await act(async () => undefined)
+      expect(identifyMock).toHaveBeenCalledTimes(1)
+
+      // Unmount and remount the immediate consumer, as a route change does.
+      for (let i = 0; i < 4; i++) {
+        await act(async () => root.render(<FingerlyProvider apiKey="fly_pk_development_test" consent="granted">{shared.element}</FingerlyProvider>))
+        await act(async () => root.render(<FingerlyProvider apiKey="fly_pk_development_test" consent="granted">{shared.element}{page.element}</FingerlyProvider>))
+      }
+      expect(identifyMock).toHaveBeenCalledTimes(1)
+
+      await act(async () => {
+        await shared.latest().identify().catch(() => undefined)
+      })
+      expect(identifyMock).toHaveBeenCalledTimes(2)
+
+      vi.setSystemTime(Date.now() + 60_001)
+      await act(async () => root.render(<FingerlyProvider apiKey="fly_pk_development_test" consent="granted">{shared.element}</FingerlyProvider>))
+      await act(async () => root.render(<FingerlyProvider apiKey="fly_pk_development_test" consent="granted">{shared.element}{page.element}</FingerlyProvider>))
+      expect(identifyMock).toHaveBeenCalledTimes(3)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('leaves requestId null when submit is off, and still shares the run', async () => {
     identifyMock.mockResolvedValue({ ...RESULT, requestId: '' })
 
