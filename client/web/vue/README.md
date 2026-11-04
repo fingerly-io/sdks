@@ -134,7 +134,7 @@ const { matched, confidence, reasons } = useVerdict('automation')
 </template>
 ```
 
-Names: `incognito` · `tor` · `emulator` · `automation` · `farm`.
+Names: `incognito` · `shields` · `tor` · `emulator` · `automation` · `farm`. `shields` says anti-fingerprinting protection is rewriting some values, which is not a finding about the visitor on its own.
 
 `matched` requires **medium confidence or better** by default. A
 `low`-confidence verdict is a single weak tell (one removable flag, or one
@@ -234,7 +234,7 @@ const {
   suspectScore,      // Ref<number | null>:        null when nothing scored it
   suspectLevel,      // Ref<string | null>:        low, medium, high
   triggers,          // Ref<IdentifyTrigger[]>:    what the server scored on
-  verdicts,          // Ref<Verdicts | null>:      the five local verdicts
+  verdicts,          // Ref<Verdicts | null>:      the six local verdicts
   report,            // Ref<SignalReport | null>:  every source, with status and timing
   error,             // Ref<Error | null>
   consent,           // Ref<ConsentState>        (granted, pending or denied)

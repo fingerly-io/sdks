@@ -149,7 +149,7 @@ await fingerly.refresh() // ignores the cached result and collects afresh
 {/if}
 ```
 
-Names: `incognito` · `tor` · `emulator` · `automation` · `farm`.
+Names: `incognito` · `shields` · `tor` · `emulator` · `automation` · `farm`. `shields` says anti-fingerprinting protection is rewriting some values, which is not a finding about the visitor on its own.
 
 `matched` requires **medium confidence or better** by default. A
 `low`-confidence verdict is a single weak tell (one removable flag, or one
@@ -238,7 +238,7 @@ fingerly.reason            // string | null:        why, when state needs explai
 fingerly.suspectScore      // number | null:        null when nothing scored it
 fingerly.suspectLevel      // string | null:        low, medium, high
 fingerly.triggers          // IdentifyTrigger[]:    what the server scored on
-fingerly.verdicts          // Verdicts | null:      the five local verdicts
+fingerly.verdicts          // Verdicts | null:      the six local verdicts
 fingerly.report            // SignalReport | null:  every source, with status and timing
 fingerly.error             // Error | null
 fingerly.consent           // ConsentState        (granted, pending or denied)

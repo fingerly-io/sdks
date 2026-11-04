@@ -47,7 +47,7 @@ export interface UseIdentifyReturn extends ReadonlyState {
   /**
    * True when the verdicts contain anything worth acting on.
    *
-   * A convenience over the five verdicts, and deliberately conservative: it
+   * A convenience over the six verdicts, and deliberately conservative: it
    * requires `medium` confidence or better, because a `low`-confidence verdict
    * is one weak tell and blocking on it would be blocking real users. Anything
    * more nuanced should read `verdicts` directly - this is the "should I even
