@@ -21,6 +21,11 @@ import { DEFAULT_ENDPOINT } from './routing.js'
 import type { DeferredSubmission, IdentifySubmission } from './types.js'
 
 export const SDK_KEY_HEADER = 'x-api-key'
+
+/** What a credential reads as wherever an SDK object is printed or serialised. */
+export const REDACTED = '[redacted]'
+/** Node's custom-inspection hook, by its registered name so no Node import is needed. */
+export const INSPECT = Symbol.for('nodejs.util.inspect.custom')
 const IDEMPOTENCY_KEY_HEADER = 'Idempotency-Key'
 
 /** One signal that fired, and what it was worth. */
@@ -323,7 +328,8 @@ function newIdempotencyKey(): string {
 }
 
 export class HttpTransport implements Transport {
-  private readonly apiKey: string
+  /** Kept out of enumeration, JSON and inspection; see [[redacted]]. */
+  readonly #apiKey: string
   private readonly urls: readonly string[]
   private readonly maxAttempts: number
   private readonly requestTimeoutMs: number
@@ -338,7 +344,7 @@ export class HttpTransport implements Transport {
       throw new TypeError('Pass endpoints or the deprecated endpoint option, not both')
     }
 
-    this.apiKey = options.apiKey
+    this.#apiKey = options.apiKey
     const apiVersion = validateApiVersion(options.apiVersion)
     const configured = options.endpoints ?? options.endpoint
     const listed = configured === undefined
@@ -360,6 +366,16 @@ export class HttpTransport implements Transport {
     // Bound because some environments - Safari among them - throw "Illegal
     // invocation" when `fetch` is called detached from its global.
     this.fetchImpl = impl.bind(globalThis)
+  }
+
+  /** What `JSON.stringify` shows: the endpoints, never the key. */
+  toJSON(): Record<string, unknown> {
+    return { apiKey: REDACTED, urls: [...this.urls], maxAttempts: this.maxAttempts, requestTimeoutMs: this.requestTimeoutMs }
+  }
+
+  /** What Node's `util.inspect` and `console.log` show. */
+  [INSPECT](): Record<string, unknown> {
+    return this.toJSON()
   }
 
   async submit(submission: IdentifySubmission, signal?: AbortSignal): Promise<SubmitResponse> {
@@ -458,7 +474,7 @@ export class HttpTransport implements Transport {
     try {
       const response = await this.fetchImpl(url, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', [SDK_KEY_HEADER]: this.apiKey },
+        headers: { 'content-type': 'application/json', [SDK_KEY_HEADER]: this.#apiKey },
         body,
         credentials: 'omit',
         signal: controller.signal,
@@ -491,7 +507,7 @@ export class HttpTransport implements Transport {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          [SDK_KEY_HEADER]: this.apiKey,
+          [SDK_KEY_HEADER]: this.#apiKey,
           [IDEMPOTENCY_KEY_HEADER]: idempotencyKey,
         },
         body,

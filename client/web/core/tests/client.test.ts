@@ -52,3 +52,13 @@ describe('FingerlyClient deferred collection', () => {
     expect(transport.submit).not.toHaveBeenCalled()
   })
 })
+
+describe('FingerlyClient printing', () => {
+  it('never shows the key in JSON or inspection', async () => {
+    const { inspect } = await import('node:util')
+    const client = new FingerlyClient({ apiKey: 'fly_pk_development_secretvalue', endpoints: '/k7x2qm4a' })
+    expect(JSON.stringify(client)).not.toContain('secretvalue')
+    expect(inspect(client, { depth: 6, showHidden: true })).not.toContain('secretvalue')
+    expect(JSON.stringify(client)).toContain('[redacted]')
+  })
+})

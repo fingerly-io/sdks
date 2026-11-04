@@ -339,3 +339,14 @@ describe('HttpTransport under rate limiting and bad answers', () => {
     expect(read).toBe(true)
   })
 })
+
+describe('credentials stay out of printed objects', () => {
+  it('redacts the key from JSON and inspection of the transport', async () => {
+    const { inspect } = await import('node:util')
+    const transport = new HttpTransport({ apiKey: 'fly_pk_development_secretvalue', endpoints: '/k7x2qm4a', fetchImpl: (async () => new Response('')) as typeof fetch })
+    expect(JSON.stringify(transport)).not.toContain('secretvalue')
+    expect(JSON.stringify(transport)).toContain('[redacted]')
+    expect(inspect(transport, { depth: 5, showHidden: true })).not.toContain('secretvalue')
+    expect(Object.keys(transport).join()).not.toContain('apiKey')
+  })
+})

@@ -11,7 +11,7 @@ import { assertConsentState, ConsentError } from './consent.js'
 import { detectAll } from './detect/index.js'
 import { collect, type ScheduleOptions } from './scheduler.js'
 import type { Source } from './source.js'
-import { HttpTransport, TransportError, type SubmitResponse, type Transport } from './transport.js'
+import { HttpTransport, INSPECT, REDACTED, TransportError, type SubmitResponse, type Transport } from './transport.js'
 import type {
   ConsentState,
   IdentifyResult,
@@ -113,7 +113,8 @@ const EMPTY_INTEGRITY: IntegrityReport = {
 }
 
 export class FingerlyClient {
-  private readonly options: FingerlyClientOptions
+  /** Holds the key, so kept out of enumeration, JSON and inspection. */
+  readonly #options: FingerlyClientOptions
   private readonly transport: Transport
   private readonly platform: SdkPlatform
   private consentState: ConsentState
@@ -123,7 +124,7 @@ export class FingerlyClient {
     const consent = options.consent ?? 'pending'
     assertConsentState(consent)
     this.consentState = consent
-    this.options = options
+    this.#options = options
     this.platform = options.platform ?? 'web'
     this.transport =
       options.transport ??
@@ -134,6 +135,16 @@ export class FingerlyClient {
         ...(options.endpoints === undefined ? {} : { endpoints: options.endpoints }),
         ...(options.fallbackToDefaultEndpoint === undefined ? {} : { fallbackToDefaultEndpoint: options.fallbackToDefaultEndpoint }),
       })
+  }
+
+  /** What `JSON.stringify` shows: never the key. */
+  toJSON(): Record<string, unknown> {
+    return { apiKey: REDACTED, platform: this.platform, consent: this.consentState, transport: this.transport instanceof HttpTransport ? this.transport : 'custom' }
+  }
+
+  /** What Node's `util.inspect` and `console.log` show. */
+  [INSPECT](): Record<string, unknown> {
+    return this.toJSON()
   }
 
   /** Whether the visitor has agreed to be identified. See [[setConsent]]. */
@@ -371,8 +382,8 @@ export class FingerlyClient {
         elapsed_ms: initial.elapsed_ms + report.elapsed_ms,
         tiers: ['fast', 'deferred'],
         sources: { ...initial.sources, ...report.sources },
-        integrity: this.options.integrity
-          ? this.options.integrity({ sources: { ...initial.sources, ...report.sources } })
+        integrity: this.#options.integrity
+          ? this.#options.integrity({ sources: { ...initial.sources, ...report.sources } })
           : EMPTY_INTEGRITY,
       }
       verdicts = detectAll(combinedReport)
@@ -432,10 +443,10 @@ export class FingerlyClient {
     budgetMs?: number,
     completed?: Readonly<Record<string, SignalReport['sources'][string]>>,
   ): Promise<SignalReport> {
-    const sources = this.options.sources ?? []
+    const sources = this.#options.sources ?? []
 
     const schedule: ScheduleOptions = {
-      ...this.options.schedule,
+      ...this.#options.schedule,
       tiers,
       ...(budgetMs === undefined ? {} : { budgetMs }),
       ...(signal === undefined ? {} : { signal }),
@@ -448,8 +459,8 @@ export class FingerlyClient {
     // the other sources produced - the contradiction checks need the whole set
     // - and because a tamper check that was itself scheduled could be starved
     // by the budget, which is precisely the outcome an attacker would want.
-    const integrity = this.options.integrity
-      ? this.options.integrity({ sources: result.outcomes })
+    const integrity = this.#options.integrity
+      ? this.#options.integrity({ sources: result.outcomes })
       : EMPTY_INTEGRITY
 
     return {
