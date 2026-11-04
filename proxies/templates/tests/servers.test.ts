@@ -237,15 +237,21 @@ function relayImage(dir: string, stubPort: number): string {
   return tag
 }
 
+/** `--env-file` for a file holding FINGERLY_PROXY_KEY, readable only by its owner, as the READMEs write it; nothing without a key. */
+function keyEnvFile(dir: string, key: string): string[] {
+  if (!key) return []
+  const envFile = join(dir, `key-${id()}.env`)
+  writeFileSync(envFile, `FINGERLY_PROXY_KEY=${key}\n`, { mode: 0o600 })
+  return ['--env-file', envFile]
+}
+
 /**
  * The environment a template's own files tell the container to use, with the
  * key in an environment file readable only by its owner, as the README has it.
  */
 function relayEnv(dir: string, key: string, source?: string): string[] {
-  const envFile = join(dir, `site-relay-${id()}.env`)
-  if (key) writeFileSync(envFile, `FINGERLY_PROXY_KEY=${key}\n`, { mode: 0o600 })
   return [
-    ...(key ? ['--env-file', envFile] : []),
+    ...keyEnvFile(dir, key),
     '-e', 'FINGERLY_PATH=/k7x2qm4a',
     ...(source ? ['-e', `FINGERLY_CLIENT_IP_SOURCE=${source}`] : []),
   ]
@@ -325,7 +331,8 @@ const templates: Template[] = [
         .replace('www.example.com {', ':8080 {')
         .replace('# ... the rest of your site ...', 'respond "site" 200'))
       return new Stack([{
-        args: [...(key ? ['-e', `FINGERLY_PROXY_KEY=${key}`] : []), '-v', `${file}:/etc/caddy/Caddyfile:ro`, 'caddy:alpine'],
+        // The key file the README writes, as the process environment.
+        args: [...keyEnvFile(dir, key), '-v', `${file}:/etc/caddy/Caddyfile:ro`, 'caddy:alpine'],
       }], 8080)
     },
     upstreamHost: (stubPort) => `host.docker.internal:${stubPort}`,

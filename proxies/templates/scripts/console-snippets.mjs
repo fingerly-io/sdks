@@ -103,10 +103,21 @@ export function build() {
           code: caddyHandleBlock(),
         },
         {
-          title: 'Give Caddy the proxy key',
-          text: 'Run sudo systemctl edit caddy and add these lines. The key belongs in the environment of the Caddy process, never in the Caddyfile.',
+          title: 'Store the proxy key',
+          text: `In its own file, readable only by root, as the environment of the Caddy process, never in the Caddyfile. ${PROMPT}`,
+          label: 'Terminal',
+          code: [
+            'sudo install -m 600 -o root -g root /dev/null /etc/caddy/fingerly.env',
+            "printf 'Proxy key: ' && read -rs proxy_key && echo &&",
+            `  printf 'FINGERLY_PROXY_KEY=%s\\n' "$proxy_key" | sudo tee /etc/caddy/fingerly.env >/dev/null; unset proxy_key`,
+            '',
+          ].join('\n'),
+        },
+        {
+          title: 'Give Caddy the file',
+          text: 'Run sudo systemctl edit caddy and add these lines. systemd reads the file as root before it starts Caddy. Never put the key itself in the override: unit files are readable by every user, and systemctl show prints them.',
           label: 'Service override',
-          code: `[Service]\nEnvironment=FINGERLY_PROXY_KEY=${KEY}\n`,
+          code: '[Service]\nEnvironmentFile=/etc/caddy/fingerly.env\n',
         },
         {
           title: 'Restart Caddy',

@@ -30,6 +30,10 @@
   written the same way, instead of `FINGERLY_PROXY_KEY=<key> docker compose
   up`. On Kubernetes the Secret is created with `--from-file` from a file
   written from a prompt and then removed, instead of `--from-literal`.
+- The Caddy README and the dashboard snippet write the key to
+  `/etc/caddy/fingerly.env` (root, mode 600) from a prompt, and the systemd
+  override only names it with `EnvironmentFile=`. The override used to hold
+  the key in an `Environment=` line, which every local user can read.
 - A test holds every README and dashboard step except Cloud Run's (out of
   scope for now) to never carrying the key on a command line, and runs each
   prompt in bash and zsh to check the file it writes.

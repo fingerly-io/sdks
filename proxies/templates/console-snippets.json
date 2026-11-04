@@ -42,10 +42,16 @@
         "code": "# Exactly the issued path, compared on the raw request target, then\n# nothing or a query string. A plain path matcher would ignore case and\n# match after resolving dot segments, merging slashes and decoding\n# characters.\n@fingerly vars_regexp {http.request.orig_uri} ^/k7x2qm4a(?:[?].*)?$\nhandle @fingerly {\n\t# Deferred, so it replaces whatever the API sends and also covers the\n\t# responses Caddy writes itself.\n\theader >Cache-Control no-store\n\n\t@notpost not method POST\n\theader @notpost Allow POST\n\trespond @notpost 405\n\n\t# A key that is not shaped like a proxy key answers 503 rather than\n\t# forwarding anything.\n\t@nokey not vars_regexp {env.FINGERLY_PROXY_KEY} ^fly_px_(production|staging|development)_[A-Za-z0-9_-]+$\n\trespond @nokey 503\n\n\trequest_body {\n\t\tmax_size 1MiB\n\t}\n\n\t# Visitor-sent X-Fingerly-* headers never reach the API; the ones below\n\t# are set by this proxy alone.\n\trequest_header -X-Fingerly-*\n\n\t# Browsers send Origin with every POST. The page's own origin stands in\n\t# when a client leaves it out.\n\t@noorigin not header Origin *\n\trequest_header @noorigin Origin {scheme}://{hostport}\n\n\t# The one URL this block can reach. Both of the browser SDK's calls go\n\t# here; the API tells them apart by their bodies.\n\trewrite * /api/v1/ingest\n\treverse_proxy https://api.fingerly.io {\n\t\theader_up Host {upstream_hostport}\n\t\theader_up -Cookie\n\t\theader_up -Authorization\n\t\theader_up X-Fingerly-Proxy-Key {env.FINGERLY_PROXY_KEY}\n\t\t# The visitor's address. Behind a load balancer, set trusted_proxies\n\t\t# (and trusted_proxies_strict) so this is the visitor, not the load\n\t\t# balancer. See the README.\n\t\theader_up X-Fingerly-Client-Ip {client_ip}\n\t\theader_up X-Fingerly-Origin {http.request.header.Origin}\n\t\theader_up X-Fingerly-User-Agent {http.request.header.User-Agent}\n\t\theader_up X-Fingerly-Proxy-Version caddy/1.0.0\n\n\t\t# The API sends nothing naming Fingerly to proxied callers; dropping\n\t\t# cookies is defense in depth.\n\t\theader_down -Set-Cookie\n\n\t\ttransport http {\n\t\t\tdial_timeout 5s\n\t\t\tresponse_header_timeout 5s\n\t\t}\n\t}\n}\n"
       },
       {
-        "title": "Give Caddy the proxy key",
-        "text": "Run sudo systemctl edit caddy and add these lines. The key belongs in the environment of the Caddy process, never in the Caddyfile.",
+        "title": "Store the proxy key",
+        "text": "In its own file, readable only by root, as the environment of the Caddy process, never in the Caddyfile. The prompt does not echo: paste the proxy key and press Enter. It never appears on a command line, so it stays out of your shell history and the process list.",
+        "label": "Terminal",
+        "code": "sudo install -m 600 -o root -g root /dev/null /etc/caddy/fingerly.env\nprintf 'Proxy key: ' && read -rs proxy_key && echo &&\n  printf 'FINGERLY_PROXY_KEY=%s\\n' \"$proxy_key\" | sudo tee /etc/caddy/fingerly.env >/dev/null; unset proxy_key\n"
+      },
+      {
+        "title": "Give Caddy the file",
+        "text": "Run sudo systemctl edit caddy and add these lines. systemd reads the file as root before it starts Caddy. Never put the key itself in the override: unit files are readable by every user, and systemctl show prints them.",
         "label": "Service override",
-        "code": "[Service]\nEnvironment=FINGERLY_PROXY_KEY=fly_px_production_…\n"
+        "code": "[Service]\nEnvironmentFile=/etc/caddy/fingerly.env\n"
       },
       {
         "title": "Restart Caddy",

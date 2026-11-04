@@ -13,19 +13,33 @@ refused.
 2. Copy the `@fingerly` matcher and the `handle @fingerly { ... }` block from
    `Caddyfile` into your site block, first among its handlers, and replace
    `/k7x2qm4a` with your path in the matcher.
-3. Give the Caddy process the key as the `FINGERLY_PROXY_KEY` environment
-   variable, never in the Caddyfile. With systemd, run
-   `sudo systemctl edit caddy` and add:
+3. Put the key in its own file, readable only by root, as the
+   `FINGERLY_PROXY_KEY` environment variable of the Caddy process, never in
+   the Caddyfile. The prompt does not echo: paste the key and press Enter.
+   The key never appears on a command line, so it stays out of your shell
+   history and the process list:
+
+   ```sh
+   sudo install -m 600 -o root -g root /dev/null /etc/caddy/fingerly.env
+   printf 'Proxy key: ' && read -rs proxy_key && echo &&
+     printf 'FINGERLY_PROXY_KEY=%s\n' "$proxy_key" | sudo tee /etc/caddy/fingerly.env >/dev/null; unset proxy_key
+   ```
+
+4. With systemd, run `sudo systemctl edit caddy` and point the service at
+   the file:
 
    ```ini
    [Service]
-   Environment=FINGERLY_PROXY_KEY=fly_px_production_...
+   EnvironmentFile=/etc/caddy/fingerly.env
    ```
 
-   or point `EnvironmentFile=` at a file readable only by root. In a
-   container, pass it from your secret store.
-4. Restart, so Caddy sees the new environment: `sudo systemctl restart caddy`.
-5. Point the browser SDK at the path:
+   systemd reads the file as root before it starts Caddy. Never put the key
+   itself in the override with `Environment=`: unit files are readable by
+   every user on the machine, and `systemctl show caddy` prints it. In a
+   container, pass the same file with `--env-file` or take the key from your
+   secret store.
+5. Restart, so Caddy sees the new environment: `sudo systemctl restart caddy`.
+6. Point the browser SDK at the path:
 
    ```ts
    await load({

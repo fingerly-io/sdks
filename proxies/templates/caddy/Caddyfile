@@ -5,7 +5,8 @@
 # `/k7x2qm4a` is the path the Fingerly dashboard issued for this proxy; the
 # block answers exactly that path, nothing under or beside it. The proxy key
 # comes from the FINGERLY_PROXY_KEY environment variable of the Caddy process,
-# never from this file.
+# never from this file: with systemd, from an EnvironmentFile readable only by
+# root, never an Environment= line in a unit file. The README shows how.
 
 www.example.com {
 	# Exactly the issued path, compared on the raw request target, then
