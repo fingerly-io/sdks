@@ -5,7 +5,9 @@
 # cache behavior. `/k7x2qm4a` is the path the Fingerly dashboard issued; it
 # appears in the cache behavior and in the function code, and both must match.
 # The proxy key is a NoEcho parameter, so it never sits in this file or in
-# version control.
+# version control. Give it in the console, where the field is masked, or from
+# a parameters file only you can read (the README shows how), never inline
+# on the command line.
 
 Parameters:
   FingerlyProxyKey:

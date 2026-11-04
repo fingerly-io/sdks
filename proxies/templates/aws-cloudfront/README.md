@@ -48,6 +48,26 @@ stays out of the template and out of version control. Anyone allowed to read
 the distribution's configuration can still read the origin header, so limit
 `cloudfront:GetDistributionConfig` accordingly.
 
+Never pass the key inline with `--parameter-overrides FingerlyProxyKey=...`,
+which puts it on the command line, in your shell history and the process
+list. Enter it in the CloudFormation console, where the parameter field is
+masked, or write it to a parameters file only you can read. The prompt does
+not echo: paste the key and press Enter.
+
+```sh
+install -m 600 /dev/null fingerly-params.json
+printf 'Proxy key: ' && read -rs proxy_key && echo &&
+  printf '["FingerlyProxyKey=%s"]\n' "$proxy_key" > fingerly-params.json; unset proxy_key
+```
+
+Then deploy from the file and remove it. Parameters you do not name keep the
+stack's current values:
+
+```sh
+aws cloudformation deploy --stack-name YOUR_STACK --template-file YOUR_TEMPLATE.yaml \
+  --parameter-overrides file://fingerly-params.json; rm -f fingerly-params.json
+```
+
 ## Exactly one path
 
 CloudFront normalizes a copy of the path (dot segments, doubled slashes) only

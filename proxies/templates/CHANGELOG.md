@@ -34,6 +34,10 @@
   `/etc/caddy/fingerly.env` (root, mode 600) from a prompt, and the systemd
   override only names it with `EnvironmentFile=`. The override used to hold
   the key in an `Environment=` line, which every local user can read.
+- The CloudFront README and the dashboard show how to give the CloudFormation
+  `FingerlyProxyKey` parameter safely: the console's masked field, or a
+  parameters file (mode 600) written from a prompt, passed with
+  `--parameter-overrides file://` and removed. Never inline on the command line.
 - A test holds every README and dashboard step except Cloud Run's (out of
   scope for now) to never carrying the key on a command line, and runs each
   prompt in bash and zsh to check the file it writes.

@@ -215,6 +215,27 @@ export function build() {
             '',
           ].join('\n'),
         },
+        {
+          title: 'Or, with CloudFormation, store the key',
+          text: `Instead of the three steps above, merge cloudformation.yaml from the template into your distribution's template and give the key as its FingerlyProxyKey parameter: in the CloudFormation console, where the field is masked, or from a parameters file only you can read. Never pass it inline with --parameter-overrides, which puts it on the command line. ${PROMPT}`,
+          label: 'Terminal',
+          code: [
+            'install -m 600 /dev/null fingerly-params.json',
+            "printf 'Proxy key: ' && read -rs proxy_key && echo &&",
+            `  printf '["FingerlyProxyKey=%s"]\\n' "$proxy_key" > fingerly-params.json; unset proxy_key`,
+            '',
+          ].join('\n'),
+        },
+        {
+          title: 'Deploy the stack and remove the file',
+          text: 'Parameters you do not name keep the stack\'s current values.',
+          label: 'Terminal',
+          code: [
+            'aws cloudformation deploy --stack-name YOUR_STACK --template-file YOUR_TEMPLATE.yaml \\',
+            '  --parameter-overrides file://fingerly-params.json; rm -f fingerly-params.json',
+            '',
+          ].join('\n'),
+        },
         browserStep,
       ],
     },

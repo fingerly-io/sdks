@@ -40,6 +40,7 @@ const KEY_STEPS: Record<string, string[]> = {
   nginx: ['Store the proxy key'],
   caddy: ['Store the proxy key', 'Give Caddy the file'],
   container: ['Store the proxy key', 'Run it'],
+  'aws-cloudfront': ['Or, with CloudFormation, store the key', 'Deploy the stack and remove the file'],
   traefik: ['Store the proxy key', 'Start it'],
 }
 
@@ -66,6 +67,7 @@ function readmeBlock(kind: string, text: string): string {
 const PROMPTED: Array<{ name: string; code: () => string; file: string; holds: (key: string) => string }> = [
   { name: 'nginx', code: () => snippet('nginx', 'Store the proxy key'), file: 'fingerly-proxy-key.conf', holds: (key) => `set $fingerly_proxy_key "${key}";\n` },
   { name: 'caddy', code: () => snippet('caddy', 'Store the proxy key'), file: 'fingerly.env', holds: (key) => `FINGERLY_PROXY_KEY=${key}\n` },
+  { name: 'CloudFormation', code: () => snippet('aws-cloudfront', 'Or, with CloudFormation, store the key'), file: 'fingerly-params.json', holds: (key) => `["FingerlyProxyKey=${key}"]\n` },
   { name: 'container', code: () => snippet('container', 'Store the proxy key'), file: 'site-relay.env', holds: (key) => `FINGERLY_PROXY_KEY=${key}\n` },
   { name: 'traefik (compose)', code: () => snippet('traefik', 'Store the proxy key'), file: 'site-relay.env', holds: (key) => `FINGERLY_PROXY_KEY=${key}\n` },
   // A Secret value is the file's bytes: a trailing newline would make the key invalid.
@@ -213,6 +215,20 @@ describe('shipped files', () => {
     }
     // The file it names is the one the prompt writes.
     expect(snippet('caddy', 'Store the proxy key')).toContain('/dev/null /etc/caddy/fingerly.env')
+  })
+
+  it('the CloudFormation deploy reads the key from the parameters file and removes it', () => {
+    const deploy = snippet('aws-cloudfront', 'Deploy the stack and remove the file')
+    expect(deploy).toMatch(/--parameter-overrides file:\/\/fingerly-params\.json; rm -f fingerly-params\.json\n$/)
+    // Every CloudFormation command, in the README and the dashboard, takes parameters only from a file.
+    const readme = readFileSync(join(ROOT, 'aws-cloudfront/README.md'), 'utf8')
+    const commands = [...readmeCommands(readme), ...deploy.split('\n')].join('\n').replace(/\\\n/g, ' ')
+    const deploys = commands.match(/aws cloudformation .*/g) ?? []
+    expect(deploys.length).toBeGreaterThanOrEqual(2)
+    for (const command of deploys) {
+      expect(command).not.toMatch(/(--parameter-overrides|--parameters)(?! file:\/\/)/)
+      expect(command).not.toMatch(/ProxyKey|fly_px_/)
+    }
   })
 
   it('contain no em or en dashes', () => {

@@ -150,6 +150,18 @@
         "code": "Path pattern:            /k7x2qm4a\nOrigin:                  api.fingerly.io\nViewer protocol policy:  HTTPS only\nAllowed HTTP methods:    GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE\nCache policy:            CachingDisabled\nOrigin request policy:   AllViewerExceptHostHeader\nViewer request:          CloudFront Functions, the function above\nViewer response:         CloudFront Functions, the function above\n"
       },
       {
+        "title": "Or, with CloudFormation, store the key",
+        "text": "Instead of the three steps above, merge cloudformation.yaml from the template into your distribution's template and give the key as its FingerlyProxyKey parameter: in the CloudFormation console, where the field is masked, or from a parameters file only you can read. Never pass it inline with --parameter-overrides, which puts it on the command line. The prompt does not echo: paste the proxy key and press Enter. It never appears on a command line, so it stays out of your shell history and the process list.",
+        "label": "Terminal",
+        "code": "install -m 600 /dev/null fingerly-params.json\nprintf 'Proxy key: ' && read -rs proxy_key && echo &&\n  printf '[\"FingerlyProxyKey=%s\"]\\n' \"$proxy_key\" > fingerly-params.json; unset proxy_key\n"
+      },
+      {
+        "title": "Deploy the stack and remove the file",
+        "text": "Parameters you do not name keep the stack's current values.",
+        "label": "Terminal",
+        "code": "aws cloudformation deploy --stack-name YOUR_STACK --template-file YOUR_TEMPLATE.yaml \\\n  --parameter-overrides file://fingerly-params.json; rm -f fingerly-params.json\n"
+      },
+      {
         "title": "Point the browser SDK at the path",
         "text": "Pass the path as the endpoint. The SDK posts to it exactly as given.",
         "label": "JavaScript",
