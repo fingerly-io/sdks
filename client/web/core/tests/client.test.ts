@@ -62,3 +62,12 @@ describe('FingerlyClient printing', () => {
     expect(JSON.stringify(client)).toContain('[redacted]')
   })
 })
+
+describe('reported version', () => {
+  it('matches the package version, which is what support asks a customer for', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { SDK_VERSION } = await import('../src/version.js')
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+    expect(SDK_VERSION).toBe(pkg.version)
+  })
+})
