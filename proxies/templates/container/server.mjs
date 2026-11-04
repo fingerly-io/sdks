@@ -125,6 +125,24 @@ function readBody(req) {
   })
 }
 
+/** The most of an answer relayed: an answer is a few kilobytes. */
+const MAX_RESPONSE_BYTES = 4 * 1_048_576
+
+/** Reads a web stream to its end, or returns null once it passes `limit` bytes. */
+async function readCapped(body, limit) {
+  if (!body) return Buffer.alloc(0)
+  const chunks = []
+  let size = 0
+  for await (const chunk of body) {
+    size += chunk.byteLength
+    if (size > limit) {
+      return null
+    }
+    chunks.push(chunk)
+  }
+  return Buffer.concat(chunks)
+}
+
 /**
  * The service, configured from the given environment. An unreadable
  * FINGERLY_CLIENT_IP_SOURCE throws here, at start-up, not on the first request.
@@ -173,13 +191,27 @@ export function createRelay(env = process.env) {
       const idempotency = header(req, 'idempotency-key')
       if (idempotency) headers.set('idempotency-key', idempotency)
 
+      // One deadline for the whole exchange, ended early if the visitor goes away.
+      const timeout = AbortSignal.timeout(UPSTREAM_TIMEOUT_MS)
+      const gone = new AbortController()
+      res.on('close', () => { if (!res.writableEnded) gone.abort() })
+      const signal = AbortSignal.any([timeout, gone.signal])
       let upstream
+      let answer
       try {
-        upstream = await fetch(UPSTREAM, {
-          method: 'POST', headers, body, redirect: 'manual', signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-        })
+        upstream = await fetch(UPSTREAM, { method: 'POST', headers, body, redirect: 'manual', signal })
+        // Read whole, under the same deadline, before anything is sent back: a
+        // truncated answer relayed with a 200 would be read as a success.
+        answer = await readCapped(upstream.body, MAX_RESPONSE_BYTES)
       } catch {
-        return plain(res, 502, 'Bad Gateway')
+        if (gone.signal.aborted) return
+        const timedOut = timeout.aborted
+        console.warn(timedOut ? 'proxy: upstream timed out' : 'proxy: upstream unreachable')
+        return timedOut ? plain(res, 504, 'Gateway timeout') : plain(res, 502, 'Bad gateway')
+      }
+      if (answer === null) {
+        console.warn('proxy: upstream answer over the size limit')
+        return plain(res, 502, 'Bad gateway')
       }
 
       const outgoing = { 'cache-control': 'no-store' }
@@ -187,11 +219,10 @@ export function createRelay(env = process.env) {
         const value = upstream.headers.get(name)
         if (value !== null) outgoing[name] = value
       }
-      const payload = Buffer.from(await upstream.arrayBuffer())
       res.writeHead(upstream.status, outgoing)
-      res.end(payload)
+      res.end([204, 205, 304].includes(upstream.status) ? undefined : answer)
     } catch {
-      if (!res.headersSent) plain(res, 502, 'Bad Gateway')
+      if (!res.headersSent) plain(res, 502, 'Bad gateway')
       else res.destroy()
     }
   })

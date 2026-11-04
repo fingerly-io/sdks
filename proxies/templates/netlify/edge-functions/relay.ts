@@ -72,6 +72,34 @@ function noAddress(): Response {
   return plain(500, 'The client IP source returned no valid address')
 }
 
+/** The most of an answer relayed: an answer is a few kilobytes. */
+const MAX_RESPONSE_BYTES = 4 * 1_048_576
+
+/** Reads a body to its end, or returns null once it passes `limit` bytes. */
+async function readCapped(body: ReadableStream<Uint8Array> | null, limit: number): Promise<Uint8Array | null> {
+  if (!body) return new Uint8Array(0)
+  const reader = body.getReader()
+  const chunks: Uint8Array[] = []
+  let size = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    size += value.byteLength
+    if (size > limit) {
+      await reader.cancel().catch(() => undefined)
+      return null
+    }
+    chunks.push(value)
+  }
+  const out = new Uint8Array(size)
+  let offset = 0
+  for (const chunk of chunks) {
+    out.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return out
+}
+
 export default async function relay(request: Request, context: Context): Promise<Response> {
   const url = new URL(request.url)
   if (!isProxyPath(url.pathname)) return plain(404, 'Not Found')
@@ -103,13 +131,25 @@ export default async function relay(request: Request, context: Context): Promise
   const idempotency = request.headers.get('idempotency-key')
   if (idempotency) headers.set('idempotency-key', idempotency)
 
+  // One deadline for the whole exchange, ended early if the visitor goes away.
+  const timeout = AbortSignal.timeout(UPSTREAM_TIMEOUT_MS)
+  const signal = typeof AbortSignal.any === 'function' ? AbortSignal.any([timeout, request.signal]) : timeout
   let upstream: Response
+  let answer: Uint8Array | null
   try {
-    upstream = await fetch(UPSTREAM, {
-      method: 'POST', headers, body, redirect: 'manual', signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-    })
+    upstream = await fetch(UPSTREAM, { method: 'POST', headers, body, redirect: 'manual', signal })
+    // Read whole, under the same deadline, before anything is sent back: a
+    // truncated answer relayed with a 200 would be read as a success.
+    answer = await readCapped(upstream.body, MAX_RESPONSE_BYTES)
   } catch {
-    return plain(502, 'Bad Gateway')
+    if (request.signal.aborted) return plain(499, '')
+    const timedOut = timeout.aborted
+    console.warn(timedOut ? 'proxy: upstream timed out' : 'proxy: upstream unreachable')
+    return timedOut ? plain(504, 'Gateway timeout') : plain(502, 'Bad gateway')
+  }
+  if (answer === null) {
+    console.warn('proxy: upstream answer over the size limit')
+    return plain(502, 'Bad gateway')
   }
 
   const outgoing = new Headers({ 'cache-control': 'no-store' })
@@ -117,5 +157,6 @@ export default async function relay(request: Request, context: Context): Promise
     const value = upstream.headers.get(name)
     if (value !== null) outgoing.set(name, value)
   }
-  return new Response(upstream.body, { status: upstream.status, statusText: upstream.statusText, headers: outgoing })
+  const bodiless = [204, 205, 304].includes(upstream.status)
+  return new Response(bodiless ? null : answer, { status: upstream.status, statusText: upstream.statusText, headers: outgoing })
 }

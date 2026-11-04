@@ -52,6 +52,8 @@ function apiResponse(): Response {
 /** The upstream requests the template made during the current test. */
 let upstreamCalls: Upstream[] = []
 let upstreamFails = false
+/** How the stub API misbehaves, beyond being unreachable. */
+let upstreamTrouble: 'none' | 'hang' | 'truncated' | 'huge' = 'none'
 
 function stubUpstream(): void {
   vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
@@ -64,6 +66,20 @@ function stubUpstream(): void {
       redirect: init?.redirect,
     })
     if (upstreamFails) throw new TypeError('fetch failed')
+    if (upstreamTrouble === 'hang') {
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(init.signal!.reason), { once: true })
+      })
+    }
+    if (upstreamTrouble === 'truncated') {
+      return new Response(new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('{"request_id":'))
+          controller.error(new TypeError('terminated'))
+        },
+      }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }
+    if (upstreamTrouble === 'huge') return new Response(new Uint8Array(4 * 1_048_576 + 1), { status: 200 })
     return apiResponse()
   }))
 }
@@ -408,6 +424,42 @@ describe.each(targets)('$kind template', (target) => {
     const failed = await target.call({ headers: visitor, ip: TRUSTED_IP })
     expect(failed.status).toBe(502)
     expect(failed.headers.get('cache-control')).toBe('no-store')
+  })
+})
+
+describe.each([vercelTarget, netlifyTarget, containerTarget, cloudRunTarget])('$kind template under upstream trouble', (target) => {
+  beforeAll(() => {
+    stubUpstream()
+    target.setKey(KEY)
+  })
+  afterEach(() => {
+    upstreamCalls = []
+    upstreamTrouble = 'none'
+    vi.restoreAllMocks()
+  })
+
+  it('answers 504 when the API does not answer within the deadline', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    upstreamTrouble = 'hang'
+    const result = await target.call({ headers: visitor, ip: TRUSTED_IP })
+    expect(result.status).toBe(504)
+    expect(result.body).toBe('Gateway timeout')
+    expect(result.headers.get('cache-control')).toBe('no-store')
+  }, 10_000)
+
+  it('answers 502, never a truncated 200, when the answer breaks off', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    upstreamTrouble = 'truncated'
+    const result = await target.call({ headers: visitor, ip: TRUSTED_IP })
+    expect(result.status).toBe(502)
+    expect(result.body).toBe('Bad gateway')
+  })
+
+  it('answers 502 for an answer over 4 MiB', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    upstreamTrouble = 'huge'
+    const result = await target.call({ headers: visitor, ip: TRUSTED_IP })
+    expect(result.status).toBe(502)
   })
 })
 
