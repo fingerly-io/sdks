@@ -110,6 +110,14 @@ function withSetup<T>(use: () => T, plugin?: ReturnType<typeof createFingerly>):
   return { result, app }
 }
 
+/** Lets mount hooks and the promise chains they start settle. */
+async function flush(): Promise<void> {
+  for (let i = 0; i < 5; i++) {
+    await Promise.resolve()
+    await nextTick()
+  }
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   identifyMock.mockResolvedValue(RESULT)
@@ -366,6 +374,19 @@ describe('useIdentify', () => {
     expect(result.error.value).toBe(failure)
     expect(result.isLoading.value).toBe(false)
     expect(result.isReady.value).toBe(true)
+  })
+
+  it('keeps the app mounted when the client cannot be built', async () => {
+    // A synchronous throw out of load() used to escape onMounted and fail the
+    // whole app's mount (in Nuxt, its start).
+    loadMock.mockImplementation(() => {
+      throw new Error('An SDK key is required')
+    })
+    const { result } = withSetup(() => useIdentify({ immediate: true }), createFingerly({ apiKey: '', consent: 'granted' }))
+    await flush()
+
+    expect(result.error.value?.message).toBe('An SDK key is required')
+    expect(result.isLoading.value).toBe(false)
   })
 
   it('returns state that a component cannot assign to', async () => {
