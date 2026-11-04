@@ -54,7 +54,8 @@ async function handler(event) {
   if (event.context.eventType === 'viewer-response') return relayResponse(event.response);
 
   var request = event.request;
-  if (request.uri.replace(/\/+$/, '') !== PATH) return plain(404, 'Not Found', {});
+  // Exactly: no trailing slash, nothing under it, case-sensitive.
+  if (request.uri !== PATH) return plain(404, 'Not Found', {});
   if (request.method !== 'POST') return plain(405, 'Method Not Allowed', { 'allow': { value: 'POST' } });
 
   var headers = request.headers;

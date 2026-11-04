@@ -292,13 +292,13 @@ describe.each(targets)('$kind template', (target) => {
   beforeAll(() => stubUpstream())
 
   it('answers exactly the issued path and nothing under or beside it', async () => {
-    for (const path of ['/k7x2qm4a/admin', '/k7x2qm4a/api/v1/identify', '/k7x2qm4ab', '/other', '/']) {
+    for (const path of ['/k7x2qm4a/', '/k7x2qm4a//', '/K7X2QM4A', '/k7x2qm4a%2F', '/k7x2qm4a/admin', '/k7x2qm4a/api/v1/identify', '/k7x2qm4ab', '/other', '/']) {
       const result = await target.call({ path, headers: visitor, ip: TRUSTED_IP })
       expect(result.status, path).toBe(404)
       expect(result.headers.get('cache-control')).toBe('no-store')
     }
     expect(upstreamCalls).toHaveLength(0)
-    expect((await target.call({ path: '/k7x2qm4a/', headers: visitor, ip: TRUSTED_IP })).status).toBe(200)
+    expect((await target.call({ path: '/k7x2qm4a', headers: visitor, ip: TRUSTED_IP })).status).toBe(200)
   })
 
   it('answers 405 with Allow: POST for every other method', async () => {

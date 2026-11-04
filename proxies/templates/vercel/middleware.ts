@@ -36,7 +36,8 @@ function isProxyKey(key: string): boolean {
 
 /** Whether the request is for the one configured path. */
 function isProxyPath(pathname: string): boolean {
-  return pathname.replace(/\/+$/, '') === PATH
+  // Exactly: no trailing slash, nothing under it, case-sensitive.
+  return pathname === PATH
 }
 
 /**

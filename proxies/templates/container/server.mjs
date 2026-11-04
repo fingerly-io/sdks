@@ -54,7 +54,8 @@ function isProxyKey(key) {
 /** Whether the request is for the one configured path. */
 function isProxyPath(pathname, configured) {
   const path = configured.trim().replace(/\/+$/, '')
-  return path.startsWith('/') && path.length > 1 && pathname.replace(/\/+$/, '') === path
+  // Exactly: no trailing slash, nothing under it, case-sensitive.
+  return path.startsWith('/') && path.length > 1 && pathname === path
 }
 
 function header(req, name) {
