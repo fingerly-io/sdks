@@ -140,6 +140,10 @@
           "platform": {
             "type": "string"
           },
+          "reason": {
+            "description": "Why enrichment did not happen, on an unavailable event",
+            "type": "string"
+          },
           "request_id": {
             "type": "string"
           },
@@ -325,7 +329,7 @@
             "type": "boolean"
           },
           "reason": {
-            "description": "Why enrichment did not happen",
+            "description": "Why enrichment did not happen. Only answered to a secret key; a browser or app reads it on the server-side event read",
             "type": "string"
           },
           "request_id": {
@@ -734,6 +738,10 @@
             "type": "string"
           },
           "platform": {
+            "type": "string"
+          },
+          "reason": {
+            "description": "Why enrichment did not happen, on an unavailable event",
             "type": "string"
           },
           "request_id": {
