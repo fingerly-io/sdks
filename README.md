@@ -159,6 +159,13 @@ several sources need a secure context, and `file://` is not one.
 Install scripts are disabled for every dependency (`.npmrc`); the reason is
 written out there.
 
+Publish the browser packages with `pnpm publish`, never `npm publish`: only
+pnpm rewrites the `workspace:` ranges between them, and a tarball that still
+says `workspace:*` cannot be installed. After `pnpm build`, `pnpm check:packs`
+packs every browser package the way it is published and fails on a leftover
+`workspace:` range, a source map, shipped sources or tests, or a missing
+LICENSE or README.
+
 ## Status
 
 `core`, `web-js`, Node, the framework bindings, `client/mobile/ios`, `client/mobile/android`, and
