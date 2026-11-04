@@ -126,7 +126,7 @@ const { matched, reasons } = useVerdict('incognito')
 </template>
 ```
 
-`useIdentify` · `useVerdict` · `useFingerly` — the same three from `@fingerly/vue`,
+`useIdentify` · `useVerdict` · `useFingerly`: the same three from `@fingerly/vue`,
 unchanged. Their full surface is in that
 [package's README](../vue/README.md): `immediate`, `refresh`, a correlation
 `tag`, confidence floors, `isSuspicious`.
@@ -136,7 +136,7 @@ unchanged. Their full surface is in that
 The plugin is universal rather than client-only, which is deliberate:
 installing it collects nothing. It makes the client reachable and no more, so a
 page can call `useIdentify()` in `setup()` during the server render, render its
-"not yet identified" state, and collect after hydration — `immediate` runs in
+"not yet identified" state, and collect after hydration. `immediate` runs in
 `onMounted`, which SSR never reaches.
 
 A client-only plugin would instead make the composable throw during the server
@@ -157,7 +157,7 @@ fingerly.apiKey in nuxt.config.ts. Identification will fail until one is set.
 ```
 
 Installing anyway is the point. Throwing would take an app down over a fraud
-signal, and installing nothing would be worse than that — every
+signal, and installing nothing would be worse than that: every
 `useIdentify()` in the app would then fail with "no plugin found", pointing at
 wiring that is in fact correct. This way the app renders, the composables work,
 and `identify()` is what fails, with the SDK's own message about a missing key,
@@ -171,5 +171,5 @@ at the moment somebody is looking for it.
 pnpm --filter @fingerly/nuxt playground
 ```
 
-Open it twice — an ordinary window and a private one — and watch the incognito
+Open it twice, in an ordinary window and a private one, and watch the incognito
 verdict change. That pair is the only real test that verdict gets.

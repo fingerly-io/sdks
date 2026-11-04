@@ -17,13 +17,13 @@ pnpm add @fingerly/next
 Read the key in a Server Component and pass it down:
 
 ```tsx
-// app/layout.tsx — a Server Component
+// app/layout.tsx (a Server Component)
 <FingerlyProvider apiKey={process.env.FINGERLY_API_KEY}>{children}</FingerlyProvider>
 ```
 
 That is the arrangement that always works, and it is worth understanding why
 rather than copying. A server render reads `process.env` at runtime, so any
-variable name will do — no `NEXT_PUBLIC_` prefix needed — and the value reaches
+variable name will do (no `NEXT_PUBLIC_` prefix needed), and the value reaches
 the browser through the RSC payload, which is where a public SDK key was
 always going to end up.
 
@@ -31,7 +31,7 @@ The provider will also read `NEXT_PUBLIC_FINGERLY_API_KEY` and
 `NEXT_PUBLIC_FINGERLY_ENDPOINT` itself, but that path has a condition on it:
 Next inlines `NEXT_PUBLIC_` variables **while compiling**, and it does not
 compile your dependencies. In a published build the read survives as a
-`process.env` lookup, and in a browser there is no `process` — the server
+`process.env` lookup, and in a browser there is no `process`. The server
 render finds the key, hydration does not, and identification fails (the page
 keeps rendering, and the console says which variable to set). It works if
 your app lists `@fingerly/next` in `transpilePackages`; the prop above needs no
@@ -44,7 +44,7 @@ an `Origin`, so the mistake either route invites cannot silently work.
 ## Add the provider
 
 ```tsx
-// app/layout.tsx — still a Server Component
+// app/layout.tsx (still a Server Component)
 import { FingerlyProvider } from '@fingerly/next'
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -112,8 +112,8 @@ safe anywhere: it runs in an effect, and effects do not run during a server
 render. The page renders on the server, collects after hydration, and every
 component that asks shares the one identification.
 
-The full surface — `immediate`, `suspend`, `tag`, `refresh`, confidence floors
-— is documented in the [React binding's README](../react/README.md).
+The full surface (`immediate`, `suspend`, `tag`, `refresh`, confidence floors)
+is documented in the [React binding's README](../react/README.md).
 
 ## Carry it into a Server Action
 
@@ -153,7 +153,7 @@ form submitted before the SDK finished, or with JavaScript disabled, is a
 normal event, and the server can tell it apart from a form that never carried a
 field at all.
 
-`readRequestId()` returns `null` for all of those cases rather than throwing —
+`readRequestId()` returns `null` for all of those cases rather than throwing:
 what to do about an unidentified submission is a policy your server owns. It
 also refuses anything that is not a short opaque token: the field arrives from
 the page, which means it arrives from whoever is driving the browser, and a
@@ -168,8 +168,8 @@ Both halves agree on the field name through one exported constant,
 
 | Import | Runs | Contains |
 | --- | --- | --- |
-| `@fingerly/next` | the browser | provider, field, hooks — a `'use client'` module |
-| `@fingerly/next/server` | the server | `readRequestId`, `REQUEST_ID_FIELD` — no React |
+| `@fingerly/next` | the browser | provider, field, hooks (a `'use client'` module) |
+| `@fingerly/next/server` | the server | `readRequestId`, `REQUEST_ID_FIELD` (no React) |
 
 A Server Action that imported `readRequestId` from the main entry would get a
 client reference rather than a function: the import succeeds and the call fails
@@ -177,7 +177,7 @@ at runtime, which is the worst way to learn about a boundary. Hence the split.
 
 ## Running the demo
 
-`demo/` is a real Next application — a Server Component layout, a client page,
+`demo/` is a real Next application: a Server Component layout, a client page,
 and a Server Action reading the field back:
 
 ```
@@ -191,7 +191,7 @@ port you are running it on. Then the identification produces a real
 `requestId`, the hidden field carries it, and the action prints the one it
 read.
 
-Open it twice — an ordinary window and a private one — and watch the incognito
+Open it twice, in an ordinary window and a private one, and watch the incognito
 card change.
 
 ## What this deliberately does not do
@@ -228,6 +228,6 @@ contents, so `endpoints={['/k7x2qm4a']}` does not start a new identification
 when the layout renders again.
 
 **It does not read events back.** It does not need to: `identify()` resolves
-with the server's verdict — `visitorId`, `suspectScore`, `suspectLevel` and the
-triggers behind them — so there is nothing to fetch afterwards. Reading stored
+with the server's verdict (`visitorId`, `suspectScore`, `suspectLevel` and the
+triggers behind them), so there is nothing to fetch afterwards. Reading stored
 events for reporting is `@fingerly/node`'s job.

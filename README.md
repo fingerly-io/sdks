@@ -9,32 +9,32 @@ repo relates to `server` and `panels`.
 
 ## Layout
 
-- `client/web/types` — canonical TypeScript wire contracts, maintained in the
+- `client/web/types`: canonical TypeScript wire contracts, maintained in the
   standalone private `sdk-types` repository and consumed by TypeScript bridges.
-- `client/web/core` — framework-agnostic client device/event core (TS), shared by browser SDKs.
+- `client/web/core`: framework-agnostic client device/event core (TS), shared by browser SDKs.
   The budgeted scheduler, the signal vocabulary, the transport, and the detectors.
   Contains no DOM code and is compiled against the worker lib so that it cannot
   acquire any.
-- `client/web/web-js` — vanilla browser SDK. The ~22 browser sources and the
+- `client/web/web-js`: vanilla browser SDK. The ~22 browser sources and the
   tamper layer that checks whether the browser is lying about them.
-- `server/node` — server-side Node SDK for stored-event reads, webhook
+- `server/node`: server-side Node SDK for stored-event reads, webhook
   verification, and a framework-neutral same-origin proxy. Maintained in the
   standalone private `sdk-node` repository; it has no runtime dependencies.
-- `server/python` — server-side Python SDK for stored-event reads, webhook
+- `server/python`: server-side Python SDK for stored-event reads, webhook
   verification, and a same-origin proxy, mirroring the Node SDK's architecture.
   Maintained in the standalone private `sdk-python` repository. Ships a
   synchronous and an asyncio client over one shared transport, and serves the
   proxy under both ASGI and WSGI, because Python has two server standards where
   JavaScript has one `Request`/`Response`. Python 3.9+, one runtime dependency
   (`httpx`); uv and ruff for tooling.
-- `server/go` — server-side Go SDK for stored-event reads, webhook
+- `server/go`: server-side Go SDK for stored-event reads, webhook
   verification, and a same-origin proxy, mirroring the Node SDK's architecture.
   Maintained in the standalone private `fingerly-go` repository, named for its
   import path rather than the `sdk-*` convention, as `stripe-go` is. Go 1.22+
   and nothing outside the standard library. The proxy is a single
   `http.Handler`, because `net/http` is the one standard every Go router takes,
   so it needs no adapters.
-- `server/java` — server-side JVM SDK for stored-event reads, webhook
+- `server/java`: server-side JVM SDK for stored-event reads, webhook
   verification, and a same-origin proxy, mirroring the Node SDK's architecture.
   Maintained in the standalone private `sdk-java` repository. Java 11 bytecode
   built on a 17 toolchain; `jackson-databind` is the only runtime dependency.
@@ -42,7 +42,7 @@ repo relates to `server` and `panels`.
   use: `fingerly-server` plus a `-jakarta`, `-javax` and `-webflux` adapter,
   each taking its server API as `provided`. The WebFlux one offloads the
   blocking forward off the event loop.
-- `server/dotnet` — server-side .NET SDK for stored-event reads, webhook
+- `server/dotnet`: server-side .NET SDK for stored-event reads, webhook
   verification, and a same-origin proxy, mirroring the Node SDK's architecture.
   Maintained in the standalone private `sdk-dotnet` repository. Two packages:
   `Fingerly.Server`, which targets net8.0 and netstandard2.0 so the reads stay
@@ -52,7 +52,7 @@ repo relates to `server` and `panels`.
   trimmable and AOT-safe, which is why every type is bound through the JSON
   source generator rather than reflection. Everything is asynchronous, with no
   synchronous counterpart.
-- `server/ruby` — server-side Ruby SDK for stored-event reads, webhook
+- `server/ruby`: server-side Ruby SDK for stored-event reads, webhook
   verification, and a same-origin proxy, mirroring the Node SDK's architecture.
   Maintained in the standalone private `sdk-ruby` repository. Ruby 3.1+ and
   nothing outside the standard library. The proxy is one piece of Rack
@@ -60,7 +60,7 @@ repo relates to `server` and `panels`.
   shares, so it needs no adapters. One synchronous client and no asynchronous
   twin: `Net::HTTP` has honoured the fiber scheduler since Ruby 3.0, so the
   same client is non-blocking under Falcon. Ships RBS signatures.
-- `server/rust` — server-side Rust SDK for stored-event reads, webhook
+- `server/rust`: server-side Rust SDK for stored-event reads, webhook
   verification, and a same-origin proxy, mirroring the Node SDK's architecture.
   Maintained in the standalone private `sdk-rust` repository. Rust 1.88+,
   async on Tokio, and the only server SDK with no dependency-free option:
@@ -72,7 +72,7 @@ repo relates to `server` and `panels`.
   counterpart; cancellation is dropping the future. Webhook verification sits
   behind no feature, so `default-features = false` is a build with neither an
   HTTP stack nor a runtime in it.
-- `server/php` — server-side PHP SDK for stored-event reads, webhook
+- `server/php`: server-side PHP SDK for stored-event reads, webhook
   verification, and a same-origin proxy, mirroring the Node SDK's architecture.
   Maintained in the standalone private `sdk-php` repository. PHP 8.1+ and
   nothing outside `ext-curl` and `ext-json`; CI asserts that
@@ -85,25 +85,25 @@ repo relates to `server` and `panels`.
   equivalent of Rack to unify them, so this is the Java situation rather than
   the Go one. `handle()` is the interface and the adapters are conveniences,
   so Phalcon, CodeIgniter, Yii or a bare script need about ten lines.
-- `client/web/vue` — Vue 3 plugin and composables ([README](client/web/vue/README.md)).
+- `client/web/vue`: Vue 3 plugin and composables ([README](client/web/vue/README.md)).
   One shared identification per app, readonly reactive state, SSR-safe.
-- `client/web/{react,svelte,angular,nuxt,next}` — implemented framework bindings,
+- `client/web/{react,svelte,angular,nuxt,next}`: implemented framework bindings,
   built on `web-js`/`vue`/`react`.
-- `client/mobile/ios` — the native iOS SDK (Swift). Implemented; see its
+- `client/mobile/ios`: the native iOS SDK (Swift). Implemented; see its
   [README](client/mobile/ios/README.md). Ships an SPM package and a podspec: React
   Native integrates through CocoaPods, while Flutter supports both CocoaPods
   and Swift Package Manager.
-- `client/mobile/android` — the native Android SDK (Kotlin). Implemented; see its
+- `client/mobile/android`: the native Android SDK (Kotlin). Implemented; see its
   [README](client/mobile/android/README.md). One dependency (coroutines), no JNI, and
   two install-time permissions that prompt nobody. Publishes an AAR as
   `io.fingerly:fingerly`, which is what the three bridges depend on.
-- `client/mobile/react-native`, `client/mobile/flutter`, `client/mobile/lynx` — standalone bridges to the native SDKs, not
+- `client/mobile/react-native`, `client/mobile/flutter`, `client/mobile/lynx`: standalone bridges to the native SDKs, not
   second implementations. All three are thin on purpose: almost every signal worth
   having on a phone is unreachable from JavaScript or Dart, so a cross-platform
   SDK that collected only what it could reach would report a jailbroken,
   instrumented device as clean. React Native and Lynx are in the pnpm workspace;
   Flutter is a Dart/pub package and is not. Lynx supports Android and iOS hosts.
-- `contract` — API contract synced from `server`'s OpenAPI spec; the sync point for
+- `contract`: API contract synced from `server`'s OpenAPI spec; the sync point for
   the API shape across every SDK/panel consumer. Server SDKs vendor snapshots
   so they can build and test independently.
 
@@ -151,7 +151,7 @@ pnpm --dir client/mobile/lynx/example build
 ```
 
 The demo page runs the browser SDK against whatever browser opens it and renders
-the whole report — every source with its status and duration, the tamper
+the whole report: every source with its status and duration, the tamper
 findings, and the verdicts. It submits nothing unless an endpoint and SDK key
 are filled in. Serve it over `localhost` rather than opening the file directly:
 several sources need a secure context, and `file://` is not one.
@@ -186,22 +186,22 @@ and `client/mobile/android/.../core/Types.kt` are literal ports of it, field for
 because both ends were already written.
 
 Native SDKs additionally emit a `device` source, which is the one thing the
-server reads *by name*. Four flags are shared — `frida`, `mitm_attack`,
-`developer_tools`, `device_farm` — and each platform adds its own: `jailbreak`
+server reads *by name*. Four flags are shared (`frida`, `mitm_attack`,
+`developer_tools`, `device_farm`), and each platform adds its own: `jailbreak`
 and `simulator` on iOS, `root_apps`, `emulator` and `cloned_app` on Android.
 Both also carry `tampering`, `vpn_mobile` and the `timezone`/`locale` pair the
 geo-mismatch rule needs.
 
 Three of the Android keys are spelled differently from the verdict that produces
-them — `root_apps` from `root`, `cloned_app` from `appCloner`,
-`developer_tools` from `automation` — because `risk.androidFlags` is the
+them (`root_apps` from `root`, `cloned_app` from `appCloner`,
+`developer_tools` from `automation`) because `risk.androidFlags` is the
 authority on the wire names and the SDK's are named for what they are. A typo in
 either direction fails silently at every layer: the submission succeeds, the
 event is stored, and a signal the customer is paying for never fires. Both ends
 have a contract test pinning the same list for exactly that reason.
 
-Those flags are assertions rather than observations — only the process can
-answer them — so the SDK states them and the server records them.
+Those flags are assertions rather than observations (only the process can
+answer them), so the SDK states them and the server records them.
 
 ## Using it
 
@@ -232,7 +232,7 @@ Fingerly same-origin proxy on their own domain.
 resolving with the server's verdict: `visitorId`, `suspectScore`,
 `suspectLevel` and the triggers behind them come back with the submission, so
 there is no second call to make. Pass `{ submit: false }` to collect and score
-without sending anything — the server's fields are empty then, and
+without sending anything. The server's fields are empty then, and
 `suspectScore` is `null` rather than `0`, because nobody scored it.
 
 The default browser run spends 300ms on the initial tier, then continues the
@@ -258,14 +258,14 @@ with `422 consent_required`. Background in
 
 ## The SDK never asks the visitor for anything
 
-No permission prompt, no picker, no dialog — not on any browser, not for any
+No permission prompt, no picker, no dialog: not on any browser, not for any
 signal. A fraud check that interrupts a checkout with a permission dialog has
 destroyed the thing it was protecting, and a visitor who is asked has been told
 they are being measured.
 
 Reading a permission's *state* is fine and prompts nobody: `permissions.query()`
 is specified never to prompt, and `enumerateDevices()` returns unlabelled
-devices rather than asking. Requesting is what is banned —
+devices rather than asking. Requesting is what is banned:
 `getUserMedia`, `Notification.requestPermission`, `getCurrentPosition`,
 `DeviceMotionEvent.requestPermission`, `storage.persist`,
 `requestStorageAccess`, file and device pickers, `credentials.get`, fullscreen
@@ -276,8 +276,8 @@ the source tree, so it cannot regress quietly.
 
 The one API that prompts on some browsers and not others is canvas readback:
 Tor Browser raises a doorhanger on `toDataURL()`. The canvas source checks
-whether the fast tier measured a clamped clock — resistFingerprinting's
-signature — and declines to touch the API at all if so, reporting
+whether the fast tier measured a clamped clock (resistFingerprinting's
+signature) and declines to touch the API at all if so, reporting
 `blocked / rfp-canvas-prompt-avoided`. Nothing is lost: a canvas hash from an
 RFP browser was never going to identify anyone, and the refusal is better
 evidence than the hash would have been.
