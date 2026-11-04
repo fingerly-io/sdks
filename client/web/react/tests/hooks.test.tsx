@@ -209,6 +209,25 @@ describe('FingerlyProvider', () => {
     expect(latest().requestId).toBe('req_1')
   })
 
+  it('keeps the store when endpoints is a new array on every render', async () => {
+    // An array literal, or one from a Server Component payload on each
+    // router.refresh(), has a new identity per render. Keyed on identity, the
+    // store was rebuilt and every component with `immediate` identified again.
+    const { latest, element } = probe(() => useIdentify({ immediate: true }))
+    const tree = () => (
+      <FingerlyProvider apiKey="fly_pk_development_test" consent="granted" endpoints={['/k7x2qm4a']}>
+        {element}
+      </FingerlyProvider>
+    )
+    const { root } = render(tree())
+    await act(async () => undefined)
+    for (let i = 0; i < 5; i++) await act(async () => root.render(tree()))
+
+    expect(loadMock).toHaveBeenCalledTimes(1)
+    expect(identifyMock).toHaveBeenCalledTimes(1)
+    expect(latest().requestId).toBe('req_1')
+  })
+
   it('accepts a store built elsewhere, for one store per request', async () => {
     const { createFingerlyStore } = await import('../src/store.js')
     const store = createFingerlyStore({ apiKey: 'pk_request', consent: 'granted', submit: false })

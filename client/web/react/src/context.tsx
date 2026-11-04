@@ -55,6 +55,11 @@ export function FingerlyProvider(props: FingerlyProviderProps): ReactNode {
   // `<FingerlyProvider apiKey="…">` - a fresh object literal on every render of
   // the parent - does not rebuild the store and throw away the identification
   // underneath it.
+  // The endpoint list by its contents, not its identity: `endpoints={['/k7x2qm4a']}`
+  // is a new array on every render, as is one deserialised from a Server
+  // Component's payload on each router.refresh(). Keyed on the array itself,
+  // either rebuilt the store, and with it the identification, every time.
+  const endpointsKey = endpoints === undefined || typeof endpoints === 'string' ? endpoints : JSON.stringify(endpoints)
   const created = useMemo(
     () =>
       createFingerlyStore({
@@ -70,7 +75,8 @@ export function FingerlyProvider(props: FingerlyProviderProps): ReactNode {
     // a question, not a new configuration, and rebuilding the store for it
     // would discard the identification it is about to allow. The value at
     // creation seeds the store; the effect below carries every change after.
-    [apiKey, apiVersion, endpoint, endpoints, fallbackToDefaultEndpoint, submit],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- endpointsKey stands for endpoints
+    [apiKey, apiVersion, endpoint, endpointsKey, fallbackToDefaultEndpoint, submit],
   )
 
   useEffect(() => {
