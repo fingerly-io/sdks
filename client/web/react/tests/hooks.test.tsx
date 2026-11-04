@@ -398,6 +398,23 @@ describe('useIdentify', () => {
     expect(latest().isLoading).toBe(false)
   })
 
+  it('keeps the page up when the client cannot be built', async () => {
+    // A missing key used to throw synchronously out of load(), past every
+    // .catch, and React unmounted the whole root.
+    loadMock.mockImplementation(() => {
+      throw new Error('An SDK key is required')
+    })
+    const { latest, element } = probe(() => useIdentify({ immediate: true }))
+    let rendered!: Rendered
+    await act(async () => {
+      rendered = render(<FingerlyProvider apiKey="" consent="granted"><p>page</p>{element}</FingerlyProvider>)
+    })
+
+    expect(rendered.container.textContent).toBe('page')
+    expect(latest().error?.message).toBe('An SDK key is required')
+    expect(latest().isLoading).toBe(false)
+  })
+
   it('retries after a failure rather than serving the rejection forever', async () => {
     identifyMock.mockRejectedValueOnce(new Error('collector exploded'))
     const { latest, element } = probe(() => useIdentify())
