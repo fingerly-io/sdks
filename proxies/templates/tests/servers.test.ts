@@ -110,6 +110,25 @@ async function waitFor(deployment: Deployment, ready: (response: Response) => bo
   }
 }
 
+/**
+ * The host address Docker published a port on. Right after `docker run -d`
+ * the mapping can still be empty, so it is asked for again until it is there.
+ */
+async function published(port: () => string): Promise<string> {
+  const deadline = Date.now() + 30_000
+  for (;;) {
+    let address = ''
+    try {
+      address = port().trim().split('\n')[0] ?? ''
+    } catch {
+      // Not published yet.
+    }
+    if (/^[\d.]+:\d+$/.test(address)) return address
+    if (Date.now() > deadline) throw new Error(`docker published no address: ${JSON.stringify(address)}`)
+    await new Promise((resolve) => setTimeout(resolve, 250))
+  }
+}
+
 /** Containers on a private network; the first one is published. */
 class Stack implements Deployment {
   base = ''
@@ -134,7 +153,7 @@ class Stack implements Deployment {
         ...container.args,
       ])
     }
-    this.base = `http://${run(['port', this.names[0]!, `${this.port}/tcp`]).trim().split('\n')[0]}`
+    this.base = `http://${await published(() => run(['port', this.names[0]!, `${this.port}/tcp`]))}`
     await waitFor(this, this.ready.when, this.ready.path)
   }
 
@@ -178,7 +197,7 @@ class Compose implements Deployment {
 
   async start(): Promise<void> {
     this.compose(['up', '-d', '--build', '--quiet-pull'])
-    this.base = `http://${this.compose(['port', this.front.service, String(this.front.port)]).trim().split('\n')[0]}`
+    this.base = `http://${await published(() => this.compose(['port', this.front.service, String(this.front.port)]))}`
     await waitFor(this, this.ready.when, this.ready.path)
   }
 
