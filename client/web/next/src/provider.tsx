@@ -66,14 +66,7 @@ function fromEnvironment(): { apiKey?: string; endpoint?: string; endpoints?: st
     typeof process === 'undefined' ? undefined : process.env.NEXT_PUBLIC_FINGERLY_ENDPOINT
   const endpointsRaw =
     typeof process === 'undefined' ? undefined : process.env.NEXT_PUBLIC_FINGERLY_ENDPOINTS
-  let endpoints: string[] | undefined
-  if (endpointsRaw) {
-    const parsed: unknown = JSON.parse(endpointsRaw)
-    if (!Array.isArray(parsed) || parsed.length === 0 || parsed.some((value) => typeof value !== 'string')) {
-      throw new Error('NEXT_PUBLIC_FINGERLY_ENDPOINTS must be a non-empty JSON array of strings')
-    }
-    endpoints = parsed
-  }
+  const endpoints = endpointsRaw ? parsedEndpoints(endpointsRaw) : undefined
 
   return {
     ...(apiKey === undefined || apiKey === '' ? {} : { apiKey }),
@@ -105,15 +98,48 @@ function fromEnvironment(): { apiKey?: string; endpoint?: string; endpoints?: st
  *
  * Nothing is collected on mount. When to identify stays the page's decision.
  */
+/**
+ * NEXT_PUBLIC_FINGERLY_ENDPOINTS, parsed once per value.
+ *
+ * Parsed on every render it was a new array every time, and a provider keyed
+ * on the array rebuilt its store and identified again on each one. A value
+ * that is not a non-empty JSON array of strings is reported once and ignored,
+ * rather than thrown from a render that would take the page down with it.
+ */
+let parsedFrom: string | undefined
+let parsed: string[] | undefined
+
+function parsedEndpoints(raw: string): string[] | undefined {
+  if (raw === parsedFrom) return parsed
+  parsedFrom = raw
+  parsed = undefined
+  try {
+    const value: unknown = JSON.parse(raw)
+    if (Array.isArray(value) && value.length > 0 && value.every((item) => typeof item === 'string')) parsed = value
+  } catch {
+    // Reported below, with the other malformed shapes.
+  }
+  if (parsed === undefined) {
+    console.error('[fingerly] NEXT_PUBLIC_FINGERLY_ENDPOINTS must be a non-empty JSON array of strings; it is ignored.')
+  }
+  return parsed
+}
+
+/** Reported once per process rather than on every render. */
+let reportedMissingKey = false
+
 export function FingerlyProvider(props: FingerlyNextProviderProps): ReactNode {
   const environment = fromEnvironment()
   const apiKey = props.apiKey ?? environment.apiKey
   const endpoints = props.endpoints ?? environment.endpoints
   const endpoint = endpoints === undefined ? (props.endpoint ?? environment.endpoint) : undefined
 
-  if (!apiKey) {
-    throw new Error(
-      'No Fingerly key. Pass one from a Server Component, which is the arrangement that ' +
+  if (!apiKey && !reportedMissingKey) {
+    // Reported, not thrown: a missing fraud-signal key must not take the
+    // page down. Identification fails with the SDK's own error instead.
+    reportedMissingKey = true
+    console.error(
+      '[fingerly] No Fingerly key. Pass one from a Server Component, which is the arrangement that ' +
         'always works:\n\n' +
         '  // app/layout.tsx\n' +
         '  <FingerlyProvider apiKey={process.env.FINGERLY_API_KEY}>\n\n' +
@@ -126,7 +152,7 @@ export function FingerlyProvider(props: FingerlyNextProviderProps): ReactNode {
 
   return (
     <ReactFingerlyProvider
-      apiKey={apiKey}
+      apiKey={apiKey ?? ''}
       {...(endpoint === undefined ? {} : { endpoint })}
       {...(props.apiVersion === undefined ? {} : { apiVersion: props.apiVersion })}
       {...(endpoints === undefined ? {} : { endpoints })}

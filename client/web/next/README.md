@@ -32,7 +32,8 @@ The provider will also read `NEXT_PUBLIC_FINGERLY_API_KEY` and
 Next inlines `NEXT_PUBLIC_` variables **while compiling**, and it does not
 compile your dependencies. In a published build the read survives as a
 `process.env` lookup, and in a browser there is no `process` — the server
-render finds the key, hydration does not, and the page throws. It works if
+render finds the key, hydration does not, and identification fails (the page
+keeps rendering, and the console says which variable to set). It works if
 your app lists `@fingerly/next` in `transpilePackages`; the prop above needs no
 such condition, which is why it is the documented route.
 
@@ -199,9 +200,32 @@ card change.
 own origin is what gets them past content blockers, and the proxy for it lives
 in `@fingerly/node`, because it holds a server secret and has to forward the
 visitor's real address rather than your server's. Create a proxy in the
-dashboard, put `Fingerly.createProxy(...)` in the route file for the path it
-issued (such as `app/k7x2qm4a/route.ts`), and give the provider
-`endpoints="/k7x2qm4a"`.
+dashboard, put it in the route file for the path it issued, and give the
+provider `endpoints="/k7x2qm4a"`:
+
+```ts
+// app/k7x2qm4a/route.ts
+import { Fingerly } from '@fingerly/node'
+
+// Built on the first request rather than at import, so `next build` does not
+// need the proxy key.
+let proxy: ((request: Request) => Promise<Response>) | undefined
+
+export function POST(request: Request) {
+  proxy ??= Fingerly.createProxy({
+    proxyKey: process.env.FINGERLY_PROXY_KEY!,
+    // The last X-Forwarded-For entry is the address your own server or load
+    // balancer saw. Read a CDN's client-IP header instead only when traffic
+    // can reach this app through that CDN alone.
+    clientIp: (req) => req.headers.get('x-forwarded-for')?.split(',').at(-1)?.trim() ?? '',
+  })
+  return proxy(request)
+}
+```
+
+Pass the path as a string. An array works too, and is compared by its
+contents, so `endpoints={['/k7x2qm4a']}` does not start a new identification
+when the layout renders again.
 
 **It does not read events back.** It does not need to: `identify()` resolves
 with the server's verdict — `visitorId`, `suspectScore`, `suspectLevel` and the

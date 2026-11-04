@@ -56,14 +56,20 @@ describe('under SSR', () => {
     // The same variable, read the same way, in both renders - a provider that
     // found a key on the server and none after hydration would identify only
     // for visitors who never reloaded.
-    delete (process.env as Record<string, string | undefined>).NEXT_PUBLIC_FINGERLY_API_KEY
+    const environment = process.env as Record<string, string | undefined>
+    delete environment.NEXT_PUBLIC_FINGERLY_API_KEY
+    environment.NEXT_PUBLIC_FINGERLY_API_KEY = 'pk_server_env'
 
-    expect(() =>
-      renderToString(
-        <FingerlyProvider>
-          <span />
-        </FingerlyProvider>,
-      ),
-    ).toThrow(/NEXT_PUBLIC_FINGERLY_API_KEY/)
+    // Rendered, with the key from the environment: a missing one is reported,
+    // never thrown, so the server render cannot fail over it either.
+    const html = renderToString(
+      <FingerlyProvider>
+        <span>page</span>
+      </FingerlyProvider>,
+    )
+    expect(html).toContain('page')
+    delete environment.NEXT_PUBLIC_FINGERLY_API_KEY
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    expect(renderToString(<FingerlyProvider><span>page</span></FingerlyProvider>)).toContain('page')
   })
 })

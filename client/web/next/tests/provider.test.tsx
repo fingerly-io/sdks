@@ -133,26 +133,64 @@ describe('FingerlyProvider', () => {
     expect(loadMock).toHaveBeenCalledWith({ apiKey: 'pk_from_prop', consent: 'granted' })
   })
 
-  it('says which variable to set when there is no key', () => {
+  it('says which variable to set when there is no key, and keeps the page up', async () => {
     delete environment.NEXT_PUBLIC_FINGERLY_API_KEY
-    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    loadMock.mockImplementation(async () => {
+      throw new Error('An SDK key is required')
+    })
 
-    let thrown: unknown
-    try {
-      render(
-        <FingerlyProvider>
-          <span />
+    let container!: HTMLElement
+    await act(async () => {
+      container = render(
+        <FingerlyProvider consent="granted">
+          <span>page</span>
+          <FingerlyRequestId />
         </FingerlyProvider>,
-      )
-    } catch (error) {
-      thrown = error
-    }
+      ).container
+    })
 
+    // The page renders; a missing fraud-signal key must not take it down.
+    expect(container.textContent).toBe('page')
+    const message = logged.mock.calls.map((call) => String(call[0])).join('\n')
     // The route that always works comes first, because the other one has a
     // condition on it that a reader cannot be expected to know.
-    expect((thrown as Error).message).toMatch(/apiKey=\{process\.env/)
-    expect((thrown as Error).message).toMatch(/NEXT_PUBLIC_FINGERLY_API_KEY/)
-    expect((thrown as Error).message).toMatch(/transpilePackages/)
+    expect(message).toMatch(/apiKey=\{process\.env/)
+    expect(message).toMatch(/NEXT_PUBLIC_FINGERLY_API_KEY/)
+    expect(message).toMatch(/transpilePackages/)
+  })
+
+  it('parses NEXT_PUBLIC_FINGERLY_ENDPOINTS once, so re-renders do not identify again', async () => {
+    environment.NEXT_PUBLIC_FINGERLY_API_KEY = 'pk_from_env'
+    environment.NEXT_PUBLIC_FINGERLY_ENDPOINTS = '["/k7x2qm4a"]'
+    const tree = () => (
+      <FingerlyProvider consent="granted">
+        <FingerlyRequestId />
+      </FingerlyProvider>
+    )
+    let root!: Root
+    await act(async () => {
+      root = render(tree()).root
+    })
+    for (let i = 0; i < 5; i++) await act(async () => root.render(tree()))
+
+    expect(loadMock).toHaveBeenCalledTimes(1)
+    expect(loadMock).toHaveBeenCalledWith({ apiKey: 'pk_from_env', endpoints: ['/k7x2qm4a'], consent: 'granted' })
+    expect(identifyMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('ignores a malformed NEXT_PUBLIC_FINGERLY_ENDPOINTS instead of throwing from render', async () => {
+    environment.NEXT_PUBLIC_FINGERLY_API_KEY = 'pk_from_env'
+    environment.NEXT_PUBLIC_FINGERLY_ENDPOINTS = 'not json'
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    let container!: HTMLElement
+    await act(async () => {
+      container = render(<FingerlyProvider consent="granted"><span>page</span></FingerlyProvider>).container
+    })
+
+    expect(container.textContent).toBe('page')
+    expect(String(logged.mock.calls[0]?.[0])).toMatch(/NEXT_PUBLIC_FINGERLY_ENDPOINTS/)
   })
 
   it('collects nothing on its own', () => {
