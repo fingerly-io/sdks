@@ -561,7 +561,7 @@
         if (answer == null || answer.suspectScore === null) {
           target.innerHTML = `<p class="font-mono text-[12px] text-haze">${
             answer
-              ? 'This submission was not scored. ' + esc(answer.reason || 'The server did not say why.')
+              ? 'This submission was not scored. Your backend reads why on the event, by request ID.'
               : 'Waiting for the server. Configure an endpoint and a key to see the score.'
           }</p>`
           return

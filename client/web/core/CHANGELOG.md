@@ -8,6 +8,7 @@
 - The deferred supplement's answer is read to the end, which stops Chromium keeping about 7 KB per identification for the life of the page.
 - `JSON.stringify` and `util.inspect` of a `FingerlyClient` or `HttpTransport` show `[redacted]` instead of the SDK key.
 - `sdk.version` reports 0.1.1.
+- `IdentifyResult.reason` is no longer set, from the server's answer or for `identify({ submit: false })`, which said `not-submitted`; that case is still `deferred`'s `not-submitted`. The server tells only a secret key why a submission went unscored, and your backend reads it on the event.
 
 ## 0.1.0
 

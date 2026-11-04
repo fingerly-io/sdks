@@ -284,7 +284,6 @@ export class FingerlyClient {
         identifiable: false,
         duplicate: false,
         state: '',
-        reason: 'not-submitted',
         suspectScore: null,
         suspectLevel: null,
         triggers: [],
@@ -320,7 +319,9 @@ export class FingerlyClient {
       identifiable: answer.identifiable ?? false,
       duplicate: answer.duplicate ?? false,
       state: answer.state ?? '',
-      reason: answer.reason ?? '',
+      // No `reason`. The server tells only a secret key why a submission went
+      // unscored; a browser's backend reads it on the event. The field stays,
+      // deprecated and undefined, so code written against 0.1.0 compiles.
       // Null rather than zero when the server omitted it. The server omits an
       // absent score and sends a real zero as zero, so the two survive the
       // wire; collapsing them here would undo that.

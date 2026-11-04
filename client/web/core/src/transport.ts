@@ -86,7 +86,10 @@ export interface SubmitResponse {
 
   /** `enriched` or `unavailable`. */
   state?: string
-  /** Why enrichment did not happen, as a short stable token. */
+  /**
+   * Why enrichment did not happen, as a short stable token. Answered to a
+   * secret key only, so absent for this SDK and not read from the wire.
+   */
   reason?: string
 
   /**
