@@ -90,6 +90,30 @@ export const timingSource: Source<TimingSignal> = {
 }
 
 /**
+ * One `PermissionStatus` per name per window, queried once and read live.
+ *
+ * Chromium keeps every `PermissionStatus` alive for the life of the page, so
+ * querying on each identification leaked two objects per call in a long
+ * single-page session. Its `state` follows the permission as it changes, so
+ * reusing the object loses nothing.
+ */
+const permissionStatuses = new WeakMap<object, Map<string, Promise<PermissionStatus>>>()
+
+function permissionStatus(w: Window & typeof globalThis, name: PermissionName): Promise<PermissionStatus> {
+  let byName = permissionStatuses.get(w.navigator)
+  if (!byName) {
+    byName = new Map()
+    permissionStatuses.set(w.navigator, byName)
+  }
+  let status = byName.get(name)
+  if (!status) {
+    status = w.navigator.permissions.query({ name })
+    byName.set(name, status)
+  }
+  return status
+}
+
+/**
  * The notification permission, read two ways.
  *
  * `Notification.permission` is the legacy synchronous reading and
@@ -108,7 +132,7 @@ export const permissionsSource: Source<PermissionsSignal> = {
 
     const query = async (name: PermissionName): Promise<string | undefined> => {
       try {
-        return (await w.navigator.permissions.query({ name })).state
+        return (await permissionStatus(w, name)).state
       } catch {
         // A name this browser does not know. Not an error worth failing over.
         return undefined
