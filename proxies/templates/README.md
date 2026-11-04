@@ -34,8 +34,17 @@ to the container.
   source, never the left-most `X-Forwarded-For`), `x-fingerly-origin`,
   `x-fingerly-user-agent` and `x-fingerly-proxy-version` itself, overwriting
   anything the visitor sent under those names.
+- Forwards nothing and answers `500` ("The client IP source returned no valid
+  address") when the trusted source does not hold exactly one IPv4 or IPv6
+  address, and logs that once rather than per request.
 - Never forwards cookies or `Authorization`, and caps bodies at 1 MiB where the
   platform can see them.
+- Gives the whole upstream exchange one 5-second deadline and reads the answer
+  in full, up to 4 MiB, before sending anything back. A timeout answers `504`
+  ("Gateway timeout"); an unreachable API, a broken answer or one over the cap
+  answers `502` ("Bad gateway"), never a truncated success. These apply to the
+  Vercel, Netlify, container and Cloud Run templates; nginx and Caddy answer
+  `504` and `502` with their own timeouts.
 - Relays only `content-type`, `x-request-id`, `ratelimit-limit`,
   `ratelimit-remaining` and `retry-after`, plus `cache-control: no-store`.
   nginx and Caddy drop `Set-Cookie` and pin `no-store`; the API sends nothing
