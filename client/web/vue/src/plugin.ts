@@ -106,7 +106,25 @@ export interface FingerlyContext {
    * result already in `state` without a second submission. `force` starts a
    * fresh one, which is what a long-lived SPA wants before a second checkout.
    */
-  identify(options?: { tag?: string; force?: boolean }): Promise<IdentifyResult>
+  identify(options?: { tag?: string; force?: boolean; automatic?: boolean }): Promise<IdentifyResult>
+}
+
+/**
+ * How long a failed identification holds off the next one.
+ *
+ * Without this a failure was forgotten at once, and every component mounting
+ * with `immediate` started another identification - three requests per route
+ * change while the API was answering 429. A `Retry-After` the server sent
+ * holds every call, forced or not, until it passes. A transient failure
+ * without one (a 5xx, a network error) holds automatic calls only, for 5 s
+ * doubling per consecutive failure up to a minute; a click still tries at
+ * once. Anything else holds nothing.
+ */
+export function failureHold(error: unknown, consecutive: number, now: number): { until: number; automaticUntil: number } {
+  const failure = error as { retryAfterMs?: unknown; retryable?: unknown } | null
+  const retryAfter = typeof failure?.retryAfterMs === 'number' && failure.retryAfterMs > 0 ? failure.retryAfterMs : 0
+  const backoff = failure?.retryable === true ? Math.min(60_000, 5_000 * 2 ** Math.max(0, consecutive - 1)) : 0
+  return { until: now + retryAfter, automaticUntil: now + Math.max(retryAfter, backoff) }
 }
 
 /**
@@ -172,6 +190,8 @@ export function createFingerly(options: FingerlyVueOptions): Plugin {
   let loaded: FingerlyClient | undefined
   let inFlight: Promise<IdentifyResult> | undefined
   let completed: IdentifyResult | undefined
+  let held: { error: Error; until: number; automaticUntil: number } | undefined
+  let consecutiveFailures = 0
 
   const mirrorConsent = (consent: ConsentState): void => {
     state.consent.value = consent
@@ -230,6 +250,12 @@ export function createFingerly(options: FingerlyVueOptions): Plugin {
       return Promise.resolve(completed)
     }
 
+    // Holding off after a failure; see failureHold.
+    const now = Date.now()
+    if (held && (now < held.until || (identifyOptions.automatic && now < held.automaticUntil))) {
+      return Promise.reject(held.error)
+    }
+
     state.isLoading.value = true
     state.error.value = null
 
@@ -255,11 +281,15 @@ export function createFingerly(options: FingerlyVueOptions): Plugin {
         state.verdicts.value = result.verdicts
         state.report.value = result.report
         completed = result
+        held = undefined
+        consecutiveFailures = 0
         return result
       })
       .catch((cause: unknown) => {
         const error = cause instanceof Error ? cause : new Error(String(cause))
         state.error.value = error
+        consecutiveFailures += 1
+        held = { error, ...failureHold(error, consecutiveFailures, Date.now()) }
         // Rethrown as well as stored. A caller that awaited identify() should
         // be able to try/catch it; a template that only watches `error` should
         // not have to.

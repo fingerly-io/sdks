@@ -389,6 +389,54 @@ describe('useIdentify', () => {
     expect(result.isLoading.value).toBe(false)
   })
 
+  it('holds every identification for as long as Retry-After asked', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      const limited = Object.assign(new Error('The server refused the submission (429)'), { status: 429, retryable: true, retryAfterMs: 30_000 })
+      identifyMock.mockRejectedValue(limited)
+      const plugin = createFingerly({ apiKey: 'fly_pk_development_test', consent: 'granted' })
+      const { result } = withSetup(() => useIdentify(), plugin)
+      await expect(result.identify()).rejects.toBe(limited)
+
+      // Route changes: more components mounting with immediate, on the same plugin.
+      for (let i = 0; i < 5; i++) withSetup(() => useIdentify({ immediate: true }), plugin)
+      await flush()
+      await expect(result.refresh()).rejects.toBe(limited)
+      expect(identifyMock).toHaveBeenCalledTimes(1)
+
+      vi.setSystemTime(Date.now() + 30_001)
+      identifyMock.mockResolvedValue(RESULT)
+      await result.refresh()
+      expect(identifyMock).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('holds automatic identifications after a transient failure, but not a click', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      identifyMock.mockRejectedValue(Object.assign(new Error('Failed to fetch'), { retryable: true }))
+      const plugin = createFingerly({ apiKey: 'fly_pk_development_test', consent: 'granted' })
+      withSetup(() => useIdentify({ immediate: true }), plugin)
+      await flush()
+      for (let i = 0; i < 4; i++) withSetup(() => useIdentify({ immediate: true }), plugin)
+      await flush()
+      expect(identifyMock).toHaveBeenCalledTimes(1)
+
+      const { result } = withSetup(() => useIdentify(), plugin)
+      await expect(result.identify()).rejects.toThrow('Failed to fetch')
+      expect(identifyMock).toHaveBeenCalledTimes(2)
+
+      vi.setSystemTime(Date.now() + 60_001)
+      withSetup(() => useIdentify({ immediate: true }), plugin)
+      await flush()
+      expect(identifyMock).toHaveBeenCalledTimes(3)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('returns state that a component cannot assign to', async () => {
     const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'fly_pk_development_test', consent: 'granted' }))
     await result.identify()
