@@ -55,13 +55,19 @@ export interface FingerlyOptions
  * `consent: 'granted'` once it already has consent (or another lawful basis).
  */
 export function load(options: FingerlyOptions): Promise<FingerlyClient> {
-  return Promise.resolve(
-    new FingerlyClient({
-      ...options,
-      platform: 'web',
-      sources: options.sources ?? browserSources,
-      integrity: (report) => inspectIntegrity(report.sources),
-    }),
+  // A configuration mistake, such as a missing key, rejects rather than
+  // throwing. Every binding chains `load().then(...)`, and a synchronous throw
+  // skips their `.catch`: it unmounted a whole React root and failed a Nuxt
+  // app's start over a fraud signal.
+  return new Promise((resolve) =>
+    resolve(
+      new FingerlyClient({
+        ...options,
+        platform: 'web',
+        sources: options.sources ?? browserSources,
+        integrity: (report) => inspectIntegrity(report.sources),
+      }),
+    ),
   )
 }
 

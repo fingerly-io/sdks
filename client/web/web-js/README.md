@@ -42,7 +42,9 @@ runs code the visitor controls.
 
 ## Errors
 
-- `load()` throws for a configuration mistake, such as a missing `apiKey`.
+- `load()` rejects for a configuration mistake, such as a missing `apiKey`.
+  It never throws synchronously, so a misconfigured key cannot take the page
+  down with it.
 - `identify()` rejects with a `ConsentError` while consent is not `granted`,
   and with a `TransportError` when the request cannot be completed. Branch on
   its `status` and `retryable`.
