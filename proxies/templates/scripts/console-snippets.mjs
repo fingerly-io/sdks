@@ -139,9 +139,9 @@ export function build() {
         },
         {
           title: 'Add the proxy key',
-          text: 'As an environment variable scoped to functions.',
-          label: 'Terminal',
-          code: `netlify env:set FINGERLY_PROXY_KEY ${KEY} --scope functions\n`,
+          text: 'In the Netlify UI, as an environment variable with the Functions scope. Use the UI rather than netlify env:set, which takes the value on the command line and so leaves the key in your shell history.',
+          label: 'Project configuration > Environment variables',
+          code: `Key:    FINGERLY_PROXY_KEY\nValue:  ${KEY}\nScopes: Functions\n`,
         },
         {
           title: 'Deploy',

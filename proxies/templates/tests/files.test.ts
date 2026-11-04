@@ -46,6 +46,22 @@ describe('shipped files', () => {
     expect(readme.match(/^\s*vercel env add .*$/gm)?.map((line) => line.trim())).toEqual([command])
   })
 
+  it('the Netlify README and the dashboard add the proxy key the same way, never on a command line', () => {
+    const snippets = JSON.parse(readFileSync(OUTPUT, 'utf8')) as Record<string, { steps: Array<Record<string, string>> }>
+    const step = snippets.netlify!.steps.find((each) => each.title === 'Add the proxy key')
+    expect(step?.label).toBe('Project configuration > Environment variables')
+    expect(step?.code).toBe('Key:    FINGERLY_PROXY_KEY\nValue:  fly_px_production_…\nScopes: Functions\n')
+    const readme = readFileSync(join(ROOT, 'netlify/README.md'), 'utf8')
+    expect(readme).toContain('**Project configuration > Environment')
+    const block = readme.match(/```text\n((?:\s*\S.*\n)+?)\s*```/)?.[1]
+    expect(block?.split('\n').map((line) => line.trim()).join('\n')).toBe(step?.code?.replace('fly_px_production_…', 'fly_px_production_...'))
+    // No command that carries the key as an argument, in either place.
+    for (const text of [readme, ...snippets.netlify!.steps.map((each) => each.code)]) {
+      expect(text).not.toMatch(/^\s*(netlify\s+env:(set|import)|ntl\s+env:)/m)
+      expect(text).not.toMatch(/env:set\s+FINGERLY_PROXY_KEY\s+\S/)
+    }
+  })
+
   it('contain no em or en dashes', () => {
     for (const path of shipped) {
       expect(readFileSync(path, 'utf8'), relative(ROOT, path)).not.toMatch(/[\u2013\u2014]/)

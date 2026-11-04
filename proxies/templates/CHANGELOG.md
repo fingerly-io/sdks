@@ -16,6 +16,10 @@
   can write.
 - The Vercel README and the dashboard snippet add the key the same way: `vercel
   env add FINGERLY_PROXY_KEY production --sensitive`, which prompts for it.
+- The Netlify README and the dashboard snippet add the key in the Netlify UI,
+  with the Functions scope, instead of `netlify env:set FINGERLY_PROXY_KEY
+  <key>`, which put the key in the shell history. The CLI has no way to prompt
+  for the value or read it from stdin.
 - The Vercel, Netlify, container and Cloud Run templates read the API's answer
   whole, capped at 4 MiB and under one 5-second deadline, before relaying it:
   a timeout answers 504, and an unreachable API, a broken answer or one over

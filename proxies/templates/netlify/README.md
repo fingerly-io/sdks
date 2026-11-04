@@ -19,9 +19,17 @@ upstream is a constant in the code, and every other path and method is refused.
      path = "/k7x2qm4a"
    ```
 
-4. Add the key as an environment variable scoped to functions:
-   `netlify env:set FINGERLY_PROXY_KEY fly_px_production_... --scope functions`,
-   or **Project configuration > Environment variables**.
+4. Add the key in the Netlify UI, under **Project configuration > Environment
+   variables**, as a variable with the **Functions** scope:
+
+   ```text
+   Key:    FINGERLY_PROXY_KEY
+   Value:  fly_px_production_...
+   Scopes: Functions
+   ```
+
+   Use the UI rather than `netlify env:set`, which takes the value on the
+   command line and so leaves the key in your shell history.
 5. Deploy.
 6. Point the browser SDK at the path:
 
