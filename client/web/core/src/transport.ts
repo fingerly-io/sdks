@@ -313,6 +313,26 @@ function backoffMs(attempt: number, random: () => number): number {
   return Math.floor(random() * ceiling)
 }
 
+/**
+ * The wait between attempts, cut short when the call is cancelled.
+ *
+ * A plain timer here kept a cancelled call - consent withdrawn, or the
+ * caller's signal - pending for the whole wait, up to 2 s plus jitter after a
+ * Retry-After, before the loop noticed the abort and rejected.
+ */
+function waitBeforeRetry(ms: number, signal: AbortSignal | undefined): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) return resolve()
+    const done = () => {
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', done)
+      resolve()
+    }
+    const timer = setTimeout(done, ms)
+    signal?.addEventListener('abort', done, { once: true })
+  })
+}
+
 /** A collision-resistant operation identifier; it is not a credential. */
 function newIdempotencyKey(): string {
   const available = (globalThis as typeof globalThis & { crypto?: Crypto }).crypto
@@ -416,7 +436,7 @@ export class HttpTransport implements Transport {
 
         endpointIndex = Math.min(endpointIndex + 1, this.urls.length - 1)
 
-        await new Promise((resolve) => setTimeout(resolve, delay))
+        await waitBeforeRetry(delay, signal)
       }
     }
 
@@ -452,7 +472,7 @@ export class HttpTransport implements Transport {
         if (delay === null) throw failure
         lastError = failure
         endpointIndex = Math.min(endpointIndex + 1, this.urls.length - 1)
-        await new Promise((resolve) => setTimeout(resolve, delay))
+        await waitBeforeRetry(delay, signal)
       }
     }
     throw lastError ?? new TransportError('The supplement could not be sent')

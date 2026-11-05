@@ -285,6 +285,22 @@ describe('HttpTransport under rate limiting and bad answers', () => {
     await expect(pending).resolves.toMatchObject({ request_id: 'request-ok' })
   })
 
+  it('rejects a call cancelled during the wait at once, not when the wait ends', async () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0)
+    vi.useFakeTimers()
+    const fetchImpl = vi.fn(async () => limited('2')) as typeof fetch
+    const transport = new HttpTransport({ apiKey: 'public-test-key', endpoint: 'https://example.test', fetchImpl })
+    const controller = new AbortController()
+
+    const pending = transport.submit(submission(), controller.signal).catch((e: unknown) => e)
+    await vi.advanceTimersByTimeAsync(10)
+    controller.abort()
+    await vi.advanceTimersByTimeAsync(0)
+    const settled = await Promise.race([pending, Promise.resolve('still waiting')])
+    expect(settled).toBeInstanceOf(TransportError)
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+  })
+
   it('reads Retry-After given as an HTTP date', async () => {
     const at = new Date(Date.now() + 60_000).toUTCString()
     const fetchImpl = vi.fn(async () => limited(at)) as typeof fetch
