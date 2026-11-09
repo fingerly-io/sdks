@@ -160,9 +160,8 @@ export function useIdentify(options: UseIdentifyOptions = {}): Fingerly {
 
 export interface UseVerdictReturn {
   /**
-   * True when the server's trigger fired and met the confidence floor, false
-   * when the server answered without it. `null` when no server has answered,
-   * which is not a clean result.
+   * `null`: a browser is no longer told which signals fired, and nobody
+   * reporting is not a clean result. Read signals on your backend.
    */
   readonly matched: boolean | null
   /** The verdict itself, or null before the first identification. */
@@ -178,9 +177,9 @@ const RANK: Record<Confidence, number> = { low: 0, medium: 1, high: 2 }
 const NO_REASONS: readonly string[] = Object.freeze([])
 
 /**
- * @deprecated Read `suspectLevel` and `triggers` from `useIdentify()`.
+ * @deprecated Read `suspectLevel` from `useIdentify()`, and read signals on your backend.
  *
- * Watch one verdict, derived from the server's triggers.
+ * Watch one verdict. Holds nothing now: `matched` is `null`, never a false clean.
  *
  * ```svelte
  * <script lang="ts">
@@ -197,7 +196,7 @@ export function useVerdict(
   name: VerdictName | (() => VerdictName),
   options: { min?: Confidence | (() => Confidence) } = {},
 ): UseVerdictReturn {
-  warnDeprecated('useVerdict', 'read suspectLevel and triggers from useIdentify() instead.')
+  warnDeprecated('useVerdict', 'read suspectLevel from useIdentify() instead, and read signals on your backend. This holds nothing now.')
   const fingerly = useFingerly()
 
   // Getters accepted as well as values, because this is called once when the

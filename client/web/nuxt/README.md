@@ -117,7 +117,7 @@ The composables are auto-imported, like every other Nuxt composable:
 
 ```vue
 <script setup lang="ts">
-const { suspectLevel, triggers, isSuspicious, isReady } = useIdentify({ immediate: true })
+const { suspectLevel, isSuspicious, isReady } = useIdentify({ immediate: true })
 </script>
 
 <template>
@@ -125,11 +125,11 @@ const { suspectLevel, triggers, isSuspicious, isReady } = useIdentify({ immediat
 </template>
 ```
 
-`useIdentify` · `useFingerly` · `useVerdict` (**deprecated**; read `suspectLevel`
-and `triggers` from `useIdentify()`): the same three from `@fingerly/vue`,
+`useIdentify` · `useFingerly` · `useVerdict` (**deprecated**; it holds nothing,
+read `suspectLevel` from `useIdentify()`): the same three from `@fingerly/vue`,
 unchanged. Their full surface is in that
 [package's README](../vue/README.md): `immediate`, `refresh`, a correlation
-`tag`, and reading `suspectLevel`, `triggers` and `isSuspicious`.
+`tag`, and reading `suspectLevel` and `isSuspicious`, which is `null`, not `false`, when the level is absent.
 
 ## What happens on the server
 
@@ -172,4 +172,4 @@ pnpm --filter @fingerly/nuxt playground
 ```
 
 It uses `submit: false`, so it sends nothing and no server answers: the raw
-report fills in, and the score, level and triggers stay empty.
+report fills in, and the score and level read hidden.

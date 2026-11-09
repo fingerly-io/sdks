@@ -2,7 +2,7 @@
 
 ## 0.2.0
 
-- Follows `@fingerly/vue` 0.2.0: `isSuspicious` comes from the server's `suspectLevel` and is `null` when no server answered; `useVerdict()` and `verdicts` are deprecated and derived from the server's `triggers`.
+- Follows `@fingerly/vue` 0.2.0: `isSuspicious` comes from the server's `suspectLevel` and is `null` when the level is absent; `useVerdict()` and `verdicts` are deprecated and hold nothing; `triggers` is deprecated and empty from a public key. Read signals on your backend.
 
 ## 0.1.1
 

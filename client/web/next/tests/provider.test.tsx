@@ -41,6 +41,7 @@ function fakeClient(options: { consent?: string } = {}) {
 }
 
 const { FingerlyProvider } = await import('../src/provider.js')
+const { useIdentify, useVerdict } = await import('@fingerly/react')
 const { FingerlyRequestId } = await import('../src/field.js')
 const { REQUEST_ID_FIELD } = await import('../src/field-name.js')
 
@@ -321,5 +322,48 @@ describe('FingerlyRequestId', () => {
 
     expect(identifyMock).not.toHaveBeenCalled()
     expect(document.querySelector('input')).not.toBeNull()
+  })
+})
+
+// The server's answers, through the real client rather than a fake result:
+// mapping them is exactly what is under test.
+const OLD_TRIGGER = { signal: 'automation', group: 'bot', weight: 9, confidence: 'high', reason: 'cdp-artifacts-1' }
+const PUBLIC_ANSWERS = [
+  ['score and no triggers', { suspect_score: 7, suspect_level: 'low' }, 7, 'low', false, 0],
+  ['neither score nor triggers', {}, null, null, null, 0],
+  ['an old shape with triggers', { suspect_score: 22, suspect_level: 'medium', triggers: [OLD_TRIGGER] }, 22, 'medium', true, 1],
+] as const
+
+async function answering(answer: Record<string, unknown>) {
+  const { FingerlyClient } = await import('@fingerly/web-js')
+  const transport = { submit: async () => ({ request_id: 'req_public', ...answer }) }
+  loadMock.mockImplementation(
+    async () => new FingerlyClient({ apiKey: 'fly_pk_development_test', consent: 'granted', transport, sources: [] }),
+  )
+}
+
+describe('a public response', () => {
+  it.each(PUBLIC_ANSWERS)('%s: absent stays null and verdicts report nothing', async (_name, answer, score, level, suspicious, triggers) => {
+    await answering(answer)
+    environment.NEXT_PUBLIC_FINGERLY_API_KEY = 'pk_from_env'
+    let seen!: { identify: ReturnType<typeof useIdentify>; verdict: ReturnType<typeof useVerdict> }
+    const Probe = () => {
+      seen = { identify: useIdentify({ immediate: true }), verdict: useVerdict('automation') }
+      return null
+    }
+
+    await act(async () => {
+      render(<FingerlyProvider consent="granted"><Probe /></FingerlyProvider>)
+    })
+    await vi.waitFor(() => expect(seen.identify.isReady).toBe(true))
+
+    expect(seen.identify.error).toBeNull()
+    expect(seen.identify.requestId).toBe('req_public')
+    expect(seen.identify.suspectScore).toBe(score)
+    expect(seen.identify.suspectLevel).toBe(level)
+    expect(seen.identify.isSuspicious).toBe(suspicious)
+    expect(seen.identify.triggers).toHaveLength(triggers)
+    expect(seen.verdict.verdict?.value).toBeNull()
+    expect(seen.verdict.matched).toBeNull()
   })
 })

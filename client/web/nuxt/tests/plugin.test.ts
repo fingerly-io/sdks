@@ -40,7 +40,7 @@ function fakeClient(options: { consent?: string } = {}) {
   return client
 }
 
-const { useFingerly, useIdentify } = await import('@fingerly/vue')
+const { useFingerly, useIdentify, useVerdict } = await import('@fingerly/vue')
 const { __setRuntimeConfig } = await import('./stubs/nuxt-app.js')
 const plugin = (await import('../src/runtime/plugin.js')).default
 
@@ -166,7 +166,7 @@ describe('the runtime plugin', () => {
     await Promise.all([first.identify(), second.identify()])
 
     expect(identifyMock).toHaveBeenCalledTimes(1)
-    expect(second.verdicts.value?.incognito.value).toBe(true)
+    expect(second.verdicts.value?.incognito.value).toBeNull()
   })
 
   it('still installs with no key, and says so once', async () => {
@@ -213,5 +213,41 @@ describe('the runtime plugin', () => {
     __setRuntimeConfig({})
 
     expect(() => mountWithPlugin(() => useIdentify())).not.toThrow()
+  })
+})
+
+// The server's answers, through the real client rather than a fake result:
+// mapping them is exactly what is under test.
+const OLD_TRIGGER = { signal: 'automation', group: 'bot', weight: 9, confidence: 'high', reason: 'cdp-artifacts-1' }
+const PUBLIC_ANSWERS = [
+  ['score and no triggers', { suspect_score: 7, suspect_level: 'low' }, 7, 'low', false, 0],
+  ['neither score nor triggers', {}, null, null, null, 0],
+  ['an old shape with triggers', { suspect_score: 22, suspect_level: 'medium', triggers: [OLD_TRIGGER] }, 22, 'medium', true, 1],
+] as const
+
+async function answering(answer: Record<string, unknown>) {
+  const { FingerlyClient } = await import('@fingerly/web-js')
+  const transport = { submit: async () => ({ request_id: 'req_public', ...answer }) }
+  loadMock.mockImplementation(
+    async () => new FingerlyClient({ apiKey: 'fly_pk_development_test', consent: 'granted', transport, sources: [] }),
+  )
+}
+
+describe('a public response', () => {
+  it.each(PUBLIC_ANSWERS)('%s: absent stays null and verdicts report nothing', async (_name, answer, score, level, suspicious, triggers) => {
+    await answering(answer)
+    __setRuntimeConfig({ fingerly: { apiKey: 'pk_runtime', consent: 'granted' } })
+
+    const { identify, automation } = mountWithPlugin(() => ({ identify: useIdentify(), automation: useVerdict('automation') }))
+    await identify.identify()
+
+    expect(identify.error.value).toBeNull()
+    expect(identify.requestId.value).toBe('req_public')
+    expect(identify.suspectScore.value).toBe(score)
+    expect(identify.suspectLevel.value).toBe(level)
+    expect(identify.isSuspicious.value).toBe(suspicious)
+    expect(identify.triggers.value).toHaveLength(triggers)
+    expect(automation.verdict.value?.value).toBeNull()
+    expect(automation.matched.value).toBeNull()
   })
 })

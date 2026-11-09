@@ -10,16 +10,14 @@
  * import { load } from '@fingerly/web-js'
  *
  * const fingerly = await load({ apiKey: 'fly_pk_production_…' })
- * const { visitorId, visitorIsNew, suspectLevel, triggers } = await fingerly.identify()
+ * const { visitorId, visitorIsNew, suspectLevel } = await fingerly.identify()
  *
  * // The server's answer, in the same round trip. Everything about the score
- * // lives on the server, under the weights you set.
+ * // lives on the server, under the weights you set. `suspectLevel` is null
+ * // when absent, which is not a clean result. Signals are read on your backend.
  * if (suspectLevel === 'high') {
  *   // step up to a challenge
  * }
- *
- * // Which signals fired, for your own logs or a customer-support view.
- * const looksAutomated = triggers.some((trigger) => trigger.signal === 'automation')
  * ```
  *
  * Nothing about that decision happens in the page. This package collects and

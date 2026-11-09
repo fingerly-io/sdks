@@ -18,9 +18,9 @@ import {
   warnDeprecated,
   weigh,
 } from '../src/index.js'
-import { resetDeprecationWarnings, unansweredVerdicts, verdictsFromTriggers } from '../src/verdicts.js'
+import { resetDeprecationWarnings, unansweredVerdicts } from '../src/verdicts.js'
 import type { Transport } from '../src/transport.js'
-import type { SignalReport } from '../src/types.js'
+import type { IdentifyResult, SignalReport } from '../src/types.js'
 
 // A browser report the old local detectors would have fired on: a clamped
 // clock and a software renderer. The stubs must ignore it entirely.
@@ -46,60 +46,48 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe('verdicts from the server triggers', () => {
-  it('maps each signal onto the verdict it reports under', () => {
-    const verdicts = verdictsFromTriggers(
-      [
-        { signal: 'tor', group: 'tor', confidence: 'high', reason: 'known-tor-exit' },
-        { signal: 'virtual_machine', group: 'vm', confidence: 'medium', reason: 'gpu-vmware+a' },
-        { signal: 'device_farm', group: 'farm', confidence: 'low', reason: 'x' },
-      ],
-      'high',
-    )
-
-    expect(verdicts.tor).toEqual({ value: true, confidence: 'high', reasons: ['known-tor-exit'] })
-    expect(verdicts.emulator.reasons).toEqual(['gpu-vmware', 'a'])
-    expect(verdicts.farm.confidence).toBe('low')
-    // The server answered and said no: that is false, not nothing.
-    expect(verdicts.incognito).toEqual({ value: false, confidence: 'low', reasons: [] })
-  })
-
-  it('never reports shields, because a privacy browser is not a finding', () => {
-    // privacy_settings is a different question, and at most a weight-zero fact.
-    const verdicts = verdictsFromTriggers(
-      [{ signal: 'privacy_settings', group: 'privacy', confidence: 'high', reason: 'do-not-track-enabled' }],
-      'low',
-    )
-    expect(verdicts.shields).toEqual({ value: null, confidence: 'low', reasons: [] })
-  })
-
-  it('reports nothing, not all clear, when the submission was not scored', () => {
-    const verdicts = verdictsFromTriggers([], null)
-    for (const verdict of Object.values(verdicts)) {
-      expect(verdict.value).toBeNull()
-      expect(verdict.reasons).toEqual([])
-    }
-  })
-
-  it('never reads a trigger with an unrecognised confidence as high', () => {
-    const { tor } = verdictsFromTriggers([{ signal: 'tor', group: 'tor', confidence: 'bogus', reason: 'x' }], 'low')
-    expect(tor.confidence).toBe('low')
-  })
-})
-
 describe('isSuspicious is the server level, nothing else', () => {
   it.each([
     ['high', true],
     ['medium', true],
     ['low', false],
     [null, null],
+    [undefined, null],
+    ['', null],
+    // A level this version has never heard of is not a clean result.
+    ['critical', null],
   ] as const)('level %s reads as %s', (level, expected) => {
     expect(isSuspiciousLevel(level)).toBe(expected)
   })
 })
 
 describe('identify() answers come from the server', () => {
-  it('derives verdicts from triggers and keeps the weight out of the result', async () => {
+  const nothing = { value: null, confidence: 'low', reasons: [] }
+  const expectNoVerdicts = (result: IdentifyResult) => {
+    for (const verdict of Object.values(verdictsOf(result))) expect(verdict).toEqual(nothing)
+  }
+
+  it.each([
+    ['a low score and no triggers', { suspect_score: 3, suspect_level: 'low' }, 3, 'low', false],
+    ['a high score and no triggers', { suspect_score: 90, suspect_level: 'high' }, 90, 'high', true],
+    ['a real zero', { suspect_score: 0, suspect_level: 'low' }, 0, 'low', false],
+    ['neither score nor triggers', {}, null, null, null],
+    ['explicit nulls', { suspect_score: null, suspect_level: null, triggers: null }, null, null, null],
+    ['a score with its level stripped', { suspect_score: 12 }, 12, null, null],
+    ['a level with its score stripped', { suspect_level: 'medium' }, null, 'medium', true],
+    ['a forged score', { suspect_score: 'high', suspect_level: 7 }, null, null, null],
+    ['a non-finite score', { suspect_score: Number.NaN, suspect_level: '' }, null, null, null],
+  ])('%s: absent stays null and verdicts hold nothing', async (_name, answer, score, level, suspicious) => {
+    const result = await clientAnswering(answer).identify({ tiers: ['fast'] })
+
+    expect(result.suspectScore).toBe(score)
+    expect(result.suspectLevel).toBe(level)
+    expect(isSuspiciousLevel(result.suspectLevel)).toBe(suspicious)
+    expect(result.triggers).toEqual([])
+    expectNoVerdicts(result)
+  })
+
+  it('an old-shape response keeps its triggers, without the weight, and never reports a verdict', async () => {
     const result = await clientAnswering({
       suspect_score: 22,
       suspect_level: 'medium',
@@ -108,9 +96,37 @@ describe('identify() answers come from the server', () => {
 
     expect(result.suspectLevel).toBe('medium')
     expect(result.triggers).toEqual([{ signal: 'automation', group: 'bot', confidence: 'high', reason: 'cdp-artifacts-1' }])
-    expect('weight' in result.triggers[0]!).toBe(false)
-    expect(verdictsOf(result).automation.value).toBe(true)
-    expect(verdictsOf(result).tor.value).toBe(false)
+    expect('weight' in result.triggers![0]!).toBe(false)
+    // Not true for the signal that fired, and above all not false for the rest.
+    expectNoVerdicts(result)
+  })
+
+  it.each([
+    ['a string', 'automation'],
+    ['an object', { signal: 'automation' }],
+    ['holes and junk', [null, 7, 'x', {}, { signal: 1 }]],
+  ])('malformed triggers (%s) read as none rather than throwing', async (_name, triggers) => {
+    const result = await clientAnswering({ triggers }).identify({ tiers: ['fast'] })
+    expect(result.triggers).toEqual([])
+  })
+
+  it('a deferred answer carries the same empty verdicts', async () => {
+    const transport: Transport = {
+      submit: vi.fn(async () => ({ request_id: 'r1', suspect_level: 'low', deferred_token: 'continuation' })),
+      submitSupplement: vi.fn(async () => undefined),
+    }
+    const client = new FingerlyClient({ apiKey: 'public', consent: 'granted', transport, sources: [] })
+
+    const deferred = await (await client.identify()).deferred
+
+    expect(deferred.status).toBe('submitted')
+    if (deferred.status !== 'submitted') return
+    for (const verdict of Object.values(deferred.verdicts)) expect(verdict).toEqual(nothing)
+  })
+
+  it('a plain verdicts field on a hand-built result is not read', () => {
+    const forged = { verdicts: { tor: { value: false, confidence: 'high', reasons: [] } } } as unknown as IdentifyResult
+    expectNoVerdicts(forged)
   })
 
   it('submit: false returns only the raw report, and no false clean', async () => {
@@ -148,11 +164,12 @@ describe('identify() answers come from the server', () => {
     verdictsOf(first)
     expect(warn).not.toHaveBeenCalled()
 
-    expect(first.verdicts.tor.value).toBe(false)
+    expect(first.verdicts.tor.value).toBeNull()
     const second = await client.identify({ tiers: ['fast'] })
-    expect(second.verdicts.tor.value).toBe(false)
+    expect(second.verdicts.tor.value).toBeNull()
     expect(warn).toHaveBeenCalledTimes(1)
     expect(String(warn.mock.calls[0]?.[0])).toContain('IdentifyResult.verdicts')
+    expect(String(warn.mock.calls[0]?.[0])).toContain('read signals on your backend')
   })
 })
 

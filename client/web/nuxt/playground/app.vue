@@ -1,5 +1,5 @@
 <script setup lang="ts">
-const { suspectScore, suspectLevel, triggers, isReady } = useIdentify({ immediate: true })
+const { suspectScore, suspectLevel, isReady } = useIdentify({ immediate: true })
 const config = useRuntimeConfig()
 </script>
 
@@ -7,7 +7,7 @@ const config = useRuntimeConfig()
   <main>
     <h1>Fingerly — Nuxt module</h1>
     <p id="key">key: {{ config.public.fingerly.apiKey || '(unset)' }}</p>
-    <p id="state">ready: {{ isReady }} · score: {{ suspectScore ?? 'no server answer' }} · level: {{ suspectLevel ?? 'no server answer' }}</p>
-    <pre id="triggers">{{ triggers.length ? triggers.map((t) => t.signal).join(' ') : 'none' }}</pre>
+    <p id="state">ready: {{ isReady }} · score: {{ suspectScore ?? 'hidden' }} · level: {{ suspectLevel ?? 'hidden' }}</p>
+    <p id="signals">signals: read on your backend</p>
   </main>
 </template>

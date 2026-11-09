@@ -226,6 +226,6 @@ contents, so `endpoints={['/k7x2qm4a']}` does not start a new identification
 when the layout renders again.
 
 **It does not read events back.** It does not need to: `identify()` resolves
-with the server's answer (`visitorId`, `suspectScore`, `suspectLevel` and the
-triggers behind them), so there is nothing to fetch afterwards. Reading stored
+with the server's answer (`visitorId`, and `suspectScore` and `suspectLevel`
+unless the key hides them), so there is nothing to fetch afterwards. Reading stored
 events for reporting is `@fingerly/node`'s job.

@@ -93,8 +93,9 @@ export interface Fingerly {
   /** The score as a band - `low`, `medium`, `high`. Null when unscored. */
   readonly suspectLevel: string | null
   /** What the server scored on. Empty when it found nothing. */
+  /** @deprecated Empty from a public key. Read signals on your backend. */
   readonly triggers: readonly IdentifyTrigger[]
-  /** @deprecated Read `suspectLevel` and `triggers`. Holds nothing when no server answered. */
+  /** @deprecated Read `suspectLevel`, and read signals on your backend. Holds nothing, never all clear. */
   readonly verdicts: Verdicts | null
   readonly report: SignalReport | null
   readonly error: Error | null
@@ -104,9 +105,9 @@ export interface Fingerly {
   /**
    * True when the server scored this `medium` or `high` under the weights you
    * set: the "should I even look?" flag, and not a policy. `null` when no
-   * server has answered (not identified yet, `submit: false`, or unscored),
-   * which is not a clean result. Anything more nuanced reads `suspectLevel`
-   * and `triggers` directly.
+   * server has answered or the level is absent (not identified yet, `submit:
+   * false`, unscored, or hidden by the key), which is not a clean result.
+   * Anything more nuanced reads `suspectLevel`, or your backend reads the signals.
    */
   readonly isSuspicious: boolean | null
   /**
@@ -269,9 +270,9 @@ export function createFingerly(options: FingerlyOptions): Fingerly {
         identifiable = result.identifiable
         duplicate = result.duplicate
         checkState = result.state === '' ? null : result.state
-        suspectScore = result.suspectScore
-        suspectLevel = result.suspectLevel
-        triggers = result.triggers
+        suspectScore = result.suspectScore ?? null
+        suspectLevel = result.suspectLevel ?? null
+        triggers = result.triggers ?? []
         verdicts = verdictsOf(result)
         report = result.report
         held = undefined

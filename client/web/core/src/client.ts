@@ -15,6 +15,7 @@ import type {
   ConsentState,
   IdentifyResult,
   IdentifySubmission,
+  IdentifyTrigger,
   DeferredIdentifyResult,
   DeferredSubmission,
   IntegrityReport,
@@ -23,7 +24,7 @@ import type {
   SourceTier,
   Verdicts,
 } from './types.js'
-import { attachVerdicts, unansweredVerdicts, verdictsFromTriggers } from './verdicts.js'
+import { attachVerdicts, unansweredVerdicts } from './verdicts.js'
 import { SDK_VERSION } from './version.js'
 
 /**
@@ -89,6 +90,26 @@ export interface IdentifyOptions {
    * nothing on its own.
    */
   submit?: boolean
+}
+
+/**
+ * The `triggers` of an answer, if a backend proxy still passes them through.
+ *
+ * A public key's answer has none, which reads as empty. Copied field by field,
+ * weight left out: a customer's weights are not a page's business, whatever a
+ * server or proxy answered. Anything that is not a trigger is dropped rather
+ * than left to throw on a page that only wanted the visitor.
+ */
+function readTriggers(raw: SubmitResponse['triggers'] | null): IdentifyTrigger[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .filter((trigger) => typeof trigger?.signal === 'string')
+    .map((trigger) => ({
+      signal: trigger.signal,
+      group: trigger.group ?? '',
+      confidence: trigger.confidence ?? '',
+      reason: trigger.reason ?? '',
+    }))
 }
 
 /**
@@ -233,8 +254,9 @@ export class FingerlyClient {
    *
    * Returns the server's answer: who this visitor is, how sure it is, and what
    * the submission scored. One round trip. Nothing about the answer is
-   * decided in the page: `isSuspicious`, [[IdentifyResult.triggers]] and the
-   * deprecated [[IdentifyResult.verdicts]] all come from what the server sent.
+   * decided in the page: the score and level are what the server sent, and
+   * are absent, not zero, when it sent none. Signals are read on your backend;
+   * the deprecated [[IdentifyResult.verdicts]] hold nothing.
    *
    * Fails with a [[ConsentError]], before any source runs, while consent is
    * not granted - and again if consent is withdrawn before the submission.
@@ -306,6 +328,7 @@ export class FingerlyClient {
       this.requireConsent()
       throw consentRefusal(error)
     }
+    const verdicts = unansweredVerdicts()
     const result: IdentifyResult = {
       requestId: answer.request_id,
       visitorId: answer.visitor_id ?? '',
@@ -317,24 +340,17 @@ export class FingerlyClient {
       // No `reason`. The server tells only a secret key why a submission went
       // unscored; a browser's backend reads it on the event. The field stays,
       // deprecated and undefined, so code written against 0.1.0 compiles.
-      // Null rather than zero when the server omitted it. The server omits an
-      // absent score and sends a real zero as zero, so the two survive the
-      // wire; collapsing them here would undo that.
-      suspectScore: answer.suspect_score ?? null,
-      suspectLevel: answer.suspect_level ?? null,
-      // Copied field by field, weight left out: a customer's weights are not a
-      // page's business, whatever a server or proxy answered.
-      triggers: (answer.triggers ?? []).map((trigger) => ({
-        signal: trigger.signal,
-        group: trigger.group ?? '',
-        confidence: trigger.confidence ?? '',
-        reason: trigger.reason ?? '',
-      })),
-      verdicts: unansweredVerdicts(),
+      // Null rather than zero when the server omitted it, unscored or hidden
+      // alike. The server sends a real zero as zero, so the two survive the
+      // wire; collapsing them here would undo that. The two are read apart so
+      // a proxy that kept only one does not lose it.
+      suspectScore: typeof answer.suspect_score === 'number' && Number.isFinite(answer.suspect_score) ? answer.suspect_score : null,
+      suspectLevel: typeof answer.suspect_level === 'string' && answer.suspect_level !== '' ? answer.suspect_level : null,
+      triggers: readTriggers(answer.triggers),
+      verdicts,
       report,
       deferred: Promise.resolve({ status: 'skipped', reason: 'explicit-tiers' }),
     }
-    const verdicts = verdictsFromTriggers(result.triggers, result.suspectLevel)
     attachVerdicts(result, verdicts)
 
     if (!automaticDeferred) return result

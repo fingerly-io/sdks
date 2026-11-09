@@ -7,7 +7,7 @@ The SDK collects and sends; every decision moved to the server.
 - The contradiction checks (`findContradictions`) and `engine.agrees` are gone from the report. The server compares the raw values itself.
 - `permissions.inconsistent` is no longer sent.
 - `media_devices` moved to the fast tier (120 ms cap), and the motion-sensor presence check moved onto `touch`, so the server's rules see them in the report it scores.
-- `IdentifyResult.verdicts` is deprecated and derived from the server's `triggers`; see `@fingerly/core`.
+- `IdentifyResult.verdicts` is deprecated and holds nothing; `triggers` is deprecated and empty from a public key; `suspectScore` and `suspectLevel` can be absent. See `@fingerly/core`.
 
 ## 0.1.1
 

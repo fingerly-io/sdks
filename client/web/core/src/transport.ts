@@ -95,14 +95,18 @@ export interface SubmitResponse {
   /**
    * The weighted sum of the signals that fired.
    *
-   * Absent when the submission was not scored, which is a different answer from
-   * zero: an ordinary visitor scores zero, and one whose enrichment never ran
-   * has no score at all.
+   * Absent when the submission was not scored or the SDK key hides it from
+   * public callers, and a page cannot tell which. Both are different answers
+   * from zero: an ordinary visitor scores zero.
    */
   suspect_score?: number
-  /** `low`, `medium` or `high`. Absent exactly when `suspect_score` is. */
+  /** `low`, `medium` or `high`. Absent for the same reasons as `suspect_score`. */
   suspect_level?: string
 
+  /**
+   * @deprecated Never sent to a public key. Only present if a backend proxy
+   * passes through what a secret key read.
+   */
   triggers?: SubmitTrigger[]
 }
 

@@ -77,8 +77,8 @@ function Checkout() {
 
 `identify()` collects and submits, and resolves with the server's answer in the
 same round trip: the `requestId`, who the visitor is (`visitorId`), and the
-`suspectScore`, `suspectLevel` and triggers behind it. Nothing is decided in the
-page: scoring lives on the server, under the weights you set.
+`suspectScore` and `suspectLevel`, unless the key hides them. Nothing is decided
+in the page: scoring lives on the server, under the weights you set.
 
 ### On mount instead
 
@@ -96,8 +96,8 @@ identification, not two.
 
 ```tsx
 function Risk() {
-  const { suspectLevel, triggers } = useIdentify({ suspend: true })
-  return <Banner level={suspectLevel} triggers={triggers} />   // never renders an empty state
+  const { suspectLevel } = useIdentify({ suspend: true })
+  return <Banner level={suspectLevel} />   // never renders an empty state
 }
 
 <Suspense fallback={<Spinner />}>
@@ -140,27 +140,17 @@ await refresh() // ignores the cached result and collects afresh
 
 `suspectLevel` is the server's band for this submission, under the weights you
 set. `isSuspicious` is `true` for `medium` or `high`, `false` for `low`, and
-`null` when no server has answered yet or the submission went unscored.
-`triggers` lists what fired:
+`null` when the level is absent: no server has answered yet, the submission went
+unscored, or the SDK key hides the score from the page, which cannot tell those
+apart. Null is not a clean result.
 
-```tsx
-function RiskNotice() {
-  const { suspectLevel, triggers } = useIdentify()
-  if (suspectLevel !== 'high') return null
+Signals are read on your backend, by `requestId`, never in the page: which check
+tripped is what a fraudster wants to learn. `triggers` is deprecated and empty from a
+public key.
 
-  return (
-    <aside>
-      Unusual session
-      <ul>{triggers.map((t) => <li key={t.signal}>{t.signal} ({t.confidence})</li>)}</ul>
-    </aside>
-  )
-}
-```
-
-`useVerdict()` and `verdicts` are **deprecated** and warn once in development.
-They are derived from `triggers` for one transition version and hold nothing
-rather than all clear when no server answered, so read `suspectLevel` and
-`triggers` instead.
+`useVerdict()` and `verdicts` are **deprecated** and warn once in development. They hold
+nothing, `matched` is `null` and never a clean `false`, so read `suspectLevel` and read
+signals on your backend.
 
 ## A correlation tag
 
@@ -250,14 +240,13 @@ const {
   reason,            // string | null:        always null (deprecated); your backend reads it on the event
   suspectScore,      // number | null:        null when nothing scored it
   suspectLevel,      // string | null:        low, medium, high
-  triggers,          // IdentifyTrigger[]:    what the server scored on (signal, group, confidence, reason)
-  verdicts,          // Verdicts | null:      deprecated; derived from triggers
+  verdicts,          // Verdicts | null:      deprecated; holds nothing, read signals on your backend
   report,            // SignalReport | null:  every source, with status and timing
   error,             // Error | null
   consent,           // ConsentState        (granted, pending or denied)
   isLoading,    // boolean
   isReady,      // boolean:              finished, successfully or not
-  isSuspicious, // boolean | null:       true for medium or high; null when no server answered
+  isSuspicious, // boolean | null:       true for medium or high; null when the level is absent
   identify,     // () => Promise<IdentifyResult>
   refresh,      // () => Promise<IdentifyResult>
 } = useIdentify()
@@ -270,10 +259,7 @@ dependency array without restarting anything.
 means "scored, nothing fired". `visitorId` and the rest of the server's fields
 are empty under `submit: false`.
 
-A trigger's `reason` is why it fired, strongest first, because a score that
-cannot say why it is high is not something you can defend to a customer whose
-user you blocked. Weights never reach the browser: a `triggers` entry names the
-signal, its group, confidence and reason, and your backend reads the rest on the
+Weights and signal names never reach the browser: your backend reads them on the
 server-side event read.
 
 The detectors run on the server, over the report this package sends, so rules
@@ -332,8 +318,7 @@ the client.
 ## Running the demo
 
 `demo/` is this package's hooks driving the real SDK (no mocks) under
-`StrictMode`, with `useIdentify({ suspend: true })` showing `suspectScore`,
-`suspectLevel` and `triggers` beside the raw report, all sharing one
+`StrictMode`, with `useIdentify({ suspend: true })` showing `suspectScore` and `suspectLevel` beside the raw report, all sharing one
 identification.
 
 ```
@@ -343,5 +328,5 @@ pnpm --filter @fingerly/react demo   # http://localhost:4175
 It is served rather than opened from disk because several sources need a secure
 context and `file://` is not one; the storage probes are the clearest case,
 since they are not exposed outside one. It uses `submit: false`, so it sends
-nothing and no server answers: the raw report fills in, and the score, level
-and triggers stay empty.
+nothing and no server answers: the raw report fills in, and the score and level
+read hidden.

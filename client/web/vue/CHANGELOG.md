@@ -2,9 +2,10 @@
 
 ## 0.2.0
 
-- `isSuspicious` comes from the server's `suspectLevel`: `true` for `medium` or `high`, `false` for `low`, `null` when no server answered (before identification, `submit: false`, or unscored). It is typed `boolean | null`.
-- `verdicts` and `useVerdict()` are deprecated, warn once in development, and are derived from the server's `triggers`. `matched` is `boolean | null`, `null` when no server answered.
+- `isSuspicious` comes from the server's `suspectLevel`: `true` for `medium` or `high`, `false` for `low`, `null` when the level is absent (before identification, `submit: false`, unscored, or hidden by the SDK key), never `false`. It is typed `boolean | null`.
+- `verdicts` and `useVerdict()` are deprecated and warn once in development. They hold nothing now: `matched` is `null` on any response, never a clean `false`. The warning says to read signals on your backend.
 - `triggers[].weight` no longer reaches the browser.
+- Follows the public response change: `triggers` is deprecated and empty from a public key, and `suspectScore` and `suspectLevel` can be absent even on a submitted event (the SDK key can hide them), in which case they are `null`. Read signals on your backend.
 
 ## 0.1.1
 

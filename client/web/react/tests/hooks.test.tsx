@@ -264,7 +264,7 @@ describe('useIdentify', () => {
     expect(latest().isReady).toBe(true)
     expect(latest().isLoading).toBe(false)
     expect(latest().requestId).toBe('req_1')
-    expect(latest().verdicts?.automation.value).toBe(true)
+    expect(latest().verdicts?.automation.value).toBeNull()
     expect(latest().error).toBeNull()
   })
 
@@ -598,56 +598,24 @@ describe('useVerdict', () => {
     return { latest, identifier, element }
   }
 
-  it('reports a single verdict and its reasons', async () => {
-    const { latest, identifier, element } = mount(() => useVerdict('incognito'))
+  it('reports nothing, however confident a hand-built result claims to be', async () => {
+    identifyMock.mockResolvedValue({ ...RESULT, verdicts: { tor: verdict(true, 'high', ['x']), incognito: verdict(false, 'high') } })
+    const tor = mount(() => useVerdict('tor'))
+    const incognito = mount(() => useVerdict('incognito'))
 
     await act(async () => {
       render(
         <FingerlyProvider apiKey="fly_pk_development_test" consent="granted">
-          {identifier.element}
-          {element}
+          {tor.identifier.element}
+          {tor.element}
+          {incognito.element}
         </FingerlyProvider>,
       )
     })
 
-    expect(latest().matched).toBe(true)
-    expect(latest().confidence).toBe('medium')
-    expect(latest().reasons).toEqual(['firefox-private-origin-filesystem-refused'])
-  })
-
-  it('honours a confidence floor', async () => {
-    const { latest, identifier, element } = mount(() => useVerdict('incognito', { min: 'high' }))
-
-    await act(async () => {
-      render(
-        <FingerlyProvider apiKey="fly_pk_development_test" consent="granted">
-          {identifier.element}
-          {element}
-        </FingerlyProvider>,
-      )
-    })
-
-    // Fired, but at medium - which is not enough to act on when high is asked
-    // for. The verdict is still readable; only `matched` is false.
-    expect(latest().verdict?.value).toBe(true)
-    expect(latest().matched).toBe(false)
-  })
-
-  it('defaults to medium, so one weak tell does not match', async () => {
-    identifyMock.mockResolvedValue({ ...RESULT, verdicts: { tor: verdict(true, 'low') } })
-    const { latest, identifier, element } = mount(() => useVerdict('tor'))
-
-    await act(async () => {
-      render(
-        <FingerlyProvider apiKey="fly_pk_development_test" consent="granted">
-          {identifier.element}
-          {element}
-        </FingerlyProvider>,
-      )
-    })
-
-    expect(latest().verdict?.value).toBe(true)
-    expect(latest().matched).toBe(false)
+    expect(tor.latest().matched).toBeNull()
+    expect(tor.latest().verdict?.value).toBeNull()
+    expect(incognito.latest().matched).toBeNull()
   })
 
   it('reports nothing rather than guessing before identification', () => {
@@ -661,6 +629,45 @@ describe('useVerdict', () => {
   })
 })
 
+// The server's answers, through the real client rather than a fake result:
+// mapping them is exactly what is under test.
+const OLD_TRIGGER = { signal: 'automation', group: 'bot', weight: 9, confidence: 'high', reason: 'cdp-artifacts-1' }
+const PUBLIC_ANSWERS = [
+  ['score and no triggers', { suspect_score: 7, suspect_level: 'low' }, 7, 'low', false, 0],
+  ['neither score nor triggers', {}, null, null, null, 0],
+  ['an old shape with triggers', { suspect_score: 22, suspect_level: 'medium', triggers: [OLD_TRIGGER] }, 22, 'medium', true, 1],
+] as const
+
+async function answering(answer: Record<string, unknown>) {
+  const { FingerlyClient } = await import('@fingerly/web-js')
+  const transport = { submit: async () => ({ request_id: 'req_public', ...answer }) }
+  loadMock.mockImplementation(
+    async () => new FingerlyClient({ apiKey: 'fly_pk_development_test', consent: 'granted', transport, sources: [] }),
+  )
+}
+
+describe('a public response', () => {
+  it.each(PUBLIC_ANSWERS)('%s: absent stays null and verdicts report nothing', async (_name, answer, score, level, suspicious, triggers) => {
+    await answering(answer)
+    const { latest, element } = probe(() => ({ identify: useIdentify({ immediate: true }), verdict: useVerdict('automation') }))
+
+    await act(async () => {
+      render(<FingerlyProvider apiKey="fly_pk_development_test" consent="granted">{element}</FingerlyProvider>)
+    })
+    await vi.waitFor(() => expect(latest().identify.isReady).toBe(true))
+
+    expect(latest().identify.error).toBeNull()
+    expect(latest().identify.requestId).toBe('req_public')
+    expect(latest().identify.suspectScore).toBe(score)
+    expect(latest().identify.suspectLevel).toBe(level)
+    expect(latest().identify.isSuspicious).toBe(suspicious)
+    expect(latest().identify.triggers).toHaveLength(triggers)
+    expect(latest().verdict.verdict?.value).toBeNull()
+    expect(latest().verdict.matched).toBeNull()
+    expect(latest().verdict.reasons).toEqual([])
+  })
+})
+
 describe('suspend', () => {
   it('shows the fallback while collecting, then the answer', async () => {
     let finish!: (result: unknown) => void
@@ -671,8 +678,8 @@ describe('suspend', () => {
     )
 
     const Card = () => {
-      const { verdicts } = useIdentify({ suspend: true })
-      return <span>{verdicts?.automation.value ? 'automated' : 'human'}</span>
+      const { requestId } = useIdentify({ suspend: true })
+      return <span>{requestId}</span>
     }
 
     const { container } = await renderAsync(
@@ -689,7 +696,7 @@ describe('suspend', () => {
       finish(RESULT)
     })
 
-    expect(container.textContent).toBe('automated')
+    expect(container.textContent).toBe('req_1')
     expect(identifyMock).toHaveBeenCalledTimes(1)
   })
 
@@ -712,7 +719,7 @@ describe('suspend', () => {
     // Both components suspended on the same promise, so they came back
     // together and cost one identification between them.
     expect(identifyMock).toHaveBeenCalledTimes(1)
-    expect(container.textContent).toBe('incognito:true automation:true ')
+    expect(container.textContent).toBe('incognito:null automation:null ')
   })
 })
 

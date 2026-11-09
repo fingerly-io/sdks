@@ -135,9 +135,8 @@ export function injectIdentify(options: InjectIdentifyOptions = {}): Fingerly {
 
 export interface InjectVerdictResult {
   /**
-   * True when the server's trigger fired and met the confidence floor, false
-   * when the server answered without it. `null` when no server has answered,
-   * which is not a clean result.
+   * `null`: a browser is no longer told which signals fired, and nobody
+   * reporting is not a clean result. Read signals on your backend.
    */
   readonly matched: Signal<boolean | null>
   /** The verdict itself, or null before the first identification. */
@@ -153,9 +152,9 @@ const RANK: Record<Confidence, number> = { low: 0, medium: 1, high: 2 }
 const NO_REASONS: readonly string[] = Object.freeze([])
 
 /**
- * @deprecated Read `suspectLevel` and `triggers` from `injectIdentify()`.
+ * @deprecated Read `suspectLevel` from `injectIdentify()`, and read signals on your backend.
  *
- * Watch one verdict, derived from the server's triggers.
+ * Watch one verdict. Holds nothing now: `matched` is `null`, never a false clean.
  *
  * ```ts
  * readonly automation = injectVerdict('automation', { min: 'high' })
@@ -172,7 +171,7 @@ export function injectVerdict(
   name: VerdictName | Signal<VerdictName> | (() => VerdictName),
   options: { min?: Confidence | Signal<Confidence> | (() => Confidence) } = {},
 ): InjectVerdictResult {
-  warnDeprecated('injectVerdict', 'read suspectLevel and triggers from injectIdentify() instead.')
+  warnDeprecated('injectVerdict', 'read suspectLevel from injectIdentify() instead, and read signals on your backend. This holds nothing now.')
   const fingerly = injectFingerly()
 
   const which = computed(() => (typeof name === 'function' ? name() : name))

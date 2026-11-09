@@ -10,7 +10,7 @@
  * and not the template compiler.
  *
  * It uses `submit: false`, so no server answers: the raw report fills in and
- * the score, level and triggers stay empty, as they must with nobody to ask.
+ * the score and level read hidden, as they must with nobody to ask.
  */
 
 import { createApp, defineComponent, h } from 'vue'
@@ -23,23 +23,16 @@ const row = (label: string, value: unknown, className = '') =>
     h('span', { class: 'v' }, String(value)),
   ])
 
-/** What the server scored on, to show a second reader of the same identification. */
-const TriggersCard = defineComponent({
+/** The score and level again, to show a second reader of the same identification. */
+const ScoreCard = defineComponent({
   setup() {
-    const { triggers, suspectLevel } = useIdentify({ tag: () => 'vue-demo' })
+    const { suspectScore, suspectLevel } = useIdentify({ tag: () => 'vue-demo' })
     return () =>
       h('div', { class: 'card' }, [
-        h('h3', 'triggers'),
-        row('level', suspectLevel.value ?? '—', suspectLevel.value === 'high' ? 'hit' : ''),
-        triggers.value.length
-          ? h(
-              'ul',
-              { class: 'reasons' },
-              triggers.value.map((trigger) =>
-                h('li', { key: trigger.signal }, `${trigger.signal} (${trigger.group})`),
-              ),
-            )
-          : row('fired', '—'),
+        h('h3', 'result'),
+        row('score', suspectScore.value ?? 'hidden'),
+        row('level', suspectLevel.value ?? 'hidden', suspectLevel.value === 'high' ? 'hit' : ''),
+        row('signals', 'read on your backend'),
       ])
   },
 })
@@ -64,14 +57,14 @@ const App = defineComponent({
           h('h3', 'state'),
           row('isLoading', isLoading.value),
           row('isReady', isReady.value),
-          row('suspectScore', suspectScore.value ?? '— (no server answer)'),
-          row('suspectLevel', suspectLevel.value ?? '— (no server answer)', suspectLevel.value === 'high' ? 'hit' : ''),
+          row('suspectScore', suspectScore.value ?? 'hidden'),
+          row('suspectLevel', suspectLevel.value ?? 'hidden', suspectLevel.value === 'high' ? 'hit' : ''),
           row('requestId', requestId.value ?? '— (submit: false)'),
           row('sources', report.value ? Object.keys(report.value.sources).length : '—'),
           row('elapsed_ms', report.value?.elapsed_ms ?? '—'),
           row('engine', report.value?.integrity.engine.observed ?? '—'),
         ]),
-        h('div', { class: 'grid' }, [h(TriggersCard)]),
+        h('div', { class: 'grid' }, [h(ScoreCard)]),
       ])
   },
 })

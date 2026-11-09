@@ -239,7 +239,7 @@ describe('useIdentify', () => {
     expect(result.isLoading.value).toBe(false)
     expect(result.isReady.value).toBe(true)
     expect(result.requestId.value).toBe('req_1')
-    expect(result.verdicts.value?.automation.value).toBe(true)
+    expect(result.verdicts.value?.automation.value).toBeNull()
   })
 
   it('shares one identification across every component that asks', async () => {
@@ -533,48 +533,56 @@ describe('useIdentify', () => {
 })
 
 describe('useVerdict', () => {
-  it('reports a single verdict and its reasons', async () => {
+  it('reports nothing, however confident a hand-built result claims to be', async () => {
     const plugin = createFingerly({ apiKey: 'fly_pk_development_test', consent: 'granted' })
     const identifier = withSetup(() => useIdentify(), plugin).result
     const automation = withSetup(() => useVerdict('automation'), plugin).result
+    const tor = withSetup(() => useVerdict('tor'), plugin).result
 
     expect(automation.matched.value).toBeNull()
     await identifier.identify()
 
-    expect(automation.matched.value).toBe(true)
-    expect(automation.confidence.value).toBe('high')
-    expect(automation.reasons.value).toEqual(['patched-natives-3'])
+    expect(automation.matched.value).toBeNull()
+    expect(automation.verdict.value?.value).toBeNull()
+    expect(tor.matched.value).toBeNull()
   })
+})
 
-  it('honours a confidence floor', async () => {
-    identifyMock.mockResolvedValueOnce({
-      ...RESULT,
-      verdicts: { ...RESULT.verdicts, automation: verdict(true, 'medium', ['x']) },
-    })
+// The server's answers, through the real client rather than a fake result:
+// mapping them is exactly what is under test.
+const OLD_TRIGGER = { signal: 'automation', group: 'bot', weight: 9, confidence: 'high', reason: 'cdp-artifacts-1' }
+const PUBLIC_ANSWERS = [
+  ['score and no triggers', { suspect_score: 7, suspect_level: 'low' }, 7, 'low', false, 0],
+  ['neither score nor triggers', {}, null, null, null, 0],
+  ['an old shape with triggers', { suspect_score: 22, suspect_level: 'medium', triggers: [OLD_TRIGGER] }, 22, 'medium', true, 1],
+] as const
 
+async function answering(answer: Record<string, unknown>) {
+  const { FingerlyClient } = await import('@fingerly/web-js')
+  const transport = { submit: async () => ({ request_id: 'req_public', ...answer }) }
+  loadMock.mockImplementation(
+    async () => new FingerlyClient({ apiKey: 'fly_pk_development_test', consent: 'granted', transport, sources: [] }),
+  )
+}
+
+describe('a public response', () => {
+  it.each(PUBLIC_ANSWERS)('%s: absent stays null and verdicts report nothing', async (_name, answer, score, level, suspicious, triggers) => {
+    await answering(answer)
     const plugin = createFingerly({ apiKey: 'fly_pk_development_test', consent: 'granted' })
     const identifier = withSetup(() => useIdentify(), plugin).result
-    const strict = withSetup(() => useVerdict('automation', { min: 'high' }), plugin).result
-    const loose = withSetup(() => useVerdict('automation', { min: 'low' }), plugin).result
+    const automation = withSetup(() => useVerdict('automation'), plugin).result
 
     await identifier.identify()
 
-    expect(strict.matched.value).toBe(false)
-    expect(loose.matched.value).toBe(true)
-  })
-
-  it('defaults to medium, so one weak tell does not match', async () => {
-    identifyMock.mockResolvedValueOnce({
-      ...RESULT,
-      verdicts: { ...RESULT.verdicts, tor: verdict(true, 'low', ['timezone-forced-to-utc']) },
-    })
-
-    const plugin = createFingerly({ apiKey: 'fly_pk_development_test', consent: 'granted' })
-    const identifier = withSetup(() => useIdentify(), plugin).result
-    const tor = withSetup(() => useVerdict('tor'), plugin).result
-
-    await identifier.identify()
-    expect(tor.matched.value).toBe(false)
+    expect(identifier.error.value).toBeNull()
+    expect(identifier.requestId.value).toBe('req_public')
+    expect(identifier.suspectScore.value).toBe(score)
+    expect(identifier.suspectLevel.value).toBe(level)
+    expect(identifier.isSuspicious.value).toBe(suspicious)
+    expect(identifier.triggers.value).toHaveLength(triggers)
+    expect(automation.verdict.value?.value).toBeNull()
+    expect(automation.matched.value).toBeNull()
+    expect(automation.reasons.value).toEqual([])
   })
 })
 

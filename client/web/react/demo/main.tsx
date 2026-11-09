@@ -7,7 +7,7 @@
  * README documents them.
  *
  * It uses `submit: false`, so no server answers: the raw report fills in and
- * the score, level and triggers stay empty, as they must with nobody to ask.
+ * the score and level read hidden, as they must with nobody to ask.
  */
 
 import { StrictMode, Suspense } from 'react'
@@ -24,25 +24,16 @@ function Row({ label, value, hit = false }: { label: string; value: unknown; hit
   )
 }
 
-/** What the server scored on, to show a second reader of the shared identification. */
-function TriggersCard() {
-  const { triggers, suspectLevel } = useIdentify({ tag: 'react-demo' })
+/** The score and level again, to show a second reader of the shared identification. */
+function ScoreCard() {
+  const { suspectScore, suspectLevel } = useIdentify({ tag: 'react-demo' })
 
   return (
     <div className="card">
-      <h3>triggers</h3>
-      <Row label="level" value={suspectLevel ?? '—'} hit={suspectLevel === 'high'} />
-      {triggers.length > 0 ? (
-        <ul className="reasons">
-          {triggers.map((trigger) => (
-            <li key={trigger.signal}>
-              {trigger.signal} ({trigger.group})
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <Row label="fired" value="—" />
-      )}
+      <h3>result</h3>
+      <Row label="score" value={suspectScore ?? 'hidden'} />
+      <Row label="level" value={suspectLevel ?? 'hidden'} hit={suspectLevel === 'high'} />
+      <Row label="signals" value="read on your backend" />
     </div>
   )
 }
@@ -66,15 +57,15 @@ function Report() {
       </div>
       <div className="card">
         <h3>state</h3>
-        <Row label="suspectScore" value={suspectScore ?? '— (no server answer)'} />
-        <Row label="suspectLevel" value={suspectLevel ?? '— (no server answer)'} hit={suspectLevel === 'high'} />
+        <Row label="suspectScore" value={suspectScore ?? 'hidden'} />
+        <Row label="suspectLevel" value={suspectLevel ?? 'hidden'} hit={suspectLevel === 'high'} />
         <Row label="requestId" value={requestId ?? '— (submit: false)'} />
         <Row label="sources" value={report ? Object.keys(report.sources).length : '—'} />
         <Row label="elapsed_ms" value={report?.elapsed_ms ?? '—'} />
         <Row label="engine" value={report?.integrity.engine.observed ?? '—'} />
       </div>
       <div className="grid">
-        <TriggersCard />
+        <ScoreCard />
       </div>
     </>
   )

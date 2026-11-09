@@ -47,9 +47,9 @@ export interface UseIdentifyReturn extends ReadonlyState {
   /**
    * True when the server scored this `medium` or `high` under the weights you
    * set: the "should I even look?" flag, and not a policy. `null` when no
-   * server has answered (not identified yet, `submit: false`, or unscored),
-   * which is not a clean result. Anything more nuanced reads `suspectLevel`
-   * and `triggers` directly.
+   * server has answered or the level is absent (not identified yet, `submit:
+   * false`, unscored, or hidden by the key), which is not a clean result.
+   * Anything more nuanced reads `suspectLevel`, or your backend reads the signals.
    */
   isSuspicious: ComputedRef<boolean | null>
   /** Collect, score and submit. Reuses a completed run unless `force`. */
@@ -63,7 +63,7 @@ export interface UseIdentifyReturn extends ReadonlyState {
  *
  * ```vue
  * <script setup lang="ts">
- * const { suspectLevel, triggers, isSuspicious, isLoading, identify } = useIdentify()
+ * const { suspectScore, suspectLevel, isSuspicious, isLoading, identify } = useIdentify()
  * </script>
  * ```
  *

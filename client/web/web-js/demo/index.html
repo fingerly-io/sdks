@@ -103,9 +103,9 @@
 
       function renderAnswer(result) {
         const rows = [
-          ['suspectScore', result.suspectScore ?? 'no server answer'],
-          ['suspectLevel', result.suspectLevel ?? 'no server answer'],
-          ...result.triggers.map((trigger) => [trigger.signal, trigger.group]),
+          ['suspectScore', result.suspectScore ?? 'hidden'],
+          ['suspectLevel', result.suspectLevel ?? 'hidden'],
+          ['signals', 'read on your backend'],
         ]
         $('answer').innerHTML = rows
           .map(([name, value]) => `<div class="verdict"><span>${name}</span><span>${value}</span></div>`)

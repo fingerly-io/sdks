@@ -92,8 +92,9 @@ export interface Fingerly {
   /** The score as a band - `low`, `medium`, `high`. Null when unscored. */
   readonly suspectLevel: Signal<string | null>
   /** What the server scored on. Empty when it found nothing. */
+  /** @deprecated Empty from a public key. Read signals on your backend. */
   readonly triggers: Signal<readonly IdentifyTrigger[]>
-  /** @deprecated Read `suspectLevel` and `triggers`. Holds nothing when no server answered. */
+  /** @deprecated Read `suspectLevel`, and read signals on your backend. Holds nothing, never all clear. */
   readonly verdicts: Signal<Verdicts | null>
   readonly report: Signal<SignalReport | null>
   readonly error: Signal<Error | null>
@@ -103,9 +104,9 @@ export interface Fingerly {
   /**
    * True when the server scored this `medium` or `high` under the weights you
    * set: the "should I even look?" flag, and not a policy. `null` when no
-   * server has answered (not identified yet, `submit: false`, or unscored),
-   * which is not a clean result. Anything more nuanced reads `suspectLevel`
-   * and `triggers` directly.
+   * server has answered or the level is absent (not identified yet, `submit:
+   * false`, unscored, or hidden by the key), which is not a clean result.
+   * Anything more nuanced reads `suspectLevel`, or your backend reads the signals.
    */
   readonly isSuspicious: Signal<boolean | null>
   /**
@@ -266,9 +267,9 @@ export function createFingerly(options: FingerlyOptions): Fingerly {
         identifiable.set(result.identifiable)
         duplicate.set(result.duplicate)
         state.set(result.state === '' ? null : result.state)
-        suspectScore.set(result.suspectScore)
-        suspectLevel.set(result.suspectLevel)
-        triggers.set(result.triggers)
+        suspectScore.set(result.suspectScore ?? null)
+        suspectLevel.set(result.suspectLevel ?? null)
+        triggers.set(result.triggers ?? [])
         // Copied without reading the deprecated field, so a page that never
         // looks at verdicts is not warned about them.
         verdicts.set(verdictsOf(result))

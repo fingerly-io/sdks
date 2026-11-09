@@ -1,9 +1,9 @@
 /**
  * `useVerdict()` - one verdict, as a ref.
  *
- * Deprecated: read `suspectLevel` and `triggers` from `useIdentify()`. This is
- * derived from the server's triggers, for one transition version, and decides
- * nothing of its own.
+ * Deprecated: read `suspectLevel` from `useIdentify()`, and read signals on
+ * your backend. A browser is no longer told which signals fired, so this holds
+ * nothing.
  */
 
 import { warnDeprecated, type Confidence, type Verdict, type Verdicts } from '@fingerly/web-js'
@@ -16,9 +16,8 @@ export type VerdictName = keyof Verdicts
 
 export interface UseVerdictReturn {
   /**
-   * True when the server's trigger fired and met the confidence floor, false
-   * when the server answered without it. `null` when no server has answered,
-   * which is not a clean result.
+   * `null`: a browser is no longer told which signals fired, and nobody
+   * reporting is not a clean result. Read signals on your backend.
    */
   matched: ComputedRef<boolean | null>
   /** The verdict itself, or null before the first identification. */
@@ -31,9 +30,9 @@ export interface UseVerdictReturn {
 const RANK: Record<Confidence, number> = { low: 0, medium: 1, high: 2 }
 
 /**
- * @deprecated Read `suspectLevel` and `triggers` from `useIdentify()`.
+ * @deprecated Read `suspectLevel` from `useIdentify()`, and read signals on your backend.
  *
- * Watch one verdict, derived from the server's triggers.
+ * Watch one verdict. Holds nothing now: `matched` is `null`, never a false clean.
  *
  * ```ts
  * const { matched, reasons } = useVerdict('automation', { min: 'high' })
@@ -46,7 +45,7 @@ export function useVerdict(
   name: MaybeRefOrGetter<VerdictName>,
   options: { min?: MaybeRefOrGetter<Confidence> } = {},
 ): UseVerdictReturn {
-  warnDeprecated('useVerdict', 'read suspectLevel and triggers from useIdentify() instead.')
+  warnDeprecated('useVerdict', 'read suspectLevel from useIdentify() instead, and read signals on your backend. This holds nothing now.')
   const fingerly = useFingerly()
   const { verdicts } = toReadonly(fingerly.state)
 

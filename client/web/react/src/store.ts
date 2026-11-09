@@ -87,11 +87,9 @@ export interface FingerlyState {
   /** Null when not scored, which is a different answer from zero. */
   suspectScore: number | null
   suspectLevel: string | null
+  /** @deprecated Empty from a public key. Read signals on your backend. */
   triggers: IdentifyTrigger[]
-  /**
-   * @deprecated Read `suspectLevel` and `triggers`. Derived from the server's
-   * triggers; holds nothing rather than all clear when no server answered.
-   */
+  /** @deprecated Read `suspectLevel`, and read signals on your backend. Holds nothing, never all clear. */
   verdicts: Verdicts | null
   report: SignalReport | null
   error: Error | null
@@ -316,9 +314,9 @@ export function createFingerlyStore(options: FingerlyReactOptions): FingerlyStor
           duplicate: result.duplicate,
           state: result.state === '' ? null : result.state,
           reason: null,
-          suspectScore: result.suspectScore,
-          suspectLevel: result.suspectLevel,
-          triggers: result.triggers,
+          suspectScore: result.suspectScore ?? null,
+          suspectLevel: result.suspectLevel ?? null,
+          triggers: result.triggers ?? [],
           // Copied without reading the deprecated field, so a page that never
           // looks at verdicts is not warned about them.
           verdicts: verdictsOf(result),

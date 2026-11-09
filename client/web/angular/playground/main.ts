@@ -12,7 +12,7 @@
  * use.
  *
  * It uses `submit: false`, so no server answers: the raw report fills in and
- * the score, level and triggers stay empty, as they must with nobody to ask.
+ * the score and level read hidden, as they must with nobody to ask.
  */
 
 // The compiler, first: this application is compiled in the page rather than
@@ -41,11 +41,11 @@ import { injectIdentify, provideFingerly } from '../src/index.js'
       <h3>state</h3>
       <div class="row">
         <span class="k">suspectScore</span>
-        <span class="v">{{ fingerly.suspectScore() ?? '— (no server answer)' }}</span>
+        <span class="v">{{ fingerly.suspectScore() ?? 'hidden' }}</span>
       </div>
       <div class="row">
         <span class="k">suspectLevel</span>
-        <span class="v" [class.hit]="fingerly.suspectLevel() === 'high'">{{ fingerly.suspectLevel() ?? '— (no server answer)' }}</span>
+        <span class="v" [class.hit]="fingerly.suspectLevel() === 'high'">{{ fingerly.suspectLevel() ?? 'hidden' }}</span>
       </div>
       <div class="row">
         <span class="k">requestId</span>
@@ -72,16 +72,10 @@ import { injectIdentify, provideFingerly } from '../src/index.js'
 
     <div class="grid">
       <div class="card">
-        <h3>triggers</h3>
-        @if (fingerly.triggers().length) {
-          <ul class="reasons">
-            @for (trigger of fingerly.triggers(); track trigger.signal) {
-              <li>{{ trigger.signal }} ({{ trigger.group }})</li>
-            }
-          </ul>
-        } @else {
-          <div class="row"><span class="k">fired</span><span class="v">—</span></div>
-        }
+        <h3>result</h3>
+        <div class="row"><span class="k">score</span><span class="v">{{ fingerly.suspectScore() ?? 'hidden' }}</span></div>
+        <div class="row"><span class="k">level</span><span class="v">{{ fingerly.suspectLevel() ?? 'hidden' }}</span></div>
+        <div class="row"><span class="k">signals</span><span class="v">read on your backend</span></div>
       </div>
     </div>
   `,

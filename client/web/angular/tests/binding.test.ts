@@ -423,34 +423,7 @@ describe('injectIdentify', () => {
 })
 
 describe('injectVerdict', () => {
-  it('reports one verdict and its reasons', async () => {
-    application({ apiKey: 'fly_pk_development_test', consent: 'granted' })
-    const { incognito, fingerly } = TestBed.runInInjectionContext(() => ({
-      fingerly: injectIdentify({ immediate: true }),
-      incognito: injectVerdict('incognito'),
-    }))
-    await render()
-
-    expect(fingerly.isReady()).toBe(true)
-    expect(incognito.matched()).toBe(true)
-    expect(incognito.confidence()).toBe('medium')
-    expect(incognito.reasons()).toEqual(['firefox-private-origin-filesystem-refused'])
-  })
-
-  it('honours a confidence floor', async () => {
-    application({ apiKey: 'fly_pk_development_test', consent: 'granted' })
-    const incognito = TestBed.runInInjectionContext(() => {
-      injectIdentify({ immediate: true })
-      return injectVerdict('incognito', { min: 'high' })
-    })
-    await render()
-
-    // Fired, but at medium - not enough to act on when high was asked for.
-    expect(incognito.verdict()?.value).toBe(true)
-    expect(incognito.matched()).toBe(false)
-  })
-
-  it('follows a signal, so an input can change which verdict is watched', async () => {
+  it('reports nothing, however confident a hand-built result claims to be', async () => {
     application({ apiKey: 'fly_pk_development_test', consent: 'granted' })
     const name = signal<'tor' | 'automation'>('tor')
     const watched = TestBed.runInInjectionContext(() => {
@@ -459,12 +432,10 @@ describe('injectVerdict', () => {
     })
     await render()
 
-    expect(watched.matched()).toBe(false)
-
+    expect(watched.matched()).toBeNull()
     name.set('automation')
-
-    expect(watched.matched()).toBe(true)
-    expect(watched.reasons()).toEqual(['patched-natives-3'])
+    expect(watched.matched()).toBeNull()
+    expect(watched.verdict()?.value).toBeNull()
   })
 
   it('reports nothing rather than guessing before identification', () => {
@@ -555,5 +526,45 @@ describe('consent', () => {
 
     expect(fingerly.error()).toBeInstanceOf(ConsentError)
     expect(identifyMock).not.toHaveBeenCalled()
+  })
+})
+
+// The server's answers, through the real client rather than a fake result:
+// mapping them is exactly what is under test.
+const OLD_TRIGGER = { signal: 'automation', group: 'bot', weight: 9, confidence: 'high', reason: 'cdp-artifacts-1' }
+const PUBLIC_ANSWERS = [
+  ['score and no triggers', { suspect_score: 7, suspect_level: 'low' }, 7, 'low', false, 0],
+  ['neither score nor triggers', {}, null, null, null, 0],
+  ['an old shape with triggers', { suspect_score: 22, suspect_level: 'medium', triggers: [OLD_TRIGGER] }, 22, 'medium', true, 1],
+] as const
+
+async function answering(answer: Record<string, unknown>) {
+  const { FingerlyClient } = await import('@fingerly/web-js')
+  const transport = { submit: async () => ({ request_id: 'req_public', ...answer }) }
+  loadMock.mockImplementation(
+    async () => new FingerlyClient({ apiKey: 'fly_pk_development_test', consent: 'granted', transport, sources: [] }),
+  )
+}
+
+describe('a public response', () => {
+  it.each(PUBLIC_ANSWERS)('%s: absent stays null and verdicts report nothing', async (_name, answer, score, level, suspicious, triggers) => {
+    await answering(answer)
+    application({ apiKey: 'fly_pk_development_test', consent: 'granted' })
+    const { fingerly, verdict } = TestBed.runInInjectionContext(() => ({
+      fingerly: injectIdentify({ immediate: true }),
+      verdict: injectVerdict('automation'),
+    }))
+    await render()
+    await vi.waitFor(() => expect(fingerly.isReady()).toBe(true))
+
+    expect(fingerly.error()).toBeNull()
+    expect(fingerly.requestId()).toBe('req_public')
+    expect(fingerly.suspectScore()).toBe(score)
+    expect(fingerly.suspectLevel()).toBe(level)
+    expect(fingerly.isSuspicious()).toBe(suspicious)
+    expect(fingerly.triggers()).toHaveLength(triggers)
+    expect(verdict.verdict()?.value).toBeNull()
+    expect(verdict.matched()).toBeNull()
+    expect(verdict.reasons()).toEqual([])
   })
 })

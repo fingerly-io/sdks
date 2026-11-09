@@ -179,7 +179,7 @@
       <section class="mb-8">
         <h1 class="text-balance text-3xl font-bold tracking-tight text-white sm:text-[40px] sm:leading-[1.1]">
           Analyze your browser with Fingerly<br class="hidden sm:block" />
-          and see every signal it produces.
+          and see the score it comes back with.
         </h1>
         <p class="mt-3 max-w-2xl text-[15px] leading-relaxed text-haze">
           The collectors run in this page, the report is submitted to the API, and the score comes back weighted by
@@ -257,22 +257,14 @@
         </div>
       </section>
 
-      <!-- score breakdown -->
+      <!-- signals -->
       <section class="mb-6 rounded-2xl border border-ink-700 bg-ink-900/70">
-        <div class="flex flex-wrap items-center gap-3 border-b border-ink-700 px-5 py-3.5">
-          <h2 class="font-mono text-[10px] uppercase tracking-[0.16em] text-haze">Score breakdown</h2>
-          <span class="font-mono text-[11px] text-haze/70">what fired, and what each was worth under your weights</span>
+        <div class="border-b border-ink-700 px-5 py-3.5">
+          <h2 class="font-mono text-[10px] uppercase tracking-[0.16em] text-haze">Signals</h2>
         </div>
-        <div id="breakdown" class="p-5"></div>
-      </section>
-
-      <!-- ───────────────────────── smart signals ───────────────────────── -->
-      <section class="mb-6">
-        <div class="mb-3 flex items-baseline gap-3">
-          <h2 class="text-lg font-semibold tracking-tight text-white">Smart signals</h2>
-          <span class="font-mono text-[11px] text-haze">server-scored</span>
-        </div>
-        <div id="signal-groups" class="grid gap-4 xl:grid-cols-2"></div>
+        <p class="p-5 font-mono text-[12px] text-haze">
+          Read on your backend, by request ID. A page is not told which signals fired.
+        </p>
       </section>
 
       <!-- ───────────────────────── native-only ───────────────────────── -->
@@ -316,59 +308,6 @@
 
     <script src="../dist/browser.global.js"></script>
     <script>
-      // ───────────────────────────────────────────────────────────────────
-      // The signals this page renders, and where each one's answer comes from.
-      //
-      // Declared as data rather than markup so that a signal added to the
-      // catalogue is one line here. `server` is the name it is scored under in
-      // domain/risk.
-      // ───────────────────────────────────────────────────────────────────
-      const GROUPS = [
-        {
-          title: 'Device & browser',
-          signals: [
-            { server: 'incognito', label: 'Incognito Mode' },
-            { server: 'tampering', label: 'Browser Tampering' },
-            { server: 'antidetect_browser', label: 'Anti-detect Browser' },
-            { server: 'automation', label: 'Automation' },
-            { server: 'bad_bot', label: 'Bot' },
-            { server: 'virtual_machine', label: 'Virtual Machine' },
-            { server: 'privacy_settings', label: 'Privacy Settings' },
-            { server: 'developer_tools', label: 'Developer Tools' },
-            { server: 'remote_control', label: 'Remote Control' },
-            { server: 'device_farm', label: 'Device Farm' },
-            { server: 'high_activity', label: 'High-Activity Device' },
-          ],
-        },
-        {
-          title: 'Network & address',
-          signals: [
-            { server: 'tor', label: 'Tor Exit Node' },
-            { server: 'vpn', label: 'VPN', group: ['vpn_public', 'vpn_timezone', 'vpn_relay', 'vpn_os_mismatch'] },
-            { server: 'proxy', label: 'Datacenter Proxy' },
-            { server: 'residential_proxy', label: 'Residential Proxy' },
-            { server: 'ip_blocklist', label: 'IP Blocklist', group: ['ip_blocklist_email_spam', 'ip_blocklist_attack_source'] },
-            { server: 'ip_abuser', label: 'IP Abuse History' },
-            { server: 'datacenter_ip', label: 'Datacenter Address' },
-            { server: 'geo_mismatch', label: 'Geo Mismatch' },
-            { server: 'bogon_ip', label: 'Unroutable Address' },
-            { server: 'anycast_ip', label: 'Anycast Address' },
-          ],
-        },
-      ]
-
-      // Signals with no detector yet. Rendered as "Not collected" rather than
-      // "Not detected", because a question nobody asked has not been answered.
-      const UNCOLLECTED = new Set([
-        'high_activity',
-        'device_farm',
-        'remote_control',
-        'developer_tools',
-        'vpn_os_mismatch',
-        'ip_blocklist_email_spam',
-        'ip_blocklist_attack_source',
-      ])
-
       const NATIVE = [
         ['Frida instrumentation', 'iOS + Android SDK'],
         ['Man-in-the-middle attack', 'iOS + Android SDK'],
@@ -453,29 +392,6 @@
         </div>`
       }
 
-      const STATUS = {
-        detected: ['text-rose-300', 'bg-rose-500/10 border-rose-500/25', 'Detected'],
-        // Fired, and worth nothing, because the customer has it disabled. Its
-        // own colour on purpose: "we saw this and you chose not to count it" is
-        // a different answer from either of the two either side of it.
-        off: ['text-amber-300', 'bg-amber-500/10 border-amber-500/25', 'Detected · off'],
-        clear: ['text-emerald-300', 'bg-emerald-500/[0.07] border-emerald-500/20', 'Not detected'],
-        uncollected: ['text-haze', 'bg-ink-800/60 border-ink-600', 'Not collected'],
-        unknown: ['text-haze', 'bg-ink-800/60 border-ink-600', 'Unknown'],
-      }
-
-      function pill(kind, text) {
-        const [fg, bg, fallback] = STATUS[kind]
-        return `<span class="shrink-0 rounded-md border px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] ${fg} ${bg}">${esc(text ?? fallback)}</span>`
-      }
-
-      /** Everything the server said fired, keyed by signal name. */
-      function triggerMap() {
-        const map = new Map()
-        for (const trigger of state.answer?.triggers ?? []) map.set(trigger.signal, trigger)
-        return map
-      }
-
       function renderIdentification() {
         const nav = state.report?.sources?.navigator?.value ?? {}
         const answer = state.answer
@@ -516,15 +432,16 @@
 
         // Null and zero are different answers here, which is why this tests for
         // null rather than truthiness: zero means "scored, nothing fired" and
-        // deserves the emerald gauge, not the "unscored" dash.
+        // deserves the emerald gauge. Null is "hidden": a key can withhold the
+        // score, and the page cannot tell that from an unscored check.
         const scored = answer != null && answer.suspectScore !== null
 
         if (!scored) {
-          $('score-value').textContent = answer ? 'n/a' : '—'
-          $('score-threshold').textContent = answer ? 'not scored' : `of ${DEFAULT_THRESHOLD}`
+          $('score-value').textContent = answer ? 'hidden' : '—'
+          $('score-threshold').textContent = answer ? 'read it on your backend' : `of ${DEFAULT_THRESHOLD}`
           $('level-pill').className =
             'rounded-full border border-ink-600 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-haze'
-          $('level-pill').textContent = answer ? 'unscored' : '—'
+          $('level-pill').textContent = answer ? (answer.suspectLevel ?? 'hidden') : '—'
           $('score-source').textContent = '—'
           arc.setAttribute('stroke-dashoffset', CIRCUMFERENCE)
           return
@@ -543,108 +460,13 @@
               ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
               : 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300'
         $('level-pill').className = `rounded-full border px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] ${tone}`
-        $('level-pill').textContent = answer.suspectLevel || 'unbanded'
+        $('level-pill').textContent = answer.suspectLevel ?? 'hidden'
 
         // The band is the server's, and it used the threshold it was
         // configured with. The gauge shows the shipped default because that is
         // the only threshold the response lets a client know about - so the
         // pill, not the arc, is the number to trust.
         $('score-source').textContent = `banded by the server · gauge uses the default ${DEFAULT_THRESHOLD}`
-      }
-
-      function renderBreakdown() {
-        const answer = state.answer
-        const target = $('breakdown')
-        const triggers = answer?.triggers ?? []
-
-        if (answer == null || answer.suspectScore === null) {
-          target.innerHTML = `<p class="font-mono text-[12px] text-haze">${
-            answer
-              ? 'This submission was not scored. Your backend reads why on the event, by request ID.'
-              : 'Waiting for the server. Configure an endpoint and a key to see the score.'
-          }</p>`
-          return
-        }
-        if (triggers.length === 0) {
-          target.innerHTML = `<p class="font-mono text-[12px] text-emerald-300/80">Nothing fired. An ordinary visitor scores zero.</p>`
-          return
-        }
-
-        const heaviest = Math.max(...triggers.map((t) => t.weight), 1)
-        target.innerHTML = `<div class="space-y-2.5">${triggers
-          .map((trigger) => {
-            const width = Math.max(2, (trigger.weight / heaviest) * 100)
-            const off = trigger.weight === 0
-            return `<div class="grid grid-cols-[minmax(0,190px)_1fr_auto] items-center gap-4">
-              <div class="min-w-0">
-                <div class="truncate font-mono text-[12px] ${off ? 'text-haze' : 'text-white'}">${esc(trigger.signal)}</div>
-                <div class="truncate font-mono text-[10px] text-haze/80">${esc(trigger.reason || trigger.confidence)}</div>
-              </div>
-              <div class="h-1.5 overflow-hidden rounded-full bg-ink-800">
-                <div class="h-full rounded-full ${off ? 'bg-ink-600' : 'bg-gradient-to-r from-cyan-400 to-violet-500'}" style="width:${width}%"></div>
-              </div>
-              <div class="w-16 text-right font-mono text-[13px] tabular-nums ${off ? 'text-haze' : 'text-white'}">
-                ${off ? 'off' : '+' + trigger.weight}
-              </div>
-            </div>`
-          })
-          .join('')}</div>
-          <div class="mt-4 flex items-center justify-between border-t border-ink-700 pt-3 font-mono text-[12px]">
-            <span class="text-haze">${triggers.length} signal${triggers.length === 1 ? '' : 's'} fired</span>
-            <span class="text-white">total <span class="tabular-nums">${answer.suspectScore}</span></span>
-          </div>`
-      }
-
-      function renderSignals() {
-        const triggers = triggerMap()
-        const scored = state.answer != null && state.answer.suspectScore !== null
-
-        $('signal-groups').innerHTML = GROUPS.map(
-          (group) => `
-          <div class="rounded-2xl border border-ink-700 bg-ink-900/70">
-            <div class="border-b border-ink-700 px-5 py-3.5">
-              <h3 class="font-mono text-[10px] uppercase tracking-[0.16em] text-haze">${esc(group.title)}</h3>
-            </div>
-            <div class="hair px-5">
-              ${group.signals.map((signal) => signalRow(signal, triggers, scored)).join('')}
-            </div>
-          </div>`,
-        ).join('')
-      }
-
-      function signalRow(signal, triggers, scored) {
-        const names = signal.group ?? [signal.server]
-        const fired = names.map((name) => triggers.get(name)).filter(Boolean)
-        // No detector for this one yet. "We did not ask" is a different answer
-        // from "we asked and the answer was no", and the row says which.
-        const uncollected = names.every((name) => UNCOLLECTED.has(name))
-
-        let kind = 'unknown'
-        let text = null
-        let detail = ''
-
-        if (fired.length > 0) {
-          const weight = fired.reduce((sum, trigger) => sum + trigger.weight, 0)
-          kind = weight > 0 ? 'detected' : 'off'
-          text = weight > 0 ? `+${weight}` : null
-          detail = fired.map((trigger) => `${trigger.signal} · ${trigger.reason || trigger.confidence}`).join(' · ')
-        } else if (!scored) {
-          kind = 'unknown'
-          text = 'Awaiting'
-        } else if (uncollected) {
-          kind = 'uncollected'
-          detail = 'no detector yet — the weight is configurable now so the signal arriving later is a wire-up'
-        } else {
-          kind = 'clear'
-        }
-
-        return `<div class="py-3">
-          <div class="flex items-center gap-3">
-            <span class="min-w-0 flex-1 truncate text-[13.5px] text-slate-100">${esc(signal.label)}</span>
-            ${pill(kind, text)}
-          </div>
-          ${detail ? `<div class="mt-1 truncate font-mono text-[10.5px] text-haze/70">${esc(detail)}</div>` : ''}
-        </div>`
       }
 
       function renderNative() {
@@ -719,8 +541,6 @@
       function render() {
         renderScore()
         renderIdentification()
-        renderBreakdown()
-        renderSignals()
         renderSources()
         renderRaw()
       }

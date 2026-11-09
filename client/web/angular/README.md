@@ -77,8 +77,8 @@ export class Checkout {
 
 `identify()` collects and submits, and resolves with the server's answer in the
 same round trip: the `requestId`, who the visitor is (`visitorId`), and the
-`suspectScore`, `suspectLevel` and triggers behind it. Nothing is decided in the
-page: scoring lives on the server, under the weights you set.
+`suspectScore` and `suspectLevel`, unless the key hides them. Nothing is decided
+in the page: scoring lives on the server, under the weights you set.
 
 ### On render instead
 
@@ -117,33 +117,17 @@ await this.fingerly.refresh() // ignores the cached result and collects afresh
 
 `suspectLevel()` is the server's band for this submission, under the weights you
 set. `isSuspicious()` is `true` for `medium` or `high`, `false` for `low`, and
-`null` when no server has answered yet or the submission went unscored.
-`triggers()` lists what fired:
+`null` when the level is absent: no server has answered yet, the submission went
+unscored, or the SDK key hides the score from the page, which cannot tell those
+apart. Null is not a clean result.
 
-```ts
-@Component({
-  template: `
-    @if (fingerly.suspectLevel() === 'high') {
-      <aside>
-        Unusual session
-        <ul>
-          @for (trigger of fingerly.triggers(); track trigger.signal) {
-            <li>{{ trigger.signal }} ({{ trigger.confidence }})</li>
-          }
-        </ul>
-      </aside>
-    }
-  `,
-})
-export class RiskNotice {
-  readonly fingerly = injectIdentify()
-}
-```
+Signals are read on your backend, by `requestId`, never in the page: which check
+tripped is what a fraudster wants to learn. `triggers()` is deprecated and empty from a
+public key.
 
-`injectVerdict()` and `verdicts()` are **deprecated** and warn once in
-development. They are derived from `triggers()` for one transition version and
-hold nothing rather than all clear when no server answered, so read
-`suspectLevel()` and `triggers()` instead.
+`injectVerdict()` and `verdicts()` are **deprecated** and warn once in development. They hold
+nothing, `matched()` is `null` and never a clean `false`, so read `suspectLevel()` and read
+signals on your backend.
 
 ## A correlation tag
 
@@ -223,14 +207,13 @@ fingerly.state()             // string | null:        the server's disposition
 fingerly.reason()            // string | null:        always null (deprecated); your backend reads it on the event
 fingerly.suspectScore()      // number | null:        null when nothing scored it
 fingerly.suspectLevel()      // string | null:        low, medium, high
-fingerly.triggers()          // IdentifyTrigger[]:    what the server scored on (signal, group, confidence, reason)
-fingerly.verdicts()          // Verdicts | null:      deprecated; derived from triggers
+fingerly.verdicts()          // Verdicts | null:      deprecated; holds nothing, read signals on your backend
 fingerly.report()            // SignalReport | null:  every source, with status and timing
 fingerly.error()             // Error | null
 fingerly.consent()           // ConsentState        (granted, pending or denied)
 fingerly.isLoading()    // boolean
 fingerly.isReady()      // boolean:              finished, successfully or not
-fingerly.isSuspicious() // boolean | null:       true for medium or high; null when no server answered
+fingerly.isSuspicious() // boolean | null:       true for medium or high; null when the level is absent
 fingerly.identify()     // Promise<IdentifyResult>
 fingerly.refresh()      // Promise<IdentifyResult>
 fingerly.setConsent('granted')
@@ -242,10 +225,7 @@ it works in a zoneless application. They are read-only. The writable signals
 stay inside the factory, because the state is shared and a component that could
 `set()` it would be changing what every other component sees.
 
-A trigger's `reason` is why it fired, strongest first, because a score that
-cannot say why it is high is not something you can defend to a customer whose
-user you blocked. Weights never reach the browser: a `triggers` entry names the
-signal, its group, confidence and reason, and your backend reads the rest on the
+Weights and signal names never reach the browser: your backend reads them on the
 server-side event read.
 
 The detectors run on the server, over the report this package sends, so rules
@@ -319,4 +299,4 @@ pnpm --filter @fingerly/angular playground   # http://localhost:4177
 ```
 
 It uses `submit: false`, so it sends nothing and no server answers: the raw
-report fills in, and the score, level and triggers stay empty.
+report fills in, and the score and level read hidden.

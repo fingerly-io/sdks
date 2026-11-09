@@ -70,9 +70,9 @@ export interface UseIdentifyReturn extends FingerlyState {
   /**
    * True when the server scored this `medium` or `high` under the weights you
    * set: the "should I even look?" flag, and not a policy. `null` when no
-   * server has answered (not identified yet, `submit: false`, or unscored),
-   * which is not a clean result. Anything more nuanced reads `suspectLevel`
-   * and `triggers` directly.
+   * server has answered or the level is absent (not identified yet, `submit:
+   * false`, unscored, or hidden by the key), which is not a clean result.
+   * Anything more nuanced reads `suspectLevel`, or your backend reads the signals.
    */
   isSuspicious: boolean | null
   /** Collect, score and submit. Reuses a completed run unless `force`. */
@@ -88,7 +88,7 @@ const resolveTag = (tag: UseIdentifyOptions['tag']): string | undefined =>
  * Identify this visitor.
  *
  * ```tsx
- * const { suspectLevel, triggers, isSuspicious, isLoading, identify } = useIdentify({ immediate: true })
+ * const { suspectScore, suspectLevel, isSuspicious, isLoading, identify } = useIdentify({ immediate: true })
  * ```
  *
  * The state comes through `useSyncExternalStore`, so every component that
@@ -160,7 +160,7 @@ export function useIdentify(options: UseIdentifyOptions = {}): UseIdentifyReturn
   useDebugValue(
     isReady
       ? isSuspicious === null
-        ? 'unscored'
+        ? 'no score'
         : isSuspicious
           ? 'suspicious'
           : 'clear'

@@ -80,6 +80,7 @@ export interface FingerlyState {
   reason: ShallowRef<string | null>
   suspectScore: ShallowRef<number | null>
   suspectLevel: ShallowRef<string | null>
+  /** @deprecated Empty from a public key. Read signals on your backend. */
   triggers: ShallowRef<IdentifyTrigger[]>
   verdicts: ShallowRef<Verdicts | null>
   report: ShallowRef<SignalReport | null>
@@ -279,9 +280,9 @@ export function createFingerly(options: FingerlyVueOptions): Plugin {
         state.identifiable.value = result.identifiable
         state.duplicate.value = result.duplicate
         state.state.value = result.state === '' ? null : result.state
-        state.suspectScore.value = result.suspectScore
-        state.suspectLevel.value = result.suspectLevel
-        state.triggers.value = result.triggers
+        state.suspectScore.value = result.suspectScore ?? null
+        state.suspectLevel.value = result.suspectLevel ?? null
+        state.triggers.value = result.triggers ?? []
         // Copied without reading the deprecated field, so a page that never
         // looks at verdicts is not warned about them.
         state.verdicts.value = verdictsOf(result)
@@ -337,6 +338,7 @@ export type ReadonlyState = {
   reason: Readonly<ShallowRef<string | null>>
   suspectScore: Readonly<ShallowRef<number | null>>
   suspectLevel: Readonly<ShallowRef<string | null>>
+  /** @deprecated Empty from a public key. Read signals on your backend. */
   triggers: Readonly<ShallowRef<IdentifyTrigger[]>>
   verdicts: Readonly<ShallowRef<DeepReadonly<Verdicts> | null>>
   report: Readonly<ShallowRef<DeepReadonly<SignalReport> | null>>
