@@ -12,7 +12,7 @@ repo relates to `server` and `panels`.
 - `client/web/types`: canonical TypeScript wire contracts, maintained in the
   standalone private `sdk-types` repository and consumed by TypeScript bridges.
 - `client/web/core`: framework-agnostic client device/event core (TS), shared by browser SDKs.
-  The budgeted scheduler, the signal vocabulary, the transport, and the detectors.
+  The budgeted scheduler, the signal vocabulary and the transport.
   Contains no DOM code and is compiled against the worker lib so that it cannot
   acquire any.
 - `client/web/web-js`: vanilla browser SDK. The ~22 browser sources and the
@@ -155,9 +155,8 @@ pnpm --dir client/mobile/lynx/example build
 ```
 
 The demo page runs the browser SDK against whatever browser opens it and renders
-the whole report: every source with its status and duration, the tamper
-findings, and the verdicts. It submits nothing unless an endpoint and SDK key
-are filled in. Serve it over `localhost` rather than opening the file directly:
+the whole report: every source with its status and duration, and the tamper
+measurements. It submits nothing unless an endpoint and SDK key are filled in. Serve it over `localhost` rather than opening the file directly:
 several sources need a secure context, and `file://` is not one.
 
 Install scripts are disabled for every dependency (`.npmrc`); the reason is
@@ -189,23 +188,17 @@ and one set of rules. The canonical TypeScript shape lives in
 and `client/mobile/android/.../core/Types.kt` are literal ports of it, field for field,
 because both ends were already written.
 
-Native SDKs additionally emit a `device` source, which is the one thing the
-server reads *by name*. Four flags are shared (`frida`, `mitm_attack`,
-`developer_tools`, `device_farm`), and each platform adds its own: `jailbreak`
-and `simulator` on iOS, `root_apps`, `emulator` and `cloned_app` on Android.
-Both also carry `tampering`, `vpn_mobile` and the `timezone`/`locale` pair the
-geo-mismatch rule needs.
+A native report carries raw measurements only, on the contract in
+[`contract/native-report.md`](contract/native-report.md). No client holds a
+weight, a threshold or a verdict: the server derives every signal from what it
+received, in `server/domain/risk/native_*_rules.go`, under the customer's
+weights, so a rule can change without an app update. A report claiming a verdict
+(the old `device` source) is ignored.
 
-Three of the Android keys are spelled differently from the verdict that produces
-them (`root_apps` from `root`, `cloned_app` from `appCloner`,
-`developer_tools` from `automation`) because `risk.androidFlags` is the
-authority on the wire names and the SDK's are named for what they are. A typo in
-either direction fails silently at every layer: the submission succeeds, the
-event is stored, and a signal the customer is paying for never fires. Both ends
-have a contract test pinning the same list for exactly that reason.
-
-Those flags are assertions rather than observations (only the process can
-answer them), so the SDK states them and the server records them.
+A modified app can still forge raw input, and the server can only score what it
+receives. Hardware attestation is what resists that: Android key attestation and
+iOS App Attest are checked by the server against the platform vendor's roots, and
+an event records `attested`, `not_attested` or `failed`.
 
 ## Using it
 
@@ -217,10 +210,10 @@ import { load } from '@fingerly/web-js'
 // with the default and call fingerly.setConsent('granted') from your consent tool.
 const fingerly = await load({ apiKey: 'fly_pk_production_…', consent: 'granted' })
 const result = await fingerly.identify({ tag: 'checkout' })
-const { requestId, visitorId, suspectScore, verdicts } = result
+const { requestId, visitorId, suspectScore, suspectLevel, triggers } = result
 
-if (verdicts.automation.value && verdicts.automation.confidence === 'high') {
-  // step up to a challenge
+if (suspectLevel === 'high') {
+  // step up to a challenge, and let your backend make the final decision
 }
 
 // The authoritative score above never changes. Expensive collectors continue
@@ -232,20 +225,21 @@ Every SDK submits to `https://api.fingerly.io`. The optional
 `endpoint`/`endpoints` setting always wins, which is how a customer uses the
 Fingerly same-origin proxy on their own domain.
 
-`identify()` collects, scores locally, and submits to `POST /api/v1/identify`,
-resolving with the server's verdict: `visitorId`, `suspectScore`,
-`suspectLevel` and the triggers behind them come back with the submission, so
-there is no second call to make. Pass `{ submit: false }` to collect and score
-without sending anything. The server's fields are empty then, and
-`suspectScore` is `null` rather than `0`, because nobody scored it.
+`identify()` collects and submits to `POST /api/v1/ingest`, resolving with the
+server's answer: `visitorId`, `suspectScore`, `suspectLevel` and the triggers
+behind them come back with the submission, so there is no second call to make.
+Pass `{ submit: false }` to collect without sending anything. Only the raw report
+comes back then: the server's fields are empty, and `suspectScore` is `null`
+rather than `0`, because nobody scored it.
 
 The default browser run spends 300ms on the initial tier, then continues the
 deferred tier under a separate 1200ms budget. Deferred data is archived against
 the request but never changes identity, score, billing, or webhooks.
 
-The verdicts returned here are advisory. The same detectors run again
-server-side over the stored report, where the rules can improve without every
-customer redeploying an SDK.
+The SDK decides nothing. Every detector runs server-side over the stored report,
+where the rules can improve without every customer redeploying an SDK. The answer
+in the page can be edited by whoever controls it, so decide on your backend from
+the stored event.
 
 ## Privacy
 
