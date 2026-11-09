@@ -210,10 +210,11 @@ import { load } from '@fingerly/web-js'
 // with the default and call fingerly.setConsent('granted') from your consent tool.
 const fingerly = await load({ apiKey: 'fly_pk_production_…', consent: 'granted' })
 const result = await fingerly.identify({ tag: 'checkout' })
-const { requestId, visitorId, suspectScore, suspectLevel, triggers } = result
+const { requestId, visitorId, suspectScore, suspectLevel } = result
 
+// suspectScore and suspectLevel can be null: not scored, or hidden by the key.
 if (suspectLevel === 'high') {
-  // step up to a challenge, and let your backend make the final decision
+  // an interface hint only: your backend reads the event and decides
 }
 
 // The authoritative score above never changes. Expensive collectors continue
@@ -226,8 +227,11 @@ Every SDK submits to `https://api.fingerly.io`. The optional
 Fingerly same-origin proxy on their own domain.
 
 `identify()` collects and submits to `POST /api/v1/ingest`, resolving with the
-server's answer: `visitorId`, `suspectScore`, `suspectLevel` and the triggers
-behind them come back with the submission, so there is no second call to make.
+server's answer: `visitorId` and, by default, `suspectScore` and `suspectLevel`
+come back with the submission. The score and level are a convenience for trying
+the product, and a per-key setting hides them, which looks the same as unscored.
+Signals are never sent to a browser or an app. Security decisions belong on your
+backend, reading the event by request ID, or from webhooks.
 Pass `{ submit: false }` to collect without sending anything. Only the raw report
 comes back then: the server's fields are empty, and `suspectScore` is `null`
 rather than `0`, because nobody scored it.
