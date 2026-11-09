@@ -6,23 +6,25 @@
  * for two reasons: it reads what the other sources produced, so it cannot run
  * beside them; and a tamper check that competed for the budget could be starved
  * by a slow source, which is precisely the outcome an attacker would arrange.
+ *
+ * What it reports is raw: which natives are patched, which properties were
+ * redefined. Whether the reported values contradict each other - a user agent
+ * claiming a phone that hovers, a language that is not the first of its own
+ * languages - is the server's reading of the same sources, not something the
+ * page decides.
  */
 
 import { SOURCE, valueOf, type EngineSignal, type IntegrityReport, type SignalOutcome } from '@fingerly/core'
 
 import { windowOrNull } from '../util.js'
-import { findContradictions } from './contradictions.js'
 import { findRedefinedProperties } from './descriptors.js'
 import { findPatchedNatives } from './natives.js'
 
-export { findContradictions } from './contradictions.js'
 export { findRedefinedProperties } from './descriptors.js'
 export { findPatchedNatives } from './natives.js'
 
 export function inspectIntegrity(sources: Record<string, SignalOutcome>): IntegrityReport {
   const w = windowOrNull()
-
-  const contradictions = findContradictions(sources)
 
   const engine = valueOf<EngineSignal>(
     {
@@ -39,14 +41,12 @@ export function inspectIntegrity(sources: Record<string, SignalOutcome>): Integr
   const identity = {
     ...(engine?.claimed === undefined ? {} : { claimed: engine.claimed }),
     ...(engine?.observed === undefined ? {} : { observed: engine.observed }),
-    ...(engine?.agrees === undefined ? {} : { agrees: engine.agrees }),
   }
 
   if (!w) {
-    // No DOM to inspect. The contradictions still hold - they are computed from
-    // reported values - so they are kept rather than the whole report being
-    // dropped.
-    return { patched_natives: [], lies: contradictions, engine: identity }
+    // No DOM to inspect, so nothing here to report. The server still compares
+    // the reported sources against each other.
+    return { patched_natives: [], lies: [], engine: identity }
   }
 
   const natives = findPatchedNatives(w)
@@ -54,7 +54,7 @@ export function inspectIntegrity(sources: Record<string, SignalOutcome>): Integr
 
   return {
     patched_natives: natives.patched,
-    lies: [...natives.lies, ...descriptors, ...contradictions],
+    lies: [...natives.lies, ...descriptors],
     engine: identity,
   }
 }

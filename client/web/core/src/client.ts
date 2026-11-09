@@ -8,7 +8,6 @@
  */
 
 import { assertConsentState, ConsentError } from './consent.js'
-import { detectAll } from './detect/index.js'
 import { collect, type ScheduleOptions } from './scheduler.js'
 import type { Source } from './source.js'
 import { HttpTransport, INSPECT, REDACTED, TransportError, type SubmitResponse, type Transport } from './transport.js'
@@ -22,7 +21,9 @@ import type {
   SdkPlatform,
   SignalReport,
   SourceTier,
+  Verdicts,
 } from './types.js'
+import { attachVerdicts, unansweredVerdicts, verdictsFromTriggers } from './verdicts.js'
 import { SDK_VERSION } from './version.js'
 
 /**
@@ -79,14 +80,13 @@ export interface IdentifyOptions {
   /** Cancels collection and submission. */
   signal?: AbortSignal
   /**
-   * Collect and score without sending anything.
+   * Collect without sending anything.
    *
-   * For a caller that wants the local verdicts and nothing else - a page
-   * deciding whether to show a challenge, with no interest in the server's
-   * opinion. Everything the server decides comes back empty: no `requestId`,
-   * no `visitorId`, and `suspectScore` is null rather than zero. That is the
-   * honest answer rather than a gap - nothing was submitted, so nobody scored
-   * it, and a zero would read as "scored, found nothing".
+   * Everything the server decides comes back empty: no `requestId`, no
+   * `visitorId`, `suspectScore` null rather than zero, and `verdicts` holding
+   * nothing rather than all clear. That is the honest answer rather than a gap
+   * - nothing was submitted, so nobody scored it, and this client decides
+   * nothing on its own.
    */
   submit?: boolean
 }
@@ -229,19 +229,12 @@ export class FingerlyClient {
   }
 
   /**
-   * Collect, score locally, and submit.
+   * Collect and submit.
    *
    * Returns the server's answer: who this visitor is, how sure it is, and what
-   * the submission scored. One round trip.
-   *
-   * It used to return as soon as the server had a receipt, on the grounds that
-   * the address lookup and the identity match could not happen in the tens of
-   * milliseconds a page load can spare. They can, so they do, and a caller no
-   * longer has to come back for the verdict it asked for.
-   *
-   * The local verdicts in [[IdentifyResult.verdicts]] are still there and are
-   * still advisory - they are computed in the page, by code the visitor
-   * controls. Where the two disagree, the server is the one to believe.
+   * the submission scored. One round trip. Nothing about the answer is
+   * decided in the page: `isSuspicious`, [[IdentifyResult.triggers]] and the
+   * deprecated [[IdentifyResult.verdicts]] all come from what the server sent.
    *
    * Fails with a [[ConsentError]], before any source runs, while consent is
    * not granted - and again if consent is withdrawn before the submission.
@@ -269,14 +262,14 @@ export class FingerlyClient {
     // keeps a `submit: false` caller from receiving a report collected after
     // the visitor said no.
     this.requireConsent()
-    const verdicts = detectAll(report)
 
     if (options.submit === false) {
       // Nothing was submitted, so there is no server answer to report. Every
       // field the server would have filled is empty rather than invented,
       // because a made-up visitor here would be indistinguishable from a real
-      // one to everything downstream.
-      return {
+      // one to everything downstream. The report is the whole result: this
+      // client decides nothing on its own.
+      const result: IdentifyResult = {
         requestId: '',
         visitorId: '',
         visitorIsNew: false,
@@ -287,10 +280,12 @@ export class FingerlyClient {
         suspectScore: null,
         suspectLevel: null,
         triggers: [],
-        verdicts,
+        verdicts: unansweredVerdicts(),
         report,
         deferred: Promise.resolve({ status: 'skipped', reason: 'not-submitted' }),
       }
+      attachVerdicts(result, unansweredVerdicts())
+      return result
     }
 
     const submission: IdentifySubmission = {
@@ -327,18 +322,20 @@ export class FingerlyClient {
       // wire; collapsing them here would undo that.
       suspectScore: answer.suspect_score ?? null,
       suspectLevel: answer.suspect_level ?? null,
+      // Copied field by field, weight left out: a customer's weights are not a
+      // page's business, whatever a server or proxy answered.
       triggers: (answer.triggers ?? []).map((trigger) => ({
         signal: trigger.signal,
         group: trigger.group ?? '',
-        weight: trigger.weight,
         confidence: trigger.confidence ?? '',
         reason: trigger.reason ?? '',
       })),
-      verdicts,
+      verdicts: unansweredVerdicts(),
       report,
       deferred: Promise.resolve({ status: 'skipped', reason: 'explicit-tiers' }),
     }
-
+    const verdicts = verdictsFromTriggers(result.triggers, result.suspectLevel)
+    attachVerdicts(result, verdicts)
 
     if (!automaticDeferred) return result
     if (answer.duplicate || !answer.deferred_token) {
@@ -353,7 +350,7 @@ export class FingerlyClient {
       return result
     }
 
-    result.deferred = this.finishDeferred(report, answer.request_id, answer.deferred_token, options.signal)
+    result.deferred = this.finishDeferred(report, answer.request_id, answer.deferred_token, verdicts, options.signal)
     return result
   }
 
@@ -361,6 +358,7 @@ export class FingerlyClient {
     initial: SignalReport,
     requestId: string,
     token: string,
+    verdicts: Verdicts,
     signal?: AbortSignal,
   ): Promise<DeferredIdentifyResult> {
     // Skipped rather than failed: nothing went wrong, the visitor changed
@@ -371,7 +369,6 @@ export class FingerlyClient {
     const scope = this.consentScope(signal)
     let report: SignalReport | undefined
     let combinedReport: SignalReport | undefined
-    let verdicts: ReturnType<typeof detectAll> | undefined
     try {
       report = await this.collectReport(['deferred'], scope.signal, 1200, initial.sources)
       // Nothing below awaits before the supplement is sent, so this is the
@@ -387,7 +384,6 @@ export class FingerlyClient {
           ? this.#options.integrity({ sources: { ...initial.sources, ...report.sources } })
           : EMPTY_INTEGRITY,
       }
-      verdicts = detectAll(combinedReport)
       const submission: DeferredSubmission = {
         sdk: { platform: this.platform, version: SDK_VERSION },
         consent: this.consentState,
@@ -405,7 +401,7 @@ export class FingerlyClient {
         error: failure instanceof Error ? failure : new Error(String(failure)),
         ...(report === undefined ? {} : { report }),
         ...(combinedReport === undefined ? {} : { combinedReport }),
-        ...(verdicts === undefined ? {} : { verdicts }),
+        verdicts,
       }
     } finally {
       scope.close()

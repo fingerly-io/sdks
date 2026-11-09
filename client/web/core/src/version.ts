@@ -6,4 +6,4 @@
  * that reports the wrong version makes "this only happens on 0.2.1"
  * unanswerable - which is the one question this field exists to answer.
  */
-export const SDK_VERSION = '0.1.1'
+export const SDK_VERSION = '0.2.0'

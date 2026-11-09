@@ -117,10 +117,10 @@ function permissionStatus(w: Window & typeof globalThis, name: PermissionName): 
  * The notification permission, read two ways.
  *
  * `Notification.permission` is the legacy synchronous reading and
- * `permissions.query({name:'notifications'})` is the modern one. They must
- * agree. Headless Chrome auto-denies without recording a decision, so the
- * legacy property says `denied` while the query still says `prompt` - a
- * contradiction an ordinary browser cannot produce.
+ * `permissions.query({name:'notifications'})` is the modern one. They should
+ * agree: headless Chrome auto-denies without recording a decision, so the
+ * legacy property says `denied` while the query still says `prompt`. Both are
+ * reported as read, and the server compares them.
  */
 export const permissionsSource: Source<PermissionsSignal> = {
   id: SOURCE.permissions,
@@ -146,12 +146,6 @@ export const permissionsSource: Source<PermissionsSignal> = {
       notification,
       notification_legacy: legacy,
       geolocation: await query('geolocation' as PermissionName),
-      inconsistent:
-        notification !== undefined && legacy !== undefined
-          ? // `default` and `prompt` are the same state under two names, which
-            // is why this is not a plain string comparison.
-            (legacy === 'default' ? 'prompt' : legacy) !== notification
-          : undefined,
     })
   },
 }

@@ -63,6 +63,7 @@ export const browserSources: readonly Source[] = [
   permissionsSource,
   automationSource,
   webglSource,
+  mediaDevicesSource,
 
   // deferred
   canvasSource,
@@ -74,7 +75,6 @@ export const browserSources: readonly Source[] = [
   batterySource,
   speechSource,
   sensorsSource,
-  mediaDevicesSource,
   userAgentDataSource,
   domBlockersSource,
   storageDurabilitySource,

@@ -117,8 +117,10 @@ function observedEngine(
 function claimedEngine(userAgent: string | undefined): string | undefined {
   if (!userAgent) return undefined
   // Order matters: every Chromium UA also contains "Safari", and Edge and Opera
-  // contain "Chrome". Testing for the most specific marker first.
-  if (/Firefox\/|FxiOS/.test(userAgent)) return 'gecko'
+  // contain "Chrome". Testing for the most specific marker first. Firefox for
+  // iOS says `FxiOS` and runs WebKit like every browser on iOS, so it falls
+  // through to the Safari branch below.
+  if (/Firefox\//.test(userAgent)) return 'gecko'
   if (/Edg\/|OPR\/|Chrome\/|Chromium\//.test(userAgent)) return 'chromium'
   if (/Safari\//.test(userAgent)) return 'webkit'
   return undefined
@@ -142,11 +144,9 @@ export const engineSource: Source<EngineSignal> = {
       eval_length: evalLen,
       stack_style: stack,
       observed,
+      // Compared on the server, where "we could not tell" and "they disagree"
+      // are kept apart by which of the two is missing.
       claimed,
-      // Undefined rather than false when either side is unknown. "We could not
-      // tell" and "they disagree" are different findings, and the automation
-      // detector weighs the second one heavily.
-      agrees: observed === undefined || claimed === undefined ? undefined : observed === claimed,
     })
   },
 }
@@ -335,7 +335,7 @@ export function observedFromErrors(errors: Omit<ErrorsSignal, 'observed'>): stri
     // bug this once had. `stack` is not a V8 marker - JavaScriptCore has an own
     // `stack` as well, and only SpiderMonkey keeps it on the prototype - so
     // `includes('stack')` voted chromium twice for every Safari on earth. That
-    // contradicted the engine probe's honest `webkit`, and `detect/automation`
+    // contradicted the engine probe's honest `webkit`, and the automation rule
     // read the disagreement as a spoof: Safari 26 reported itself automated,
     // with `low` confidence and two reasons that were the same fact counted
     // twice.

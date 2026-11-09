@@ -80,8 +80,8 @@
 
     <div class="grid">
       <div class="panel">
-        <h2>Verdicts</h2>
-        <div id="verdicts"></div>
+        <h2>Server answer</h2>
+        <div id="answer"></div>
       </div>
       <div class="panel">
         <h2>Integrity</h2>
@@ -101,16 +101,14 @@
     <script>
       const $ = (id) => document.getElementById(id)
 
-      function renderVerdicts(verdicts) {
-        $('verdicts').innerHTML = Object.entries(verdicts)
-          .map(
-            ([name, v]) => `
-              <div class="verdict">
-                <span>${name}</span>
-                <span class="${v.value}">${v.value} · ${v.confidence}</span>
-              </div>
-              ${v.reasons.length ? `<div class="reasons">${v.reasons.join('<br>')}</div>` : ''}`,
-          )
+      function renderAnswer(result) {
+        const rows = [
+          ['suspectScore', result.suspectScore ?? 'no server answer'],
+          ['suspectLevel', result.suspectLevel ?? 'no server answer'],
+          ...result.triggers.map((trigger) => [trigger.signal, trigger.group]),
+        ]
+        $('answer').innerHTML = rows
+          .map(([name, value]) => `<div class="verdict"><span>${name}</span><span>${value}</span></div>`)
           .join('')
       }
 
@@ -194,7 +192,7 @@
           )
 
           renderStats(result.report, result.requestId)
-          renderVerdicts(result.verdicts)
+          renderAnswer(result)
           renderIntegrity(result.report.integrity)
           renderSources(result.report.sources)
           $('raw').textContent = JSON.stringify(
@@ -208,15 +206,14 @@
 
           // A submitted identification returns after the fast tier, then the
           // tracked deferred promise supplies the complete local report. Keep
-          // the fast result visible immediately, but refresh the demo once the
-          // second tier finishes so verdicts such as Tor detection do not look
-          // as though they disappeared on submission.
+          // the fast result visible immediately, and refresh the report once the
+          // second tier finishes. A deferred report is never scored, so the
+          // server answer above stays as it is.
           if (submit) {
             const deferred = await result.deferred
             window.__fingerlyDeferred = deferred
             if (deferred.status === 'submitted') {
               renderStats(deferred.combinedReport, result.requestId)
-              renderVerdicts(deferred.verdicts)
               renderIntegrity(deferred.combinedReport.integrity)
               renderSources(deferred.combinedReport.sources)
               $('raw').textContent = JSON.stringify(

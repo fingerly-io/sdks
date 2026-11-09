@@ -56,6 +56,11 @@ export const touchSource: Source<TouchSignal> = {
       }),
       pointer_coarse: attempt(() => w.matchMedia?.('(pointer: coarse)').matches),
       any_hover: attempt(() => w.matchMedia?.('(any-hover: hover)').matches),
+      // Presence only, and in the fast tier for that reason: the deferred
+      // `sensors` source is what waits to see whether an event fires. This is
+      // what the server's mobile-UA-with-no-motion-sensors rule reads.
+      device_motion: attempt(() => 'DeviceMotionEvent' in w),
+      device_orientation: attempt(() => 'DeviceOrientationEvent' in w),
     })
   },
 }
@@ -140,11 +145,16 @@ export const sensorsSource: Source<SensorsSignal> = {
  * microphone, no speaker and no camera at all is the interesting case: almost
  * every real phone and laptop has at least one, and a rack of them often has
  * none.
+ *
+ * In the fast tier, because the score is built from the first submission and
+ * the device-farm rule needs this reading. `enumerateDevices` is an IPC answer
+ * with no permission prompt and no main-thread work; its cap is what keeps a
+ * device that answers slowly from costing the identification more than that.
  */
 export const mediaDevicesSource: Source<MediaDevicesSignal> = {
   id: SOURCE.mediaDevices,
-  tier: 'deferred',
-  timeoutMs: 300,
+  tier: 'fast',
+  timeoutMs: 120,
   async run() {
     if (typeof navigator === 'undefined') throw new UnsupportedSignal('no-navigator')
     if (typeof navigator.mediaDevices?.enumerateDevices !== 'function') {

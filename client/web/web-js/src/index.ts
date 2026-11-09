@@ -2,27 +2,28 @@
  * @fingerly/web-js - the browser SDK.
  *
  * Wires the browser source set and the tamper layer into `@fingerly/core`'s
- * client. Everything platform-specific is in this package; everything about
- * scheduling, transport and scoring is in the kernel, which is what lets the
- * same detectors run again on the server over a stored report.
+ * client. Everything platform-specific is in this package; scheduling and
+ * transport are in the kernel, and scoring is on the server, where customers
+ * set the weights and a page cannot read or edit them.
  *
  * ```ts
  * import { load } from '@fingerly/web-js'
  *
  * const fingerly = await load({ apiKey: 'fly_pk_production_…' })
- * const { visitorId, visitorIsNew, suspectScore, verdicts } = await fingerly.identify()
+ * const { visitorId, visitorIsNew, suspectLevel, triggers } = await fingerly.identify()
  *
- * // The server's answer, in the same round trip.
- * if (suspectScore !== null && suspectScore >= 30) {
+ * // The server's answer, in the same round trip. Everything about the score
+ * // lives on the server, under the weights you set.
+ * if (suspectLevel === 'high') {
  *   // step up to a challenge
  * }
  *
- * // The local verdicts are still there, and are still advisory: they are
- * // computed in the page, by code the visitor controls.
- * if (verdicts.automation.value && verdicts.automation.confidence === 'high') {
- *   // ...
- * }
+ * // Which signals fired, for your own logs or a customer-support view.
+ * const looksAutomated = triggers.some((trigger) => trigger.signal === 'automation')
  * ```
+ *
+ * Nothing about that decision happens in the page. This package collects and
+ * submits; the server scores.
  */
 
 import { FingerlyClient, type FingerlyClientOptions } from '@fingerly/core'
@@ -93,3 +94,9 @@ export type {
   Verdicts,
 } from '@fingerly/core'
 export { ConsentError, FingerlyClient, SOURCE, TransportError } from '@fingerly/core'
+
+// For the framework bindings: copying a result without warning on the reader's
+// behalf, and the one shared once-only deprecation set. Not part of the public
+// contract; bindings import them so the warnings stay one per page, not one per
+// package, and they stay in the page's own bundle.
+export { isSuspiciousLevel, verdictsOf, warnDeprecated } from '@fingerly/core'

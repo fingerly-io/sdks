@@ -126,7 +126,7 @@
         : null,
     }
 
-    // --- storage, which is where the incognito verdict comes from -------
+    // --- storage, which is what the server's incognito signal reads ----
     const estimate = await probe(() => nav.storage.estimate())
     report.storage = {
       estimate,
@@ -451,7 +451,8 @@
         return { status: outcome.status, ms: outcome.ms, reason: outcome.reason, value: outcome.value }
       }
       return {
-        verdicts: result.verdicts,
+        suspectLevel: result.suspectLevel,
+        triggers: result.triggers,
         storage: pick('storage'),
         storage_durability: pick('storage_durability'),
         shields: pick('shields'),

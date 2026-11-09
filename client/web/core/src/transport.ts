@@ -28,13 +28,13 @@ export const REDACTED = '[redacted]'
 export const INSPECT = Symbol.for('nodejs.util.inspect.custom')
 const IDEMPOTENCY_KEY_HEADER = 'Idempotency-Key'
 
-/** One signal that fired, and what it was worth. */
+/** One signal that fired. The server no longer sends a weight to a browser. */
 export interface SubmitTrigger {
   signal: string
   /** The card this signal is reported under, such as `vpn` for `vpn_public`. */
   group?: string
-  /** The weight in force when this submission was scored, not the current one. */
-  weight: number
+  /** @deprecated Only a secret-key backend is told this. A browser's answer does not carry it. */
+  weight?: number
   confidence?: string
   /** The tell that fired it, such as `known-tor-exit`. */
   reason?: string

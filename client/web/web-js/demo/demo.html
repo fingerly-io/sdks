@@ -270,7 +270,7 @@
       <section class="mb-6">
         <div class="mb-3 flex items-baseline gap-3">
           <h2 class="text-lg font-semibold tracking-tight text-white">Smart signals</h2>
-          <span class="font-mono text-[11px] text-haze">server-scored, with the client's own verdict beside it</span>
+          <span class="font-mono text-[11px] text-haze">server-scored</span>
         </div>
         <div id="signal-groups" class="grid gap-4 xl:grid-cols-2"></div>
       </section>
@@ -321,30 +321,29 @@
       //
       // Declared as data rather than markup so that a signal added to the
       // catalogue is one line here. `server` is the name it is scored under in
-      // domain/risk; `client` is the verdict the SDK reached in this page,
-      // which is advisory - the server's is the answer.
+      // domain/risk.
       // ───────────────────────────────────────────────────────────────────
       const GROUPS = [
         {
           title: 'Device & browser',
           signals: [
-            { server: 'incognito', client: 'incognito', label: 'Incognito Mode' },
+            { server: 'incognito', label: 'Incognito Mode' },
             { server: 'tampering', label: 'Browser Tampering' },
             { server: 'antidetect_browser', label: 'Anti-detect Browser' },
-            { server: 'automation', client: 'automation', label: 'Automation' },
+            { server: 'automation', label: 'Automation' },
             { server: 'bad_bot', label: 'Bot' },
             { server: 'virtual_machine', label: 'Virtual Machine' },
             { server: 'privacy_settings', label: 'Privacy Settings' },
             { server: 'developer_tools', label: 'Developer Tools' },
             { server: 'remote_control', label: 'Remote Control' },
-            { server: 'device_farm', client: 'farm', label: 'Device Farm' },
+            { server: 'device_farm', label: 'Device Farm' },
             { server: 'high_activity', label: 'High-Activity Device' },
           ],
         },
         {
           title: 'Network & address',
           signals: [
-            { server: 'tor', client: 'tor', label: 'Tor Exit Node' },
+            { server: 'tor', label: 'Tor Exit Node' },
             { server: 'vpn', label: 'VPN', group: ['vpn_public', 'vpn_timezone', 'vpn_relay', 'vpn_os_mismatch'] },
             { server: 'proxy', label: 'Datacenter Proxy' },
             { server: 'residential_proxy', label: 'Residential Proxy' },
@@ -395,7 +394,7 @@
       // `answer` is the /identify response itself. It used to be an event fetched
       // back afterwards, which is why the panels below read one object: the
       // response now carries what that fetch used to return.
-      const state = { report: null, verdicts: null, requestId: '', answer: null, error: null, tab: 'answer' }
+      const state = { report: null, requestId: '', answer: null, error: null, tab: 'answer' }
 
       // Not returned by /identify - the score is only meaningful against the
       // threshold that banded it, and the response sends the band instead. The
@@ -639,19 +638,9 @@
           kind = 'clear'
         }
 
-        // The client's own verdict, where it reached one. Advisory, and shown
-        // as such: the server's answer is the one that scored.
-        const verdict = signal.client ? state.verdicts?.[signal.client] : null
-        const local = verdict
-          ? `<span class="shrink-0 font-mono text-[10px] ${verdict.value ? 'text-amber-300' : 'text-haze/60'}">
-               client: ${verdict.value ? verdict.confidence : 'no'}
-             </span>`
-          : ''
-
         return `<div class="py-3">
           <div class="flex items-center gap-3">
             <span class="min-w-0 flex-1 truncate text-[13.5px] text-slate-100">${esc(signal.label)}</span>
-            ${local}
             ${pill(kind, text)}
           </div>
           ${detail ? `<div class="mt-1 truncate font-mono text-[10.5px] text-haze/70">${esc(detail)}</div>` : ''}
@@ -805,7 +794,6 @@
           // the response this page reads.
           const result = await client.identify({ submit, tag: 'playground' })
           state.report = result.report
-          state.verdicts = result.verdicts
           state.requestId = result.requestId
           state.answer = submit ? result : null
           $('request-id').textContent = result.requestId || 'not submitted'

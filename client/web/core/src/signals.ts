@@ -2,10 +2,10 @@
  * The names of the sources, and the shape of what each one reports.
  *
  * This file is the seam between the kernel and the collectors. `@fingerly/web-js`
- * implements these; `detect/` reads them; the server will eventually parse
- * them. Putting the vocabulary here rather than in the collectors is what lets
- * a detector be written and tested without a browser anywhere in sight, and
- * what will let a native SDK report `screen` in the same shape the web one does.
+ * implements these and the server reads them. Putting the vocabulary here
+ * rather than in the collectors is what lets a server rule be tested against a
+ * report with no browser anywhere in sight, and what will let a native SDK
+ * report `screen` in the same shape the web one does.
  *
  * A source id, once shipped, is permanent. Renaming one silently changes every
  * stored report's meaning, so a source that changes shape gets a new id and the
@@ -158,13 +158,7 @@ export interface EngineSignal {
   observed?: string
   /** What the user-agent says. Compared against `observed`, never trusted. */
   claimed?: string
-  /**
-   * Whether the two agree.
-   *
-   * Computed by the collector rather than left to each detector, so that
-   * "these disagree" means one thing across the codebase. Undefined when
-   * either side could not be determined - which is not the same as agreeing.
-   */
+  /** @deprecated Not sent since 0.2.0. The server compares the two itself. */
   agrees?: boolean
 }
 
@@ -321,7 +315,7 @@ export interface ErrorsSignal {
  * Only two fields, because farbling shows up in signals other sources already
  * report - the quota in [[StorageSignal]], the memory and the plugin count in
  * [[NavigatorSignal]] - and reading any of them a second time here would just
- * be two chances to disagree. `detect/shields` does the reading.
+ * be two chances to disagree. The server does the reading.
  */
 export interface ShieldsSignal {
   /**
@@ -532,11 +526,6 @@ export interface StorageSignal {
    */
   origin_filesystem?: 'ok' | 'transient' | 'refused' | 'failed'
   /**
-   * Legacy Safari tell, kept so a report stored by an older SDK still reads.
-   * Superseded by `origin_filesystem: 'transient'`, which is the same probe.
-   */
-  safari_private?: boolean
-  /**
    * Whether a service worker container is exposed.
    *
    * This was Firefox's private-window tell until Firefox 138, which shipped
@@ -622,6 +611,16 @@ export interface TouchSignal {
   pointer_coarse?: boolean
   /** `matchMedia('(any-hover: hover)')`. A phone that hovers is a lie. */
   any_hover?: boolean
+  /**
+   * Whether the motion interfaces exist at all: `'DeviceMotionEvent' in window`.
+   *
+   * The same presence check as [[SensorsSignal.device_motion]], here in the
+   * fast tier because it is synchronous and the server's emulator rule needs it
+   * on the report it scores. The deferred `sensors` source is what waits to
+   * see whether an event actually fires.
+   */
+  device_motion?: boolean
+  device_orientation?: boolean
 }
 
 export interface SensorsSignal {
@@ -656,10 +655,10 @@ export interface TimingSignal {
 
 export interface PermissionsSignal {
   notification?: string
-  /** `Notification.permission`. Must agree with `notification` above. */
+  /** `Notification.permission`. The server compares it with `notification` above. */
   notification_legacy?: string
   geolocation?: string
-  /** Where the two notification readings disagree - a headless Chrome tell. */
+  /** @deprecated Not sent since 0.2.0. The server compares the two readings itself. */
   inconsistent?: boolean
 }
 

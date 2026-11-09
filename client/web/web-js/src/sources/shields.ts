@@ -5,8 +5,8 @@
  * source can see: whether canvas readback is noised. The other *effects* of
  * farbling land in signals that are already collected - the storage quota, the
  * device memory, the plugin count - and reading any of them again here would
- * only be two chances to disagree. `@fingerly/core`'s `detect/shields` does the
- * reading and the arithmetic.
+ * only be two chances to disagree. The server does the reading and the
+ * arithmetic.
  *
  * The reason to ask at all, rather than infer: Brave publishes `navigator.brave
  * .isBrave()` for sites that need to adapt to it, and an answer the browser

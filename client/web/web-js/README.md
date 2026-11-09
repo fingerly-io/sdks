@@ -30,15 +30,17 @@ const fingerly = await load({ apiKey: 'fly_pk_production_…' })
 fingerly.setConsent('granted')
 
 // When the visitor does something worth protecting: sign-up, login, checkout.
-const { requestId, visitorId, suspectScore } = await fingerly.identify({ tag: 'login' })
+const { requestId, visitorId, suspectLevel, triggers } = await fingerly.identify({ tag: 'login' })
 ```
 
 Loading collects nothing and sends nothing. Consent defaults to `pending`, and
 `identify()` rejects with a `ConsentError` until it is `granted`.
 
-Send `requestId` to your server and read the full result there with a secret
-key (see the server SDKs), rather than trusting what the page reports: the page
-runs code the visitor controls.
+This package collects and sends. Everything about the score is decided on the
+server, under the weights you set: `suspectLevel` is the band, `triggers` is what
+fired. Send `requestId` to your server and read the full result there with a
+secret key (see the server SDKs), rather than trusting what the page reports: the
+page runs code the visitor controls.
 
 ## Serve it from your own site
 

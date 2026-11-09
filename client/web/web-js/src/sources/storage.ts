@@ -3,8 +3,8 @@
  *
  * There is no single incognito tell. Each engine closes the last leak and opens
  * a new one, so this runs a narrow probe per engine and reports each answer
- * separately - the verdict is assembled in `@fingerly/core`'s `detect/incognito`,
- * where the engine gate lives.
+ * separately - the verdict is assembled on the server, where the engine gate
+ * lives.
  *
  * That split is deliberate. `detectincognitojs` returns one boolean, which
  * throws away *which* engine's tell fired, and the engine is what makes the

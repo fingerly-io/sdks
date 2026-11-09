@@ -79,6 +79,8 @@ export {
   type WebGLSignal,
 } from './signals.js'
 
+// Deprecated, empty, and kept only so an import does not fail after upgrading.
+// See verdicts.ts: detection moved to the server.
 export {
   BRAVE_SYNTHETIC_QUOTA,
   detectAll,
@@ -89,11 +91,14 @@ export {
   detectShields,
   detectTor,
   farblesFingerprints,
+  isSuspiciousLevel,
   trustedDeviceMemory,
   unknown,
+  verdictsOf,
+  warnDeprecated,
   weigh,
   type Evidence,
-} from './detect/index.js'
+} from './verdicts.js'
 
 export { SDK_VERSION } from './version.js'
 
