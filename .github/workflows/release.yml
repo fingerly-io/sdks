@@ -75,7 +75,9 @@ jobs:
       # package has to be built before it is packed.
       - run: pnpm build
       - run: pnpm lint
-      - run: pnpm test
+      # Not the proxy templates: they are never published, and their tests start
+      # Docker stacks that need a host network this runner does not give them.
+      - run: pnpm turbo run test --filter='!@fingerly/proxy-templates'
       - name: Node SDK package checks
         run: |
           pnpm --filter @fingerly/node format:check
