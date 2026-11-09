@@ -16,6 +16,7 @@
  */
 
 import {
+  isSuspiciousLevel,
   load,
   type ConsentState,
   type FingerlyClient,
@@ -23,6 +24,7 @@ import {
   type IdentifyTrigger,
   type SignalReport,
   type Verdicts,
+  verdictsOf,
 } from '@fingerly/web-js'
 
 /** Options for [[createFingerly]] and [[setupFingerly]]. */
@@ -36,13 +38,12 @@ export interface FingerlyOptions {
   endpoints?: string | readonly string[]
   fallbackToDefaultEndpoint?: boolean
   /**
-   * Collect and score without submitting anything.
+   * Collect without submitting anything.
    *
-   * For a page that wants the local verdicts and nothing else. Everything
-   * the server decides comes back empty: no `requestId`, no `visitorId` and
-   * no `suspectScore`. That is the honest answer rather than a gap - nothing
-   * was sent, so nobody scored it, and a zero here would read as "scored,
-   * found nothing".
+   * Everything the server decides comes back empty: no `requestId`, no
+   * `visitorId`, no `suspectScore`, and `verdicts` holding nothing rather
+   * than all clear. That is the honest answer rather than a gap - nothing was
+   * sent, so nobody scored it, and this SDK decides nothing on its own.
    */
   submit?: boolean
   /**
@@ -93,6 +94,7 @@ export interface Fingerly {
   readonly suspectLevel: string | null
   /** What the server scored on. Empty when it found nothing. */
   readonly triggers: readonly IdentifyTrigger[]
+  /** @deprecated Read `suspectLevel` and `triggers`. Holds nothing when no server answered. */
   readonly verdicts: Verdicts | null
   readonly report: SignalReport | null
   readonly error: Error | null
@@ -100,16 +102,13 @@ export interface Fingerly {
   /** True once an identification has completed, successfully or not. */
   readonly isReady: boolean
   /**
-   * True when the verdicts contain anything worth acting on.
-   *
-   * Deliberately conservative: it requires `medium` confidence or better,
-   * because a `low`-confidence verdict is one weak tell and blocking on it
-   * would be blocking real users. It never counts `shields`: that verdict says
-   * a privacy browser is rewriting some values, which is not a reason to
-   * challenge anyone. Anything more nuanced should read `verdicts` directly -
-   * this is the "should I even look?" flag, not a policy.
+   * True when the server scored this `medium` or `high` under the weights you
+   * set: the "should I even look?" flag, and not a policy. `null` when no
+   * server has answered (not identified yet, `submit: false`, or unscored),
+   * which is not a clean result. Anything more nuanced reads `suspectLevel`
+   * and `triggers` directly.
    */
-  readonly isSuspicious: boolean
+  readonly isSuspicious: boolean | null
   /**
    * Whether the visitor has agreed to be identified, as last set here or on
    * the client. Automatic identification waits for `granted`.
@@ -187,15 +186,7 @@ export function createFingerly(options: FingerlyOptions): Fingerly {
   let consent = $state<ConsentState>(options.consent ?? 'pending')
 
   const isReady = $derived(report !== null || error !== null)
-  // `shields` is skipped: it says a privacy browser is rewriting values,
-  // which is never on its own a reason to challenge anyone.
-  const isSuspicious = $derived(
-    verdicts === null
-      ? false
-      : Object.entries(verdicts).some(
-          ([name, verdict]) => name !== 'shields' && verdict.value && verdict.confidence !== 'low',
-        ),
-  )
+  const isSuspicious = $derived(isSuspiciousLevel(suspectLevel))
 
   let clientPromise: Promise<FingerlyClient> | undefined
   let loaded: FingerlyClient | undefined
@@ -281,7 +272,7 @@ export function createFingerly(options: FingerlyOptions): Fingerly {
         suspectScore = result.suspectScore
         suspectLevel = result.suspectLevel
         triggers = result.triggers
-        verdicts = result.verdicts
+        verdicts = verdictsOf(result)
         report = result.report
         held = undefined
         consecutiveFailures = 0

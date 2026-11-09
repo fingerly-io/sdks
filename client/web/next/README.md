@@ -98,11 +98,10 @@ The hooks are `@fingerly/react`'s, re-exported so you install one package:
 
 ```tsx
 'use client'
-import { useIdentify, useVerdict } from '@fingerly/next'
+import { useIdentify } from '@fingerly/next'
 
 export function Checkout() {
-  const { identify, isSuspicious, isLoading } = useIdentify()
-  const { matched } = useVerdict('incognito')
+  const { identify, isSuspicious, suspectLevel, isLoading } = useIdentify()
   …
 }
 ```
@@ -112,8 +111,8 @@ safe anywhere: it runs in an effect, and effects do not run during a server
 render. The page renders on the server, collects after hydration, and every
 component that asks shares the one identification.
 
-The full surface (`immediate`, `suspend`, `tag`, `refresh`, confidence floors)
-is documented in the [React binding's README](../react/README.md).
+The full surface (`immediate`, `suspend`, `tag`, `refresh`) is documented in
+the [React binding's README](../react/README.md).
 
 ## Carry it into a Server Action
 
@@ -184,8 +183,7 @@ and a Server Action reading the field back:
 pnpm --filter @fingerly/next demo   # http://localhost:4178
 ```
 
-It collects and scores locally and submits nothing until you give it somewhere
-to submit: put `FINGERLY_API_KEY`, `FINGERLY_ENDPOINT` and `FINGERLY_SUBMIT=true` in
+It collects and submits nothing until you give it somewhere to submit: put `FINGERLY_API_KEY`, `FINGERLY_ENDPOINT` and `FINGERLY_SUBMIT=true` in
 `demo/.env.local` (gitignored), with a key whose allowed origins include the
 port you are running it on. Then the identification produces a real
 `requestId`, the hidden field carries it, and the action prints the one it
@@ -228,6 +226,6 @@ contents, so `endpoints={['/k7x2qm4a']}` does not start a new identification
 when the layout renders again.
 
 **It does not read events back.** It does not need to: `identify()` resolves
-with the server's verdict (`visitorId`, `suspectScore`, `suspectLevel` and the
+with the server's answer (`visitorId`, `suspectScore`, `suspectLevel` and the
 triggers behind them), so there is nothing to fetch afterwards. Reading stored
 events for reporting is `@fingerly/node`'s job.

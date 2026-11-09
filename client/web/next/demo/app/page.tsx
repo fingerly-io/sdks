@@ -2,10 +2,8 @@
 
 import { useActionState } from 'react'
 
-import { FingerlyRequestId, useIdentify, useVerdict, type VerdictName } from '@fingerly/next'
+import { FingerlyRequestId, useIdentify } from '@fingerly/next'
 import { submit } from './actions'
-
-const NAMES: VerdictName[] = ['incognito', 'shields', 'tor', 'emulator', 'automation', 'farm']
 
 const card = {
   background: '#171a21',
@@ -26,20 +24,21 @@ function Row({ label, value, hit = false }: { label: string; value: unknown; hit
   )
 }
 
-function Verdict({ name }: { name: VerdictName }) {
-  const { matched, confidence, reasons } = useVerdict(name)
+function Triggers() {
+  const { triggers, suspectLevel } = useIdentify({ tag: 'next-demo' })
 
   return (
     <div style={card}>
       <h3 style={{ fontSize: 11, margin: '0 0 8px', color: '#8b93a7', textTransform: 'uppercase' }}>
-        {name}
+        triggers
       </h3>
-      <Row label="matched" value={matched} hit={matched} />
-      <Row label="confidence" value={confidence ?? '—'} />
-      {reasons.length > 0 && (
+      <Row label="level" value={suspectLevel ?? '—'} hit={suspectLevel === 'high'} />
+      {triggers.length > 0 && (
         <ul style={{ margin: '6px 0 0', paddingLeft: 16, color: '#8b93a7', fontSize: 11 }}>
-          {reasons.map((reason) => (
-            <li key={reason}>{reason}</li>
+          {triggers.map((trigger) => (
+            <li key={trigger.signal}>
+              {trigger.signal} ({trigger.group})
+            </li>
           ))}
         </ul>
       )}
@@ -60,7 +59,8 @@ export default function Page() {
           state
         </h3>
         <Row label="isReady" value={fingerly.isReady} />
-        <Row label="isSuspicious" value={fingerly.isSuspicious} hit={fingerly.isSuspicious} />
+        <Row label="suspectScore" value={fingerly.suspectScore ?? '— (no server answer)'} />
+        <Row label="suspectLevel" value={fingerly.suspectLevel ?? '— (no server answer)'} hit={fingerly.suspectLevel === 'high'} />
         <Row label="requestId" value={fingerly.requestId ?? '— (submit: false)'} />
         <Row label="sources" value={fingerly.report ? Object.keys(fingerly.report.sources).length : '—'} />
         <Row label="elapsed_ms" value={fingerly.report?.elapsed_ms ?? '—'} />
@@ -120,9 +120,7 @@ export default function Page() {
       <div
         style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}
       >
-        {NAMES.map((name) => (
-          <Verdict key={name} name={name} />
-        ))}
+        <Triggers />
       </div>
     </>
   )

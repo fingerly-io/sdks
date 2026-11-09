@@ -1,11 +1,10 @@
 <script lang="ts">
-  import { setupFingerly, useIdentify, type VerdictName } from '../src/index.js'
-  import Verdict from './Verdict.svelte'
+  import { setupFingerly, useIdentify } from '../src/index.js'
+  import Triggers from './Triggers.svelte'
 
-  const NAMES: VerdictName[] = ['incognito', 'shields', 'tor', 'emulator', 'automation', 'farm']
-
-  // submit: false - the playground collects and scores locally, and sends
-  // nothing.
+  // submit: false - the playground collects and sends nothing, so no server
+  // answers: the raw report fills in and the score, level and triggers stay
+  // empty.
   setupFingerly({ apiKey: 'pk_demo', submit: false })
 
   const fingerly = useIdentify({ immediate: true, tag: 'svelte-playground' })
@@ -20,7 +19,8 @@
 
 <div class="card">
   <h3>state</h3>
-  <div class="row"><span class="k">isSuspicious</span><span class="v" class:hit={fingerly.isSuspicious}>{fingerly.isSuspicious}</span></div>
+  <div class="row"><span class="k">suspectScore</span><span class="v">{fingerly.suspectScore ?? '— (no server answer)'}</span></div>
+  <div class="row"><span class="k">suspectLevel</span><span class="v" class:hit={fingerly.suspectLevel === 'high'}>{fingerly.suspectLevel ?? '— (no server answer)'}</span></div>
   <div class="row"><span class="k">requestId</span><span class="v">{fingerly.requestId ?? '— (submit: false)'}</span></div>
   <div class="row"><span class="k">sources</span><span class="v">{fingerly.report ? Object.keys(fingerly.report.sources).length : '—'}</span></div>
   <div class="row"><span class="k">elapsed_ms</span><span class="v">{fingerly.report?.elapsed_ms ?? '—'}</span></div>
@@ -31,5 +31,5 @@
 </div>
 
 <div class="grid">
-  {#each NAMES as name (name)}<Verdict {name} />{/each}
+  <Triggers />
 </div>

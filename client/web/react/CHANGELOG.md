@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0
+
+- `isSuspicious` comes from the server's `suspectLevel`: `true` for `medium` or `high`, `false` for `low`, `null` when no server answered (before identification, `submit: false`, or unscored). It is typed `boolean | null`.
+- `verdicts` and `useVerdict()` are deprecated, warn once in development, and are derived from the server's `triggers`. `matched` is `boolean | null`, `null` when no server answered.
+- `triggers[].weight` no longer reaches the browser.
+
 ## 0.1.1
 
 - The provider keys its store on the contents of `endpoints`, so an array literal, or one a Server Component sends again on `router.refresh()`, no longer rebuilds the store and identifies again on every render.

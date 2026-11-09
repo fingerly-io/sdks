@@ -3,7 +3,7 @@
  *
  * `file://` will not do: several of the sources the binding drives need a
  * secure context - the storage estimate, the origin private file system probe
- * the incognito verdict rests on, the permissions query - and a page opened
+ * the incognito signal rests on, the permissions query - and a page opened
  * from disk is not one, so the report would be missing exactly the signals
  * worth looking at. `localhost` counts as secure.
  *
@@ -43,9 +43,9 @@ createServer(async (request, response) => {
       'content-type': TYPES[extname(file)] ?? 'application/octet-stream',
       // Never cached. The bundle this serves is rebuilt while the page is
       // open, and a browser holding on to the old one means a rebuild that
-      // appears to have done nothing - the verdicts still come from the logic
-      // you just replaced, and the time goes into debugging the change rather
-      // than the bug.
+      // appears to have done nothing - the report still comes from the code you
+      // just replaced, and the time goes into debugging the change rather than
+      // the bug.
       'cache-control': 'no-store, max-age=0',
     })
     response.end(body)

@@ -17,6 +17,7 @@ import {
   type IdentifyTrigger,
   type SignalReport,
   type Verdicts,
+  verdictsOf,
 } from '@fingerly/web-js'
 import {
   readonly,
@@ -42,13 +43,12 @@ export interface FingerlyVueOptions {
   endpoints?: string | readonly string[]
   fallbackToDefaultEndpoint?: boolean
   /**
-   * Collect and score without submitting anything.
+   * Collect without submitting anything.
    *
-   * For a page that wants the local verdicts and nothing else. Everything
-   * the server decides comes back empty: no `requestId`, no `visitorId` and
-   * no `suspectScore`. That is the honest answer rather than a gap - nothing
-   * was sent, so nobody scored it, and a zero here would read as "scored,
-   * found nothing".
+   * Everything the server decides comes back empty: no `requestId`, no
+   * `visitorId`, no `suspectScore`, and `verdicts` holding nothing rather
+   * than all clear. That is the honest answer rather than a gap - nothing was
+   * sent, so nobody scored it, and this SDK decides nothing on its own.
    */
   submit?: boolean
   /**
@@ -282,7 +282,9 @@ export function createFingerly(options: FingerlyVueOptions): Plugin {
         state.suspectScore.value = result.suspectScore
         state.suspectLevel.value = result.suspectLevel
         state.triggers.value = result.triggers
-        state.verdicts.value = result.verdicts
+        // Copied without reading the deprecated field, so a page that never
+        // looks at verdicts is not warned about them.
+        state.verdicts.value = verdictsOf(result)
         state.report.value = result.report
         completed = result
         held = undefined

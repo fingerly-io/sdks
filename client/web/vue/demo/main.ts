@@ -8,11 +8,14 @@
  *
  * Render functions rather than templates, so the demo needs only Vue's runtime
  * and not the template compiler.
+ *
+ * It uses `submit: false`, so no server answers: the raw report fills in and
+ * the score, level and triggers stay empty, as they must with nobody to ask.
  */
 
 import { createApp, defineComponent, h } from 'vue'
 
-import { createFingerly, useIdentify, useVerdict, type VerdictName } from '../src/index.js'
+import { createFingerly, useIdentify } from '../src/index.js'
 
 const row = (label: string, value: unknown, className = '') =>
   h('div', { class: `row ${className}` }, [
@@ -20,37 +23,32 @@ const row = (label: string, value: unknown, className = '') =>
     h('span', { class: 'v' }, String(value)),
   ])
 
-/** Reads one verdict, to show `useVerdict()` sharing the same identification. */
-const VerdictCard = defineComponent({
-  props: { name: { type: String, required: true } },
-  setup(props) {
-    const { matched, confidence, reasons } = useVerdict(
-      // `VerdictName` rather than the union spelled out. The spelled-out one
-      // was already a verdict behind by the time `shields` was added, which is
-      // what a duplicated type does when the original grows.
-      () => props.name as VerdictName,
-    )
+/** What the server scored on, to show a second reader of the same identification. */
+const TriggersCard = defineComponent({
+  setup() {
+    const { triggers, suspectLevel } = useIdentify({ tag: () => 'vue-demo' })
     return () =>
       h('div', { class: 'card' }, [
-        h('h3', props.name),
-        row('matched', matched.value, matched.value ? 'hit' : ''),
-        row('confidence', confidence.value ?? '—'),
-        reasons.value.length
+        h('h3', 'triggers'),
+        row('level', suspectLevel.value ?? '—', suspectLevel.value === 'high' ? 'hit' : ''),
+        triggers.value.length
           ? h(
               'ul',
               { class: 'reasons' },
-              reasons.value.map((reason) => h('li', { key: reason }, reason)),
+              triggers.value.map((trigger) =>
+                h('li', { key: trigger.signal }, `${trigger.signal} (${trigger.group})`),
+              ),
             )
-          : null,
+          : row('fired', '—'),
       ])
   },
 })
 
 const App = defineComponent({
   setup() {
-    // `immediate` in the root, and again in every card below - the plugin
-    // shares one result, so this is still one submission.
-    const { identify, refresh, requestId, report, verdicts, isLoading, isReady, isSuspicious, error } =
+    // `immediate` in the root only - the plugin shares one result, so the card
+    // below reads this same submission.
+    const { identify, refresh, requestId, report, suspectScore, suspectLevel, isLoading, isReady, error } =
       useIdentify({ immediate: true, tag: () => 'vue-demo' })
 
     return () =>
@@ -66,27 +64,21 @@ const App = defineComponent({
           h('h3', 'state'),
           row('isLoading', isLoading.value),
           row('isReady', isReady.value),
-          row('isSuspicious', isSuspicious.value, isSuspicious.value ? 'hit' : ''),
+          row('suspectScore', suspectScore.value ?? '— (no server answer)'),
+          row('suspectLevel', suspectLevel.value ?? '— (no server answer)', suspectLevel.value === 'high' ? 'hit' : ''),
           row('requestId', requestId.value ?? '— (submit: false)'),
           row('sources', report.value ? Object.keys(report.value.sources).length : '—'),
           row('elapsed_ms', report.value?.elapsed_ms ?? '—'),
           row('engine', report.value?.integrity.engine.observed ?? '—'),
-          row('verdict keys', verdicts.value ? Object.keys(verdicts.value).join(', ') : '—'),
         ]),
-        h(
-          'div',
-          { class: 'grid' },
-          ['incognito', 'shields', 'tor', 'emulator', 'automation', 'farm'].map((name) =>
-            h(VerdictCard, { name, key: name }),
-          ),
-        ),
+        h('div', { class: 'grid' }, [h(TriggersCard)]),
       ])
   },
 })
 
 const app = createApp(App)
 
-// submit: false - the demo collects and scores locally, and sends nothing.
+// submit: false - the demo collects and sends nothing.
 app.use(createFingerly({ apiKey: 'pk_demo', submit: false }))
 app.mount('#app')
 

@@ -2,7 +2,7 @@
  * `useIdentify()` - the composable a page actually uses.
  */
 
-import type { IdentifyResult } from '@fingerly/web-js'
+import { isSuspiciousLevel, type IdentifyResult } from '@fingerly/web-js'
 import {
   computed,
   onMounted,
@@ -45,17 +45,13 @@ export interface UseIdentifyReturn extends ReadonlyState {
   /** True once an identification has completed, successfully or not. */
   isReady: ComputedRef<boolean>
   /**
-   * True when the verdicts contain anything worth acting on.
-   *
-   * A convenience over the verdicts, and deliberately conservative: it
-   * requires `medium` confidence or better, because a `low`-confidence verdict
-   * is one weak tell and blocking on it would be blocking real users. It never
-   * counts `shields`: that verdict says a privacy browser is rewriting some
-   * values, which is not a reason to challenge anyone. Anything more nuanced
-   * should read `verdicts` directly - this is the "should I even look?" flag,
-   * not a policy.
+   * True when the server scored this `medium` or `high` under the weights you
+   * set: the "should I even look?" flag, and not a policy. `null` when no
+   * server has answered (not identified yet, `submit: false`, or unscored),
+   * which is not a clean result. Anything more nuanced reads `suspectLevel`
+   * and `triggers` directly.
    */
-  isSuspicious: ComputedRef<boolean>
+  isSuspicious: ComputedRef<boolean | null>
   /** Collect, score and submit. Reuses a completed run unless `force`. */
   identify: (options?: { tag?: string; force?: boolean }) => Promise<IdentifyResult>
   /** Identify again from scratch, ignoring any previous result. */
@@ -67,7 +63,7 @@ export interface UseIdentifyReturn extends ReadonlyState {
  *
  * ```vue
  * <script setup lang="ts">
- * const { verdicts, isSuspicious, isLoading, identify } = useIdentify()
+ * const { suspectLevel, triggers, isSuspicious, isLoading, identify } = useIdentify()
  * </script>
  * ```
  *
@@ -122,15 +118,7 @@ export function useIdentify(options: UseIdentifyOptions = {}): UseIdentifyReturn
   return {
     ...state,
     isReady: computed(() => state.report.value !== null || state.error.value !== null),
-    isSuspicious: computed(() => {
-      const verdicts = state.verdicts.value
-      if (!verdicts) return false
-      // `shields` is skipped: it says a privacy browser is rewriting values,
-      // which is never on its own a reason to challenge anyone.
-      return Object.entries(verdicts).some(
-        ([name, verdict]) => name !== 'shields' && verdict.value && verdict.confidence !== 'low',
-      )
-    }),
+    isSuspicious: computed(() => isSuspiciousLevel(state.suspectLevel.value)),
     identify,
     refresh,
   }

@@ -9,11 +9,10 @@
  * One component rather than a card component with an input, because this
  * application is compiled just-in-time and JIT does not discover signal
  * inputs - they are found by the ahead-of-time compiler an app would normally
- * use. The five verdicts are built here instead, in a field initialiser, which
- * is an injection context and is where `injectVerdict()` belongs anyway.
+ * use.
  *
- * Open it twice - an ordinary window and a private one - and watch the
- * incognito card change. That pair is the only real test that verdict gets.
+ * It uses `submit: false`, so no server answers: the raw report fills in and
+ * the score, level and triggers stay empty, as they must with nobody to ask.
  */
 
 // The compiler, first: this application is compiled in the page rather than
@@ -23,9 +22,7 @@ import '@angular/compiler'
 import { Component } from '@angular/core'
 import { bootstrapApplication } from '@angular/platform-browser'
 
-import { injectIdentify, injectVerdict, provideFingerly, type VerdictName } from '../src/index.js'
-
-const NAMES: VerdictName[] = ['incognito', 'shields', 'tor', 'emulator', 'automation', 'farm']
+import { injectIdentify, provideFingerly } from '../src/index.js'
 
 @Component({
   selector: 'fingerly-playground',
@@ -43,8 +40,12 @@ const NAMES: VerdictName[] = ['incognito', 'shields', 'tor', 'emulator', 'automa
     <div class="card">
       <h3>state</h3>
       <div class="row">
-        <span class="k">isSuspicious</span>
-        <span class="v" [class.hit]="fingerly.isSuspicious()">{{ fingerly.isSuspicious() }}</span>
+        <span class="k">suspectScore</span>
+        <span class="v">{{ fingerly.suspectScore() ?? '— (no server answer)' }}</span>
+      </div>
+      <div class="row">
+        <span class="k">suspectLevel</span>
+        <span class="v" [class.hit]="fingerly.suspectLevel() === 'high'">{{ fingerly.suspectLevel() ?? '— (no server answer)' }}</span>
       </div>
       <div class="row">
         <span class="k">requestId</span>
@@ -70,35 +71,23 @@ const NAMES: VerdictName[] = ['incognito', 'shields', 'tor', 'emulator', 'automa
     </div>
 
     <div class="grid">
-      @for (card of cards; track card.name) {
-        <div class="card">
-          <h3>{{ card.name }}</h3>
-          <div class="row">
-            <span class="k">matched</span>
-            <span class="v" [class.hit]="card.verdict.matched()">{{ card.verdict.matched() }}</span>
-          </div>
-          <div class="row">
-            <span class="k">confidence</span>
-            <span class="v">{{ card.verdict.confidence() ?? '—' }}</span>
-          </div>
-          @if (card.verdict.reasons().length) {
-            <ul class="reasons">
-              @for (reason of card.verdict.reasons(); track reason) {
-                <li>{{ reason }}</li>
-              }
-            </ul>
-          }
-        </div>
-      }
+      <div class="card">
+        <h3>triggers</h3>
+        @if (fingerly.triggers().length) {
+          <ul class="reasons">
+            @for (trigger of fingerly.triggers(); track trigger.signal) {
+              <li>{{ trigger.signal }} ({{ trigger.group }})</li>
+            }
+          </ul>
+        } @else {
+          <div class="row"><span class="k">fired</span><span class="v">—</span></div>
+        }
+      </div>
     </div>
   `,
 })
 export class Playground {
   readonly fingerly = injectIdentify({ immediate: true, tag: 'angular-playground' })
-
-  // Five verdicts reading one identification, which is the rule this
-  // playground is here to show.
-  readonly cards = NAMES.map((name) => ({ name, verdict: injectVerdict(name) }))
 
   refresh(): void {
     void this.fingerly.refresh().catch(() => undefined)
@@ -110,8 +99,7 @@ export class Playground {
   }
 }
 
-// submit: false - the playground collects and scores locally, and sends
-// nothing.
+// submit: false - the playground collects and sends nothing.
 void bootstrapApplication(Playground, {
   providers: [provideFingerly({ apiKey: 'pk_demo', submit: false })],
 })

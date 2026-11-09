@@ -1,14 +1,12 @@
 /**
  * `useVerdict()` - one verdict, as a ref.
  *
- * Exists because the common case in a template is a single question: "is this
- * an emulator?". Reaching that through `verdicts?.emulator?.value` is three
- * optional accesses and one of them is called `value` next to a ref that also
- * has a `.value`, which is exactly the sort of thing that reads correctly and
- * is wrong.
+ * Deprecated: read `suspectLevel` and `triggers` from `useIdentify()`. This is
+ * derived from the server's triggers, for one transition version, and decides
+ * nothing of its own.
  */
 
-import type { Confidence, Verdict, Verdicts } from '@fingerly/web-js'
+import { warnDeprecated, type Confidence, type Verdict, type Verdicts } from '@fingerly/web-js'
 import { computed, toValue, type ComputedRef, type MaybeRefOrGetter } from 'vue'
 
 import { toReadonly } from './plugin.js'
@@ -17,8 +15,12 @@ import { useFingerly } from './useFingerly.js'
 export type VerdictName = keyof Verdicts
 
 export interface UseVerdictReturn {
-  /** True only when the verdict fired *and* met the confidence floor. */
-  matched: ComputedRef<boolean>
+  /**
+   * True when the server's trigger fired and met the confidence floor, false
+   * when the server answered without it. `null` when no server has answered,
+   * which is not a clean result.
+   */
+  matched: ComputedRef<boolean | null>
   /** The verdict itself, or null before the first identification. */
   verdict: ComputedRef<Verdict | null>
   confidence: ComputedRef<Confidence | null>
@@ -29,22 +31,22 @@ export interface UseVerdictReturn {
 const RANK: Record<Confidence, number> = { low: 0, medium: 1, high: 2 }
 
 /**
- * Watch one verdict.
+ * @deprecated Read `suspectLevel` and `triggers` from `useIdentify()`.
+ *
+ * Watch one verdict, derived from the server's triggers.
  *
  * ```ts
  * const { matched, reasons } = useVerdict('automation', { min: 'high' })
  * ```
  *
- * `min` defaults to `medium`. A `low`-confidence verdict is a single weak tell
- * - one removable flag, or one countermeasure that a privacy-conscious real
- * user might equally be running - and defaulting to acting on it would make
- * this composable a false-positive generator. Pass `min: 'low'` deliberately if
- * the intent is to observe rather than to block.
+ * `min` defaults to `medium`. Pass `min: 'low'` deliberately if the intent is
+ * to observe rather than to block.
  */
 export function useVerdict(
   name: MaybeRefOrGetter<VerdictName>,
   options: { min?: MaybeRefOrGetter<Confidence> } = {},
 ): UseVerdictReturn {
+  warnDeprecated('useVerdict', 'read suspectLevel and triggers from useIdentify() instead.')
   const fingerly = useFingerly()
   const { verdicts } = toReadonly(fingerly.state)
 
@@ -57,9 +59,12 @@ export function useVerdict(
     verdict,
     confidence: computed(() => verdict.value?.confidence ?? null),
     reasons: computed(() => verdict.value?.reasons ?? []),
+    // Null when the server has not answered, which is the difference between
+    // "the server looked and found nothing" and "nobody looked".
     matched: computed(() => {
       const current = verdict.value
-      if (!current?.value) return false
+      if (!current || current.value === null) return null
+      if (current.value !== true) return false
       return RANK[current.confidence] >= RANK[toValue(options.min) ?? 'medium']
     }),
   }

@@ -14,7 +14,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const identifyMock = vi.fn()
 const loadMock = vi.fn()
 
-vi.mock('@fingerly/web-js', () => ({
+vi.mock('@fingerly/web-js', async (importActual) => ({
+  ...(await importActual<Record<string, unknown>>()),
   load: (...args: unknown[]) => loadMock(...args),
   TransportError: class TransportError extends Error {},
   ConsentError: class ConsentError extends Error {},

@@ -17,7 +17,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const identifyMock = vi.fn()
 const loadMock = vi.fn()
 
-vi.mock('@fingerly/web-js', () => ({
+vi.mock('@fingerly/web-js', async (importActual) => ({
+  ...(await importActual<Record<string, unknown>>()),
   load: (...args: unknown[]) => loadMock(...args),
   TransportError: class TransportError extends Error {},
   ConsentError,
@@ -532,8 +533,8 @@ describe('useIdentify', () => {
   })
 
   describe('isSuspicious', () => {
-    const withVerdicts = async (verdicts: unknown) => {
-      identifyMock.mockResolvedValue({ ...RESULT, verdicts })
+    const withAnswer = async (answer: Record<string, unknown>) => {
+      identifyMock.mockResolvedValue({ ...RESULT, ...answer })
       const { latest, element } = probe(() => useIdentify({ immediate: true }))
       await act(async () => {
         render(<FingerlyProvider apiKey="fly_pk_development_test" consent="granted">{element}</FingerlyProvider>)
@@ -541,39 +542,51 @@ describe('useIdentify', () => {
       return latest
     }
 
-    it('is true for a medium-or-better verdict', async () => {
-      const latest = await withVerdicts({ incognito: verdict(true, 'medium') })
-      expect(latest().isSuspicious).toBe(true)
+    it('is true for a medium or high server level', async () => {
+      expect((await withAnswer({ suspectLevel: 'high' }))().isSuspicious).toBe(true)
     })
 
-    it('ignores low-confidence verdicts, which are one weak tell', async () => {
-      const latest = await withVerdicts({ automation: verdict(true, 'low') })
-      expect(latest().isSuspicious).toBe(false)
-    })
-
-    it('never counts shields, which only says a privacy browser is in use', async () => {
-      const latest = await withVerdicts({
-        incognito: verdict(false, 'low'),
-        shields: verdict(true, 'high', ['brave-api']),
-        automation: verdict(false, 'low'),
+    it('is false for a low server level, whatever the verdicts say', async () => {
+      const latest = await withAnswer({
+        suspectLevel: 'low',
+        verdicts: { automation: verdict(true, 'high', ['navigator-webdriver-true']) },
       })
       expect(latest().isSuspicious).toBe(false)
     })
 
-    it('still counts another verdict when shields is also set', async () => {
-      const latest = await withVerdicts({
-        shields: verdict(true, 'high', ['brave-api']),
-        automation: verdict(true, 'medium', ['navigator-webdriver-true']),
-      })
-      expect(latest().isSuspicious).toBe(true)
+    it('is null when no server scored it, which is not a clean result', async () => {
+      expect((await withAnswer({ suspectLevel: null }))().isSuspicious).toBeNull()
     })
 
-    it('is false before anything has been collected', () => {
+    it('is null before anything has been collected', () => {
       const { latest, element } = probe(() => useIdentify())
       render(<FingerlyProvider apiKey="fly_pk_development_test" consent="granted">{element}</FingerlyProvider>)
 
-      expect(latest().isSuspicious).toBe(false)
+      expect(latest().isSuspicious).toBeNull()
       expect(latest().isReady).toBe(false)
+    })
+  })
+
+  describe('useVerdict', () => {
+    const withVerdicts = async (verdicts: unknown) => {
+      identifyMock.mockResolvedValue({ ...RESULT, verdicts })
+      const { latest, element } = probe(() => useVerdict('automation'))
+      await act(async () => {
+        render(<FingerlyProvider apiKey="fly_pk_development_test" consent="granted">{element}</FingerlyProvider>)
+      })
+      return latest
+    }
+
+    it('reports nothing, not a false clean, when no server answered', async () => {
+      const latest = await withVerdicts({ automation: { value: null, confidence: 'low', reasons: [] } })
+      expect(latest().matched).toBeNull()
+    })
+
+    it('is null before anything has been collected', () => {
+      const { latest, element } = probe(() => useVerdict('automation'))
+      render(<FingerlyProvider apiKey="fly_pk_development_test" consent="granted">{element}</FingerlyProvider>)
+      expect(latest().matched).toBeNull()
+      expect(latest().verdict).toBeNull()
     })
   })
 })
@@ -643,7 +656,7 @@ describe('useVerdict', () => {
 
     expect(latest().verdict).toBeNull()
     expect(latest().confidence).toBeNull()
-    expect(latest().matched).toBe(false)
+    expect(latest().matched).toBeNull()
     expect(latest().reasons).toEqual([])
   })
 })

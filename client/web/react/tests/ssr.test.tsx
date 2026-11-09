@@ -14,7 +14,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const identifyMock = vi.fn()
 const loadMock = vi.fn()
 
-vi.mock('@fingerly/web-js', () => ({
+vi.mock('@fingerly/web-js', async (importActual) => ({
+  ...(await importActual<Record<string, unknown>>()),
   load: (...args: unknown[]) => loadMock(...args),
   TransportError: class TransportError extends Error {},
 }))
@@ -49,7 +50,7 @@ describe('under SSR', () => {
     // `immediate` runs in an effect, which a server render never reaches. The
     // page renders its "not yet identified" state and the client picks it up
     // on hydration.
-    expect(html).toBe('<div>ready:false suspicious:false</div>')
+    expect(html).toBe('<div>ready:false suspicious:null</div>')
     expect(loadMock).not.toHaveBeenCalled()
     expect(identifyMock).not.toHaveBeenCalled()
   })

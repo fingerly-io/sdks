@@ -75,9 +75,10 @@ export class Checkout {
 }
 ```
 
-`identify()` collects, scores locally, and submits, and resolves with the
-server's verdict in the same round trip: the `requestId`, who the visitor is
-(`visitorId`), and the `suspectScore`, `suspectLevel` and triggers behind it.
+`identify()` collects and submits, and resolves with the server's answer in the
+same round trip: the `requestId`, who the visitor is (`visitorId`), and the
+`suspectScore`, `suspectLevel` and triggers behind it. Nothing is decided in the
+page: scoring lives on the server, under the weights you set.
 
 ### On render instead
 
@@ -112,45 +113,37 @@ To deliberately identify again (a long-lived app reaching a second checkout):
 await this.fingerly.refresh() // ignores the cached result and collects afresh
 ```
 
-## A single verdict
+## Reading the answer
+
+`suspectLevel()` is the server's band for this submission, under the weights you
+set. `isSuspicious()` is `true` for `medium` or `high`, `false` for `low`, and
+`null` when no server has answered yet or the submission went unscored.
+`triggers()` lists what fired:
 
 ```ts
 @Component({
   template: `
-    @if (automation.matched()) {
+    @if (fingerly.suspectLevel() === 'high') {
       <aside>
-        Automated access suspected ({{ automation.confidence() }})
+        Unusual session
         <ul>
-          @for (reason of automation.reasons(); track reason) { <li>{{ reason }}</li> }
+          @for (trigger of fingerly.triggers(); track trigger.signal) {
+            <li>{{ trigger.signal }} ({{ trigger.confidence }})</li>
+          }
         </ul>
       </aside>
     }
   `,
 })
-export class AutomationNotice {
-  readonly automation = injectVerdict('automation')
+export class RiskNotice {
+  readonly fingerly = injectIdentify()
 }
 ```
 
-Names: `incognito` · `shields` · `tor` · `emulator` · `automation` · `farm`. `shields` says anti-fingerprinting protection is rewriting some values, which is not a finding about the visitor on its own. `isSuspicious` never counts it, so a privacy browser alone never makes a session look suspicious.
-
-`matched()` requires **medium confidence or better** by default. A
-`low`-confidence verdict is a single weak tell (one removable flag, or one
-countermeasure a privacy-conscious real user might equally be running), and
-acting on it would generate false positives. Raise or lower it explicitly:
-
-```ts
-readonly tor = injectVerdict('tor', { min: 'high' })  // block only when certain
-readonly tor = injectVerdict('tor', { min: 'low' })   // observe everything
-```
-
-Both arguments take a signal as well as a value, so an input can decide which
-verdict a component watches:
-
-```ts
-readonly which = input.required<VerdictName>()
-readonly verdict = injectVerdict(this.which)
-```
+`injectVerdict()` and `verdicts()` are **deprecated** and warn once in
+development. They are derived from `triggers()` for one transition version and
+hold nothing rather than all clear when no server answered, so read
+`suspectLevel()` and `triggers()` instead.
 
 ## A correlation tag
 
@@ -165,16 +158,16 @@ readonly fingerly = injectIdentify({ tag: () => `checkout:${this.orderId()}` })
 
 ## Collect without submitting
 
-For an app that wants the local verdicts and nothing else:
+For a debug page that wants the raw report and nothing else:
 
 ```ts
 provideFingerly({ apiKey: 'fly_pk_production_…', submit: false })
 ```
 
 Everything the server decides comes back empty: no `requestId`, no `visitorId`,
-and `suspectScore` is `null` rather than `0`. That is the honest answer rather
-than a gap: nothing was sent, so nobody scored it, and a `0` would read as
-"scored, found nothing".
+`suspectScore` is `null` rather than `0`, and `isSuspicious()` and `matched()`
+are `null` rather than `false`. That is the honest answer rather than a gap:
+nothing was sent, so nobody scored it, and this SDK decides nothing on its own.
 
 ## Waiting for consent
 
@@ -230,14 +223,14 @@ fingerly.state()             // string | null:        the server's disposition
 fingerly.reason()            // string | null:        always null (deprecated); your backend reads it on the event
 fingerly.suspectScore()      // number | null:        null when nothing scored it
 fingerly.suspectLevel()      // string | null:        low, medium, high
-fingerly.triggers()          // IdentifyTrigger[]:    what the server scored on
-fingerly.verdicts()          // Verdicts | null:      the six local verdicts
+fingerly.triggers()          // IdentifyTrigger[]:    what the server scored on (signal, group, confidence, reason)
+fingerly.verdicts()          // Verdicts | null:      deprecated; derived from triggers
 fingerly.report()            // SignalReport | null:  every source, with status and timing
 fingerly.error()             // Error | null
 fingerly.consent()           // ConsentState        (granted, pending or denied)
 fingerly.isLoading()    // boolean
 fingerly.isReady()      // boolean:              finished, successfully or not
-fingerly.isSuspicious() // boolean:              any verdict but shields at medium+
+fingerly.isSuspicious() // boolean | null:       true for medium or high; null when no server answered
 fingerly.identify()     // Promise<IdentifyResult>
 fingerly.refresh()      // Promise<IdentifyResult>
 fingerly.setConsent('granted')
@@ -249,14 +242,15 @@ it works in a zoneless application. They are read-only. The writable signals
 stay inside the factory, because the state is shared and a component that could
 `set()` it would be changing what every other component sees.
 
-A verdict is `{ value, confidence, reasons }`. `reasons` is ordered strongest
-first, and exists because a boolean that cannot say why it is true is not
-something you can defend to a customer whose user you blocked.
+A trigger's `reason` is why it fired, strongest first, because a score that
+cannot say why it is high is not something you can defend to a customer whose
+user you blocked. Weights never reach the browser: a `triggers` entry names the
+signal, its group, confidence and reason, and your backend reads the rest on the
+server-side event read.
 
-These verdicts are **advisory**. The same detectors run again server-side over
-the stored report, where the rules improve without every integration
-redeploying. Treat the client's answer as a hint for the UI and the server's as
-the decision.
+The detectors run on the server, over the report this package sends, so rules
+improve without every integration redeploying. Everything here that says
+anything about a visitor came from the server.
 
 ## The visitor is never asked for anything
 
@@ -324,5 +318,5 @@ needs no second build system.
 pnpm --filter @fingerly/angular playground   # http://localhost:4177
 ```
 
-Open it twice, in an ordinary window and a private one, and watch the incognito
-card change. That pair is the only real test that verdict gets.
+It uses `submit: false`, so it sends nothing and no server answers: the raw
+report fills in, and the score, level and triggers stay empty.

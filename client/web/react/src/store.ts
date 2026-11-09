@@ -22,6 +22,7 @@ import {
   type IdentifyResult,
   type SignalReport,
   type Verdicts,
+  verdictsOf,
 } from '@fingerly/web-js'
 
 /** Options for [[createFingerlyStore]] and for `<FingerlyProvider>`. */
@@ -37,13 +38,12 @@ export interface FingerlyReactOptions {
   /** Try the Fingerly API only after custom endpoints fail. */
   fallbackToDefaultEndpoint?: boolean
   /**
-   * Collect and score without submitting anything.
+   * Collect without submitting anything.
    *
-   * For a page that wants the local verdicts and nothing else. Everything
-   * the server decides comes back empty: no `requestId`, no `visitorId` and
-   * no `suspectScore`. That is the honest answer rather than a gap - nothing
-   * was sent, so nobody scored it, and a zero here would read as "scored,
-   * found nothing".
+   * Everything the server decides comes back empty: no `requestId`, no
+   * `visitorId`, no `suspectScore`, and `verdicts` holding nothing rather
+   * than all clear. That is the honest answer rather than a gap - nothing was
+   * sent, so nobody scored it, and this SDK decides nothing on its own.
    */
   submit?: boolean
   /**
@@ -88,6 +88,10 @@ export interface FingerlyState {
   suspectScore: number | null
   suspectLevel: string | null
   triggers: IdentifyTrigger[]
+  /**
+   * @deprecated Read `suspectLevel` and `triggers`. Derived from the server's
+   * triggers; holds nothing rather than all clear when no server answered.
+   */
   verdicts: Verdicts | null
   report: SignalReport | null
   error: Error | null
@@ -315,7 +319,9 @@ export function createFingerlyStore(options: FingerlyReactOptions): FingerlyStor
           suspectScore: result.suspectScore,
           suspectLevel: result.suspectLevel,
           triggers: result.triggers,
-          verdicts: result.verdicts,
+          // Copied without reading the deprecated field, so a page that never
+          // looks at verdicts is not warned about them.
+          verdicts: verdictsOf(result),
           report: result.report,
         })
         held = undefined

@@ -4,7 +4,7 @@
  * `useIdentify()` - the hook a page actually uses.
  */
 
-import type { IdentifyResult } from '@fingerly/web-js'
+import { isSuspiciousLevel, type IdentifyResult } from '@fingerly/web-js'
 import {
   use,
   useCallback,
@@ -68,17 +68,13 @@ export interface UseIdentifyReturn extends FingerlyState {
   /** True once an identification has completed, successfully or not. */
   isReady: boolean
   /**
-   * True when the verdicts contain anything worth acting on.
-   *
-   * A convenience over the verdicts, and deliberately conservative: it
-   * requires `medium` confidence or better, because a `low`-confidence verdict
-   * is one weak tell and blocking on it would be blocking real users. It never
-   * counts `shields`: that verdict says a privacy browser is rewriting some
-   * values, which is not a reason to challenge anyone. Anything more nuanced
-   * should read `verdicts` directly - this is the "should I even look?" flag,
-   * not a policy.
+   * True when the server scored this `medium` or `high` under the weights you
+   * set: the "should I even look?" flag, and not a policy. `null` when no
+   * server has answered (not identified yet, `submit: false`, or unscored),
+   * which is not a clean result. Anything more nuanced reads `suspectLevel`
+   * and `triggers` directly.
    */
-  isSuspicious: boolean
+  isSuspicious: boolean | null
   /** Collect, score and submit. Reuses a completed run unless `force`. */
   identify: (options?: { tag?: string; force?: boolean }) => Promise<IdentifyResult>
   /** Identify again from scratch, ignoring any previous result. */
@@ -92,7 +88,7 @@ const resolveTag = (tag: UseIdentifyOptions['tag']): string | undefined =>
  * Identify this visitor.
  *
  * ```tsx
- * const { verdicts, isSuspicious, isLoading, identify } = useIdentify({ immediate: true })
+ * const { suspectLevel, triggers, isSuspicious, isLoading, identify } = useIdentify({ immediate: true })
  * ```
  *
  * The state comes through `useSyncExternalStore`, so every component that
@@ -157,19 +153,20 @@ export function useIdentify(options: UseIdentifyOptions = {}): UseIdentifyReturn
   }
 
   const isReady = state.report !== null || state.error !== null
-  const isSuspicious = useMemo(() => {
-    if (!state.verdicts) return false
-    // `shields` is skipped: it says a privacy browser is rewriting values,
-    // which is never on its own a reason to challenge anyone.
-    return Object.entries(state.verdicts).some(
-      ([name, verdict]) => name !== 'shields' && verdict.value && verdict.confidence !== 'low',
-    )
-  }, [state.verdicts])
+  const isSuspicious = useMemo(() => isSuspiciousLevel(state.suspectLevel), [state.suspectLevel])
 
   // What React DevTools shows beside the hook, so an inspected component says
   // where the identification got to without expanding five fields.
   useDebugValue(
-    isReady ? (isSuspicious ? 'suspicious' : 'clear') : state.isLoading ? 'collecting' : 'idle',
+    isReady
+      ? isSuspicious === null
+        ? 'unscored'
+        : isSuspicious
+          ? 'suspicious'
+          : 'clear'
+      : state.isLoading
+        ? 'collecting'
+        : 'idle',
   )
 
   return { ...state, isReady, isSuspicious, identify, refresh }

@@ -14,7 +14,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const identifyMock = vi.fn()
 const loadMock = vi.fn()
 
-vi.mock('@fingerly/web-js', () => ({
+vi.mock('@fingerly/web-js', async (importActual) => ({
+  ...(await importActual<Record<string, unknown>>()),
   load: (...args: unknown[]) => loadMock(...args),
   TransportError: class TransportError extends Error {},
 }))
@@ -43,7 +44,9 @@ describe('under SSR', () => {
     // page renders its "not yet identified" state and the client picks it up
     // on hydration.
     expect(body).toContain('ready:false')
-    expect(body).toContain('suspicious:false')
+    // Svelte renders null as nothing: no answer rather than "false".
+    expect(body).toContain('suspicious:')
+    expect(body).not.toContain('suspicious:false')
     expect(loadMock).not.toHaveBeenCalled()
     expect(identifyMock).not.toHaveBeenCalled()
   })

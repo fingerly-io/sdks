@@ -17,7 +17,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const identifyMock = vi.fn()
 const loadMock = vi.fn()
 
-vi.mock('@fingerly/web-js', () => ({
+vi.mock('@fingerly/web-js', async (importActual) => ({
+  ...(await importActual<Record<string, unknown>>()),
   load: (...args: unknown[]) => loadMock(...args),
   TransportError: class TransportError extends Error {},
   ConsentError,
@@ -213,38 +214,43 @@ describe('injectIdentify', () => {
     expect(fingerly.reason()).toBeNull()
   })
 
-  it('never counts shields in isSuspicious, which only says a privacy browser is in use', async () => {
+  it('reads isSuspicious from the server level, whatever the verdicts say', async () => {
     identifyMock.mockResolvedValueOnce({
       ...RESULT,
-      verdicts: {
-        incognito: verdict(false, 'low'),
-        shields: verdict(true, 'high', ['brave-api']),
-        tor: verdict(false, 'low'),
-        emulator: verdict(false, 'low'),
-        automation: verdict(false, 'low'),
-        farm: verdict(false, 'low'),
-      },
+      suspectLevel: 'low',
+      verdicts: { ...RESULT.verdicts, automation: verdict(true, 'high', ['navigator-webdriver-true']) },
     })
     application({ apiKey: 'fly_pk_development_test', consent: 'granted' })
     const fingerly = TestBed.runInInjectionContext(() => injectIdentify({ immediate: true }))
 
     await render()
 
-    expect(fingerly.verdicts()?.shields.value).toBe(true)
     expect(fingerly.isSuspicious()).toBe(false)
   })
 
-  it('still counts another verdict in isSuspicious when shields is also set', async () => {
-    identifyMock.mockResolvedValueOnce({
-      ...RESULT,
-      verdicts: { ...RESULT.verdicts, shields: verdict(true, 'high', ['brave-api']) },
-    })
+  it('reports isSuspicious as null when no server scored it', async () => {
+    identifyMock.mockResolvedValueOnce({ ...RESULT, suspectLevel: null })
     application({ apiKey: 'fly_pk_development_test', consent: 'granted' })
     const fingerly = TestBed.runInInjectionContext(() => injectIdentify({ immediate: true }))
 
     await render()
 
-    expect(fingerly.isSuspicious()).toBe(true)
+    expect(fingerly.isSuspicious()).toBeNull()
+  })
+
+  it('reports injectVerdict as nothing, not a false clean, when no server answered', async () => {
+    identifyMock.mockResolvedValueOnce({
+      ...RESULT,
+      verdicts: { ...RESULT.verdicts, automation: { value: null, confidence: 'low', reasons: [] } },
+    })
+    application({ apiKey: 'fly_pk_development_test', consent: 'granted' })
+    const fingerly = TestBed.runInInjectionContext(() => injectIdentify({ immediate: true }))
+    const automation = TestBed.runInInjectionContext(() => injectVerdict('automation'))
+
+    await render()
+
+    expect(fingerly.isReady()).toBe(true)
+    expect(automation.matched()).toBeNull()
   })
 
   it('reports an unscored check as null, not zero', async () => {
@@ -467,7 +473,7 @@ describe('injectVerdict', () => {
 
     expect(incognito.verdict()).toBeNull()
     expect(incognito.confidence()).toBeNull()
-    expect(incognito.matched()).toBe(false)
+    expect(incognito.matched()).toBeNull()
     expect(incognito.reasons()).toEqual([])
   })
 })

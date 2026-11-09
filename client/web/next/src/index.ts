@@ -24,7 +24,7 @@ export { REQUEST_ID_FIELD } from './field-name.js'
 
 // The hooks, re-exported so an app installs one package rather than two. They
 // are @fingerly/react's, unchanged - there is nothing Next-specific about
-// reading a verdict, and wrapping them to say so would only add a layer to
+// reading an answer, and wrapping them to say so would only add a layer to
 // step through when something is wrong.
 export { useFingerly, useIdentify, useVerdict, createFingerlyStore, FingerlyServerError } from '@fingerly/react'
 export type {

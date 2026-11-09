@@ -117,8 +117,7 @@ The composables are auto-imported, like every other Nuxt composable:
 
 ```vue
 <script setup lang="ts">
-const { verdicts, isSuspicious, isReady } = useIdentify({ immediate: true })
-const { matched, reasons } = useVerdict('incognito')
+const { suspectLevel, triggers, isSuspicious, isReady } = useIdentify({ immediate: true })
 </script>
 
 <template>
@@ -126,10 +125,11 @@ const { matched, reasons } = useVerdict('incognito')
 </template>
 ```
 
-`useIdentify` · `useVerdict` · `useFingerly`: the same three from `@fingerly/vue`,
+`useIdentify` · `useFingerly` · `useVerdict` (**deprecated**; read `suspectLevel`
+and `triggers` from `useIdentify()`): the same three from `@fingerly/vue`,
 unchanged. Their full surface is in that
 [package's README](../vue/README.md): `immediate`, `refresh`, a correlation
-`tag`, confidence floors, `isSuspicious`.
+`tag`, and reading `suspectLevel`, `triggers` and `isSuspicious`.
 
 ## What happens on the server
 
@@ -171,5 +171,5 @@ at the moment somebody is looking for it.
 pnpm --filter @fingerly/nuxt playground
 ```
 
-Open it twice, in an ordinary window and a private one, and watch the incognito
-verdict change. That pair is the only real test that verdict gets.
+It uses `submit: false`, so it sends nothing and no server answers: the raw
+report fills in, and the score, level and triggers stay empty.

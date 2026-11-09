@@ -13,7 +13,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const identifyMock = vi.fn()
 const loadMock = vi.fn()
 
-vi.mock('@fingerly/web-js', () => ({
+vi.mock('@fingerly/web-js', async (importActual) => ({
+  ...(await importActual<Record<string, unknown>>()),
   load: (...args: unknown[]) => loadMock(...args),
   TransportError: class TransportError extends Error {},
   ConsentError,
@@ -476,16 +477,17 @@ describe('useIdentify', () => {
   })
 
   describe('isSuspicious', () => {
-    it('is true for a medium-or-better verdict', async () => {
+    it('is true for a medium or high server level', async () => {
       const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'fly_pk_development_test', consent: 'granted' }))
       await result.identify()
       expect(result.isSuspicious.value).toBe(true)
     })
 
-    it('ignores low-confidence verdicts, which are one weak tell', async () => {
+    it('is false for a low server level, whatever the verdicts say', async () => {
       identifyMock.mockResolvedValueOnce({
         ...RESULT,
-        verdicts: { ...RESULT.verdicts, automation: verdict(true, 'low', ['navigator-webdriver-true']) },
+        suspectLevel: 'low',
+        verdicts: { ...RESULT.verdicts, automation: verdict(true, 'high', ['navigator-webdriver-true']) },
       })
 
       const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'fly_pk_development_test', consent: 'granted' }))
@@ -494,37 +496,38 @@ describe('useIdentify', () => {
       expect(result.isSuspicious.value).toBe(false)
     })
 
-    it('never counts shields, which only says a privacy browser is in use', async () => {
-      identifyMock.mockResolvedValueOnce({
-        ...RESULT,
-        verdicts: {
-          ...RESULT.verdicts,
-          automation: verdict(false, 'low'),
-          shields: verdict(true, 'high', ['brave-api']),
-        },
-      })
+    it('is null when no server scored it, which is not a clean result', async () => {
+      identifyMock.mockResolvedValueOnce({ ...RESULT, suspectLevel: null })
 
       const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'fly_pk_development_test', consent: 'granted' }))
       await result.identify()
 
-      expect(result.isSuspicious.value).toBe(false)
+      expect(result.isSuspicious.value).toBeNull()
     })
 
-    it('still counts another verdict when shields is also set', async () => {
+    it('is null before anything has been collected', () => {
+      const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'fly_pk_development_test', consent: 'granted' }))
+      expect(result.isSuspicious.value).toBeNull()
+    })
+  })
+
+  describe('useVerdict', () => {
+    it('reports nothing, not a false clean, when no server answered', async () => {
       identifyMock.mockResolvedValueOnce({
         ...RESULT,
-        verdicts: { ...RESULT.verdicts, shields: verdict(true, 'high', ['brave-api']) },
+        verdicts: { ...RESULT.verdicts, automation: { value: null, confidence: 'low', reasons: [] } },
       })
+      const fingerly = createFingerly({ apiKey: 'fly_pk_development_test', consent: 'granted' })
+      const { result } = withSetup(() => ({ identify: useIdentify(), verdict: useVerdict('automation') }), fingerly)
 
-      const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'fly_pk_development_test', consent: 'granted' }))
-      await result.identify()
+      await result.identify.identify()
 
-      expect(result.isSuspicious.value).toBe(true)
+      expect(result.verdict.matched.value).toBeNull()
     })
 
-    it('is false before anything has been collected', () => {
-      const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'fly_pk_development_test', consent: 'granted' }))
-      expect(result.isSuspicious.value).toBe(false)
+    it('is null before anything has been collected', () => {
+      const { result } = withSetup(() => useVerdict('automation'), createFingerly({ apiKey: 'fly_pk_development_test', consent: 'granted' }))
+      expect(result.matched.value).toBeNull()
     })
   })
 })
@@ -535,7 +538,7 @@ describe('useVerdict', () => {
     const identifier = withSetup(() => useIdentify(), plugin).result
     const automation = withSetup(() => useVerdict('automation'), plugin).result
 
-    expect(automation.matched.value).toBe(false)
+    expect(automation.matched.value).toBeNull()
     await identifier.identify()
 
     expect(automation.matched.value).toBe(true)

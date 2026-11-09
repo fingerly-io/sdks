@@ -15,6 +15,7 @@
 
 import { computed, signal, type Signal } from '@angular/core'
 import {
+  isSuspiciousLevel,
   load,
   type ConsentState,
   type FingerlyClient,
@@ -22,6 +23,7 @@ import {
   type IdentifyTrigger,
   type SignalReport,
   type Verdicts,
+  verdictsOf,
 } from '@fingerly/web-js'
 
 /** Options for [[provideFingerly]]. */
@@ -35,13 +37,12 @@ export interface FingerlyOptions {
   endpoints?: string | readonly string[]
   fallbackToDefaultEndpoint?: boolean
   /**
-   * Collect and score without submitting anything.
+   * Collect without submitting anything.
    *
-   * For a app that wants the local verdicts and nothing else. Everything
-   * the server decides comes back empty: no `requestId`, no `visitorId` and
-   * no `suspectScore`. That is the honest answer rather than a gap - nothing
-   * was sent, so nobody scored it, and a zero here would read as "scored,
-   * found nothing".
+   * Everything the server decides comes back empty: no `requestId`, no
+   * `visitorId`, no `suspectScore`, and `verdicts` holding nothing rather
+   * than all clear. That is the honest answer rather than a gap - nothing was
+   * sent, so nobody scored it, and this SDK decides nothing on its own.
    */
   submit?: boolean
   /**
@@ -92,6 +93,7 @@ export interface Fingerly {
   readonly suspectLevel: Signal<string | null>
   /** What the server scored on. Empty when it found nothing. */
   readonly triggers: Signal<readonly IdentifyTrigger[]>
+  /** @deprecated Read `suspectLevel` and `triggers`. Holds nothing when no server answered. */
   readonly verdicts: Signal<Verdicts | null>
   readonly report: Signal<SignalReport | null>
   readonly error: Signal<Error | null>
@@ -99,16 +101,13 @@ export interface Fingerly {
   /** True once an identification has completed, successfully or not. */
   readonly isReady: Signal<boolean>
   /**
-   * True when the verdicts contain anything worth acting on.
-   *
-   * Deliberately conservative: it requires `medium` confidence or better,
-   * because a `low`-confidence verdict is one weak tell and blocking on it
-   * would be blocking real users. It never counts `shields`: that verdict says
-   * a privacy browser is rewriting some values, which is not a reason to
-   * challenge anyone. Anything more nuanced should read `verdicts` directly -
-   * this is the "should I even look?" flag, not a policy.
+   * True when the server scored this `medium` or `high` under the weights you
+   * set: the "should I even look?" flag, and not a policy. `null` when no
+   * server has answered (not identified yet, `submit: false`, or unscored),
+   * which is not a clean result. Anything more nuanced reads `suspectLevel`
+   * and `triggers` directly.
    */
-  readonly isSuspicious: Signal<boolean>
+  readonly isSuspicious: Signal<boolean | null>
   /**
    * Whether the visitor has agreed to be identified, as last set here or on
    * the client. Automatic identification waits for `granted`.
@@ -188,15 +187,7 @@ export function createFingerly(options: FingerlyOptions): Fingerly {
   const consent = signal<ConsentState>(options.consent ?? 'pending')
 
   const isReady = computed(() => report() !== null || error() !== null)
-  const isSuspicious = computed(() => {
-    const all = verdicts()
-    if (!all) return false
-    // `shields` is skipped: it says a privacy browser is rewriting values,
-    // which is never on its own a reason to challenge anyone.
-    return Object.entries(all).some(
-      ([name, verdict]) => name !== 'shields' && verdict.value && verdict.confidence !== 'low',
-    )
-  })
+  const isSuspicious = computed(() => isSuspiciousLevel(suspectLevel()))
 
   let clientPromise: Promise<FingerlyClient> | undefined
   let loaded: FingerlyClient | undefined
@@ -278,7 +269,9 @@ export function createFingerly(options: FingerlyOptions): Fingerly {
         suspectScore.set(result.suspectScore)
         suspectLevel.set(result.suspectLevel)
         triggers.set(result.triggers)
-        verdicts.set(result.verdicts)
+        // Copied without reading the deprecated field, so a page that never
+        // looks at verdicts is not warned about them.
+        verdicts.set(verdictsOf(result))
         report.set(result.report)
         held = undefined
         consecutiveFailures = 0

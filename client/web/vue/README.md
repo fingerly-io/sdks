@@ -54,7 +54,7 @@ createFingerly({ apiKey: 'fly_pk_production_…', endpoints: '/k7x2qm4a', consen
 <script setup lang="ts">
 import { useIdentify } from '@fingerly/vue'
 
-const { identify, verdicts, isSuspicious, isLoading, error } = useIdentify()
+const { identify, isSuspicious, isLoading, error } = useIdentify()
 
 async function onSubmit() {
   await identify()
@@ -75,15 +75,16 @@ async function onSubmit() {
 </template>
 ```
 
-`identify()` collects, scores locally, and submits, and resolves with the
-server's verdict in the same round trip: the `requestId`, who the visitor is
-(`visitorId`), and the `suspectScore`, `suspectLevel` and triggers behind it.
+`identify()` collects and submits, and resolves with the server's answer in the
+same round trip: the `requestId`, who the visitor is (`visitorId`), and the
+`suspectScore`, `suspectLevel` and triggers behind it. Nothing is decided in the
+page: scoring lives on the server, under the weights you set.
 
 ### On mount instead
 
 ```vue
 <script setup lang="ts">
-const { verdicts, isReady } = useIdentify({ immediate: true })
+const { suspectLevel, isReady } = useIdentify({ immediate: true })
 </script>
 ```
 
@@ -103,7 +104,7 @@ asking whether the visitor is suspicious produce **one** submission, one
 
 ```ts
 // All three of Header.vue, CheckoutForm.vue, RiskBanner.vue:
-const { verdicts } = useIdentify({ immediate: true })
+const { suspectLevel } = useIdentify({ immediate: true })
 // → one network request, one shared answer
 ```
 
@@ -114,37 +115,30 @@ const { refresh } = useIdentify()
 await refresh() // ignores the cached result and collects afresh
 ```
 
-## A single verdict
+## Reading the answer
 
-`useVerdict()` is for the common case where a component cares about exactly one
-question:
+`suspectLevel` is the server's band for this submission, under the weights you
+set. `isSuspicious` is `true` for `medium` or `high`, `false` for `low`, and
+`null` when no server has answered yet or the submission went unscored.
+`triggers` lists what fired:
 
 ```vue
 <script setup lang="ts">
-import { useVerdict } from '@fingerly/vue'
-
-const { matched, confidence, reasons } = useVerdict('automation')
+const { suspectLevel, triggers } = useIdentify()
 </script>
 
 <template>
-  <aside v-if="matched">
-    Automated access suspected ({{ confidence }})
-    <ul><li v-for="r in reasons" :key="r">{{ r }}</li></ul>
+  <aside v-if="suspectLevel === 'high'">
+    Unusual session
+    <ul><li v-for="t in triggers" :key="t.signal">{{ t.signal }} ({{ t.confidence }})</li></ul>
   </aside>
 </template>
 ```
 
-Names: `incognito` · `shields` · `tor` · `emulator` · `automation` · `farm`. `shields` says anti-fingerprinting protection is rewriting some values, which is not a finding about the visitor on its own. `isSuspicious` never counts it, so a privacy browser alone never makes a session look suspicious.
-
-`matched` requires **medium confidence or better** by default. A
-`low`-confidence verdict is a single weak tell (one removable flag, or one
-countermeasure a privacy-conscious real user might equally be running), and
-acting on it would generate false positives. Raise or lower it explicitly:
-
-```ts
-const { matched } = useVerdict('tor', { min: 'high' })  // block only when certain
-const { matched } = useVerdict('tor', { min: 'low' })   // observe everything
-```
+`useVerdict()` and `verdicts` are **deprecated** and warn once in development.
+They are derived from `triggers` for one transition version and hold nothing
+rather than all clear when no server answered, so read `suspectLevel` and
+`triggers` instead.
 
 ## A correlation tag
 
@@ -159,16 +153,16 @@ const { identify } = useIdentify({ tag: () => `checkout:${route.params.orderId}`
 
 ## Collect without submitting
 
-For a page that wants the local verdicts and nothing else:
+For a debug page that wants the raw report and nothing else:
 
 ```ts
 app.use(createFingerly({ apiKey: 'fly_pk_production_…', submit: false }))
 ```
 
 Everything the server decides comes back empty: no `requestId`, no `visitorId`,
-and `suspectScore` is `null` rather than `0`. That is the honest answer rather
-than a gap: nothing was sent, so nobody scored it, and a `0` would read as
-"scored, found nothing".
+`suspectScore` is `null` rather than `0`, and `isSuspicious` and `matched` are
+`null` rather than `false`. That is the honest answer rather than a gap: nothing
+was sent, so nobody scored it, and this SDK decides nothing on its own.
 
 ## Waiting for consent
 
@@ -212,8 +206,8 @@ kind of thing that gets retrofitted. The context is on `this.$fingerly`:
 export default {
   data: () => ({ suspicious: false }),
   async mounted() {
-    const { verdicts } = await this.$fingerly.identify()
-    this.suspicious = verdicts.automation.value
+    const { suspectLevel } = await this.$fingerly.identify()
+    this.suspicious = suspectLevel === 'high'
   },
 }
 </script>
@@ -233,14 +227,14 @@ const {
   reason,            // Ref<string | null>:        always null (deprecated); your backend reads it on the event
   suspectScore,      // Ref<number | null>:        null when nothing scored it
   suspectLevel,      // Ref<string | null>:        low, medium, high
-  triggers,          // Ref<IdentifyTrigger[]>:    what the server scored on
-  verdicts,          // Ref<Verdicts | null>:      the six local verdicts
+  triggers,          // Ref<IdentifyTrigger[]>:    what the server scored on (signal, group, confidence, reason)
+  verdicts,          // Ref<Verdicts | null>:      deprecated; derived from triggers
   report,            // Ref<SignalReport | null>:  every source, with status and timing
   error,             // Ref<Error | null>
   consent,           // Ref<ConsentState>        (granted, pending or denied)
   isLoading,    // Ref<boolean>
   isReady,      // ComputedRef<boolean>:     finished, successfully or not
-  isSuspicious, // ComputedRef<boolean>:     any verdict but shields at medium+
+  isSuspicious, // ComputedRef<boolean | null>: true for medium or high; null when no server answered
   identify,     // () => Promise<IdentifyResult>
   refresh,      // () => Promise<IdentifyResult>
 } = useIdentify()
@@ -249,14 +243,15 @@ const {
 Every ref is **readonly**. The state is shared, so a component that could assign
 to it would be changing what every other component sees.
 
-A verdict is `{ value, confidence, reasons }`. `reasons` is ordered strongest
-first, and exists because a boolean that cannot say why it is true is not
-something you can defend to a customer whose user you blocked.
+A trigger's `reason` is why it fired, strongest first, because a score that
+cannot say why it is high is not something you can defend to a customer whose
+user you blocked. Weights never reach the browser: a `triggers` entry names the
+signal, its group, confidence and reason, and your backend reads the rest on the
+server-side event read.
 
-These verdicts are **advisory**. The same detectors run again server-side over
-the stored report, where the rules improve without every integration
-redeploying. Treat the client's answer as a hint for the UI and the server's as
-the decision.
+The detectors run on the server, over the report this package sends, so rules
+improve without every integration redeploying. Everything here that says
+anything about a visitor came from the server.
 
 ## The visitor is never asked for anything
 
@@ -310,8 +305,9 @@ the client.
 ## Running the demo
 
 `demo/` is this package's composables driving the real SDK (no mocks) with
-`useIdentify({ immediate: true })` in the root and a `useVerdict()` card per
-verdict, all sharing one identification.
+`useIdentify({ immediate: true })` in the root, showing `suspectScore`,
+`suspectLevel` and `triggers` beside the raw report, all sharing one
+identification.
 
 ```
 pnpm --filter @fingerly/vue demo   # http://localhost:4174
@@ -321,6 +317,7 @@ That bundles `demo/main.ts` (the binding, the SDK and Vue's runtime in one
 file, because `demo/index.html` is a plain `<script>` tag) and serves it.
 
 It is served rather than opened from disk because several sources need a
-secure context and `file://` is not one; the incognito verdict is the clearest
-case, since the probe it rests on is not exposed outside one. It uses
-`submit: false`, so it sends nothing.
+secure context and `file://` is not one; the storage probes are the clearest
+case, since they are not exposed outside one. It uses `submit: false`, so it
+sends nothing and no server answers: the raw report fills in, and the score,
+level and triggers stay empty.

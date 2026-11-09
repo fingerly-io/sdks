@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.0
+
+- Follows `@fingerly/react` 0.2.0: `isSuspicious` comes from the server's `suspectLevel` and is `null` when no server answered; `useVerdict()` and `verdicts` are deprecated and derived from the server's `triggers`.
+
 ## 0.1.1
 
 - `NEXT_PUBLIC_FINGERLY_ENDPOINTS` is parsed once per value; a malformed value is reported and ignored instead of thrown from render.

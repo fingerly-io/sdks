@@ -18,7 +18,8 @@ import type { Fingerly } from '../src/state.svelte.js'
 const identifyMock = vi.fn()
 const loadMock = vi.fn()
 
-vi.mock('@fingerly/web-js', () => ({
+vi.mock('@fingerly/web-js', async (importActual) => ({
+  ...(await importActual<Record<string, unknown>>()),
   load: (...args: unknown[]) => loadMock(...args),
   TransportError: class TransportError extends Error {},
   ConsentError,
@@ -218,38 +219,45 @@ describe('useIdentify', () => {
     expect(page.state.reason).toBeNull()
   })
 
-  it('never counts shields in isSuspicious, which only says a privacy browser is in use', async () => {
+  it('reads isSuspicious from the server level, whatever the verdicts say', async () => {
     identifyMock.mockResolvedValueOnce({
       ...RESULT,
-      verdicts: {
-        incognito: verdict(false, 'low'),
-        shields: verdict(true, 'high', ['brave-api']),
-        tor: verdict(false, 'low'),
-        emulator: verdict(false, 'low'),
-        automation: verdict(false, 'low'),
-        farm: verdict(false, 'low'),
-      },
+      suspectLevel: 'low',
+      verdicts: { ...RESULT.verdicts, automation: verdict(true, 'high', ['navigator-webdriver-true']) },
     })
     const page = render({ options: { apiKey: 'fly_pk_development_test', consent: 'granted' } })
 
     await page.state.identify()
     await settle()
 
-    expect(page.state.verdicts?.shields.value).toBe(true)
     expect(page.state.isSuspicious).toBe(false)
     expect(page.text()).toContain('suspicious:false')
   })
 
-  it('still counts another verdict in isSuspicious when shields is also set', async () => {
+  it('reports isSuspicious as null when no server scored it', async () => {
+    identifyMock.mockResolvedValueOnce({ ...RESULT, suspectLevel: null })
+    const page = render({ options: { apiKey: 'fly_pk_development_test', consent: 'granted' } })
+
+    await page.state.identify()
+    await settle()
+
+    expect(page.state.isSuspicious).toBeNull()
+  })
+
+  it('reports useVerdict as nothing, not a false clean, when no server answered', async () => {
     identifyMock.mockResolvedValueOnce({
       ...RESULT,
-      verdicts: { ...RESULT.verdicts, shields: verdict(true, 'high', ['brave-api']) },
+      verdicts: { ...RESULT.verdicts, incognito: { value: null, confidence: 'low', reasons: [] } },
     })
     const page = render({ options: { apiKey: 'fly_pk_development_test', consent: 'granted' } })
 
     await page.state.identify()
+    await settle()
 
-    expect(page.state.isSuspicious).toBe(true)
+    // Svelte renders null as nothing, so an unanswered match shows as a gap
+    // rather than as a clean "false".
+    expect(page.text()).toContain('incognito: confidence')
+    expect(page.state.verdicts?.incognito.value).toBeNull()
   })
 
   it('reports an unscored check as null, not zero', async () => {
@@ -427,7 +435,8 @@ describe('useVerdict', () => {
   it('reports nothing rather than guessing before identification', () => {
     const page = render({ options: { apiKey: 'fly_pk_development_test', consent: 'granted' } })
 
-    expect(page.text()).toContain('incognito:false')
+    // Svelte renders null as nothing, so the matched value is simply absent here.
+    expect(page.text()).toContain('incognito: confidence')
     expect(page.text()).toContain('confidence:-')
     expect(page.text()).toContain('reasons:-')
   })

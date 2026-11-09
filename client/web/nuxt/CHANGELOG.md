@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.0
+
+- Follows `@fingerly/vue` 0.2.0: `isSuspicious` comes from the server's `suspectLevel` and is `null` when no server answered; `useVerdict()` and `verdicts` are deprecated and derived from the server's `triggers`.
+
 ## 0.1.1
 
 - `endpoints` wins over the deprecated `endpoint`, so `NUXT_PUBLIC_FINGERLY_ENDPOINT` beside `fingerly.endpoints` no longer stops the app from starting.

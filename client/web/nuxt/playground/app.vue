@@ -1,6 +1,5 @@
 <script setup lang="ts">
-const { verdicts, isReady, isSuspicious } = useIdentify({ immediate: true })
-const { matched, reasons } = useVerdict('incognito')
+const { suspectScore, suspectLevel, triggers, isReady } = useIdentify({ immediate: true })
 const config = useRuntimeConfig()
 </script>
 
@@ -8,8 +7,7 @@ const config = useRuntimeConfig()
   <main>
     <h1>Fingerly — Nuxt module</h1>
     <p id="key">key: {{ config.public.fingerly.apiKey || '(unset)' }}</p>
-    <p id="state">ready: {{ isReady }} · suspicious: {{ isSuspicious }}</p>
-    <p id="incognito">incognito: {{ matched }} {{ reasons.join(', ') }}</p>
-    <pre id="verdicts">{{ verdicts ? Object.keys(verdicts).join(' ') : 'none yet' }}</pre>
+    <p id="state">ready: {{ isReady }} · score: {{ suspectScore ?? 'no server answer' }} · level: {{ suspectLevel ?? 'no server answer' }}</p>
+    <pre id="triggers">{{ triggers.length ? triggers.map((t) => t.signal).join(' ') : 'none' }}</pre>
   </main>
 </template>

@@ -5,7 +5,7 @@ import { defineConfig } from 'vite'
  * The playground: the binding driving the real SDK in a real browser.
  *
  * Served rather than opened from disk because several sources need a secure
- * context and `file://` is not one - the incognito verdict is the clearest
+ * context and `file://` is not one - the incognito signal is the clearest
  * case, since the probe it rests on is not exposed outside one. `localhost`
  * counts as secure.
  *

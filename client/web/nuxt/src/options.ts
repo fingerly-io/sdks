@@ -18,13 +18,12 @@ export interface ModuleOptions {
   endpoints?: string[]
   fallbackToDefaultEndpoint?: boolean
   /**
-   * Collect and score without submitting anything.
+   * Collect without submitting anything.
    *
-   * For a app that wants the local verdicts and nothing else. Everything
-   * the server decides comes back empty: no `requestId`, no `visitorId` and
-   * no `suspectScore`. That is the honest answer rather than a gap - nothing
-   * was sent, so nobody scored it, and a zero here would read as "scored,
-   * found nothing".
+   * Everything the server decides comes back empty: no `requestId`, no
+   * `visitorId`, no `suspectScore`, and `verdicts` holding nothing rather
+   * than all clear. That is the honest answer rather than a gap - nothing was
+   * sent, so nobody scored it, and this SDK decides nothing on its own.
    */
   submit?: boolean
   /**

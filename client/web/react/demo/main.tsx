@@ -6,16 +6,14 @@
  * opposite: no mocks, the real collectors, and the hooks used exactly as the
  * README documents them.
  *
- * Open it twice - an ordinary window and a private one - and watch the
- * incognito card change. That pair is the only real test the verdict gets.
+ * It uses `submit: false`, so no server answers: the raw report fills in and
+ * the score, level and triggers stay empty, as they must with nobody to ask.
  */
 
 import { StrictMode, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
 
-import { FingerlyProvider, useIdentify, useVerdict, type VerdictName } from '../src/index.js'
-
-const NAMES: VerdictName[] = ['incognito', 'shields', 'tor', 'emulator', 'automation', 'farm']
+import { FingerlyProvider, useIdentify } from '../src/index.js'
 
 function Row({ label, value, hit = false }: { label: string; value: unknown; hit?: boolean }) {
   return (
@@ -26,21 +24,24 @@ function Row({ label, value, hit = false }: { label: string; value: unknown; hit
   )
 }
 
-/** One verdict, to show `useVerdict()` reading the shared identification. */
-function VerdictCard({ name }: { name: VerdictName }) {
-  const { matched, confidence, reasons } = useVerdict(name)
+/** What the server scored on, to show a second reader of the shared identification. */
+function TriggersCard() {
+  const { triggers, suspectLevel } = useIdentify({ tag: 'react-demo' })
 
   return (
     <div className="card">
-      <h3>{name}</h3>
-      <Row label="matched" value={matched} hit={matched} />
-      <Row label="confidence" value={confidence ?? '—'} />
-      {reasons.length > 0 && (
+      <h3>triggers</h3>
+      <Row label="level" value={suspectLevel ?? '—'} hit={suspectLevel === 'high'} />
+      {triggers.length > 0 ? (
         <ul className="reasons">
-          {reasons.map((reason) => (
-            <li key={reason}>{reason}</li>
+          {triggers.map((trigger) => (
+            <li key={trigger.signal}>
+              {trigger.signal} ({trigger.group})
+            </li>
           ))}
         </ul>
+      ) : (
+        <Row label="fired" value="—" />
       )}
     </div>
   )
@@ -55,7 +56,7 @@ function VerdictCard({ name }: { name: VerdictName }) {
  * empty state.
  */
 function Report() {
-  const { requestId, report, isSuspicious, refresh } = useIdentify({ suspend: true, tag: 'react-demo' })
+  const { requestId, report, suspectScore, suspectLevel, refresh } = useIdentify({ suspend: true, tag: 'react-demo' })
 
   return (
     <>
@@ -65,16 +66,15 @@ function Report() {
       </div>
       <div className="card">
         <h3>state</h3>
-        <Row label="isSuspicious" value={isSuspicious} hit={isSuspicious} />
+        <Row label="suspectScore" value={suspectScore ?? '— (no server answer)'} />
+        <Row label="suspectLevel" value={suspectLevel ?? '— (no server answer)'} hit={suspectLevel === 'high'} />
         <Row label="requestId" value={requestId ?? '— (submit: false)'} />
         <Row label="sources" value={report ? Object.keys(report.sources).length : '—'} />
         <Row label="elapsed_ms" value={report?.elapsed_ms ?? '—'} />
         <Row label="engine" value={report?.integrity.engine.observed ?? '—'} />
       </div>
       <div className="grid">
-        {NAMES.map((name) => (
-          <VerdictCard key={name} name={name} />
-        ))}
+        <TriggersCard />
       </div>
     </>
   )
@@ -84,7 +84,7 @@ function App() {
   return (
     <>
       <h1>Fingerly — React binding</h1>
-      {/* submit: false - the demo collects and scores locally, and sends nothing. */}
+      {/* submit: false - the demo collects and sends nothing. */}
       <FingerlyProvider apiKey="pk_demo" submit={false}>
         <Suspense fallback={<p className="status">collecting…</p>}>
           <Report />

@@ -13,7 +13,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const identifyMock = vi.fn()
 const loadMock = vi.fn()
 
-vi.mock('@fingerly/web-js', () => ({
+vi.mock('@fingerly/web-js', async (importActual) => ({
+  ...(await importActual<Record<string, unknown>>()),
   load: (...args: unknown[]) => loadMock(...args),
   TransportError: class TransportError extends Error {},
 }))
@@ -38,7 +39,7 @@ describe('under SSR', () => {
     // to be inert there: the page renders its "not yet identified" state and
     // the browser picks it up on hydration.
     expect(fingerly.isReady()).toBe(false)
-    expect(fingerly.isSuspicious()).toBe(false)
+    expect(fingerly.isSuspicious()).toBeNull()
     expect(loadMock).not.toHaveBeenCalled()
   })
 
