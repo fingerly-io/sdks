@@ -345,11 +345,11 @@
             "type": "string"
           },
           "suspect_level": {
-            "description": "low, medium or high",
+            "description": "low, medium or high. Absent whenever suspect_score is",
             "type": "string"
           },
           "suspect_score": {
-            "description": "The weighted sum of the signals that fired",
+            "description": "The weighted sum of the signals that fired. Absent when the event was not scored, or from a browser, an app, a proxy or a hosted domain when the key withholds it",
             "format": "int32",
             "type": [
               "integer",
@@ -357,7 +357,7 @@
             ]
           },
           "triggers": {
-            "description": "What fired, and what each was worth",
+            "description": "What fired, and what each was worth. Only answered to a secret key called directly; everyone else reads them on the server-side event read, webhooks and the dashboard",
             "items": {
               "$ref": "#/components/schemas/IdentifyTriggerOut"
             },
@@ -399,7 +399,7 @@
             "type": "string"
           },
           "weight": {
-            "description": "What this signal added to the score. Only answered to a secret key",
+            "description": "What this signal added to the score",
             "format": "int64",
             "type": [
               "integer",
@@ -894,6 +894,10 @@
               "null"
             ]
           },
+          "hide_client_score": {
+            "description": "Whether suspect_score and suspect_level are withheld from a browser, an app, a proxy and a hosted domain",
+            "type": "boolean"
+          },
           "id": {
             "type": "string"
           },
@@ -923,6 +927,10 @@
           "project_id": {
             "type": "string"
           },
+          "require_attestation": {
+            "description": "Whether native reports without verified hardware attestation are refused",
+            "type": "boolean"
+          },
           "revoked_at": {
             "format": "date-time",
             "type": [
@@ -945,12 +953,14 @@
           "allowed_origins",
           "created_at",
           "environment",
+          "hide_client_score",
           "id",
           "kind",
           "last4",
           "name",
           "prefix",
           "project_id",
+          "require_attestation",
           "status"
         ],
         "type": "object"
@@ -1385,6 +1395,16 @@
             },
             "description": "The organization this key belongs to is not accepting traffic"
           },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Challenges are being requested faster than the rate limit allows"
+          },
           "503": {
             "content": {
               "application/json": {
@@ -1739,7 +1759,7 @@
     },
     "/api/v1/identify": {
       "post": {
-        "description": "Submits the signal report a client SDK collected and answers with the complete verdict: the request ID, the visitor ID and its confidence, and the suspect score, level and triggers. There is no second call to make.\n\nThe client SDKs build and send this request. `signals` is produced by them and is not a public contract. Send an `Idempotency-Key` header, and the same value on every retry, so a retried identification is answered and charged once.\n\nThe `X-Request-Id` response header names this HTTP exchange, for support and logs. It is not the `request_id` in the body, which names the identification and is what `GET /events/{request_id}` reads.",
+        "description": "Submits the signal report a client SDK collected and answers with the request ID, the visitor ID and its confidence. There is no second call to make.\n\nA browser, an app, a proxy and a hosted domain also receive `suspect_score` and `suspect_level`, unless the key withholds them, and never `triggers`. A secret key called directly from a backend receives the score, the level and the `triggers`.\n\nThe client SDKs build and send this request. `signals` is produced by them and is not a public contract. Send an `Idempotency-Key` header, and the same value on every retry, so a retried identification is answered and charged once.\n\nThe `X-Request-Id` response header names this HTTP exchange, for support and logs. It is not the `request_id` in the body, which names the identification and is what `GET /events/{request_id}` reads.",
         "operationId": "identifyVisitor",
         "requestBody": {
           "content": {
@@ -1851,7 +1871,7 @@
     },
     "/api/v1/ingest": {
       "post": {
-        "description": "The one URL the client SDKs and every first-party proxy post to. A body with a `token` is a deferred report and is answered `202` with `request_id` and `duplicate`, exactly as the deferred report route answers. Any other body is an identification and is answered `200` with the complete verdict, exactly as the identify route answers.\n\nIt exists so a proxy can forward everything it receives to a single path, and so the SDK can post both calls to one path of the customer's choosing, with nothing appended that a content blocker could match across sites.\n\nThe `X-Request-Id` response header names this HTTP exchange, for support and logs. It is not the `request_id` in the body, which names the identification and is what `GET /events/{request_id}` reads.",
+        "description": "The one URL the client SDKs and every first-party proxy post to. A body with a `token` is a deferred report and is answered `202` with `request_id` and `duplicate`, exactly as the deferred report route answers. Any other body is an identification and is answered `200` exactly as the identify route answers.\n\nIt exists so a proxy can forward everything it receives to a single path, and so the SDK can post both calls to one path of the customer's choosing, with nothing appended that a content blocker could match across sites.\n\nThe `X-Request-Id` response header names this HTTP exchange, for support and logs. It is not the `request_id` in the body, which names the identification and is what `GET /events/{request_id}` reads.",
         "operationId": "submitFromClientSdk",
         "requestBody": {
           "content": {
@@ -3354,6 +3374,10 @@
                       "null"
                     ]
                   },
+                  "hide_client_score": {
+                    "description": "Withhold suspect_score and suspect_level from a browser, an app, a proxy and a hosted domain. Defaults to false",
+                    "type": "boolean"
+                  },
                   "kind": {
                     "description": "public or secret",
                     "type": "string"
@@ -3501,6 +3525,13 @@
                       "type": "string"
                     },
                     "type": "array"
+                  },
+                  "require_attestation": {
+                    "description": "Refuse native reports whose hardware attestation did not verify. Leave out to keep the current setting",
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
                   }
                 },
                 "type": "object"
@@ -3592,6 +3623,142 @@
         ],
         "x-category": "Management: keys",
         "x-title": "Set SDK key apps"
+      }
+    },
+    "/api/v1/management/organizations/{organization_id}/sdk-keys/{sdk_key_id}/client-response": {
+      "put": {
+        "description": "With `hide_score` true, a browser, an app, a proxy and a hosted domain using this key get no `suspect_score` and no `suspect_level`; both fields are absent from the answer. The event is still scored and stored, and a secret key called directly, the event read, webhooks and the dashboard still see everything. Takes effect on the next request.",
+        "operationId": "setWhatKeyPublicCallersAreTold",
+        "parameters": [
+          {
+            "description": "The organization the key belongs to",
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The key to change",
+            "in": "path",
+            "name": "sdk_key_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The project the key belongs to",
+            "in": "query",
+            "name": "project_id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "hide_score": {
+                    "description": "True to withhold suspect_score and suspect_level from a browser, an app, a proxy and a hosted domain. The event is still scored and stored, and a secret key called directly still sees everything",
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SDKKeyOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No usable management key was presented"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The management key's role does not allow this"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No such resource in the key's organization"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The key is revoked"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "hide_score is missing"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "An unexpected error occurred."
+          }
+        },
+        "security": [
+          {
+            "managementKey": []
+          }
+        ],
+        "summary": "Set what a key's public callers are told",
+        "tags": [
+          "Management API"
+        ],
+        "x-category": "Management: keys",
+        "x-title": "Set SDK key client response"
       }
     },
     "/api/v1/management/organizations/{organization_id}/sdk-keys/{sdk_key_id}/origins": {
