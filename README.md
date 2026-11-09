@@ -96,9 +96,13 @@ repo relates to `server` and `panels`.
 - `client/mobile/android`: the native Android SDK (Kotlin). Implemented; see its
   [README](client/mobile/android/README.md). One dependency (coroutines), no JNI, and
   two install-time permissions that prompt nobody. Publishes an AAR as
-  `io.fingerly:fingerly`, which is what the three bridges depend on.
+  `io.fingerly:fingerly`, which is what the three bridges depend on. Both native
+  SDKs are closed binaries under the Fingerly SDK License, distributed from
+  `https://maven.fingerly.io` (the Android Maven repository, with the iOS artifact
+  under `/ios/`). That host is not live yet; contributors can use
+  `publishToMavenLocal` for Android.
 - `client/mobile/react-native`, `client/mobile/flutter`, `client/mobile/lynx`: standalone bridges to the native SDKs, not
-  second implementations. All three are thin on purpose: almost every signal worth
+  second implementations, and open source under Apache-2.0. All three are thin on purpose: almost every signal worth
   having on a phone is unreachable from JavaScript or Dart, so a cross-platform
   SDK that collected only what it could reach would report a jailbroken,
   instrumented device as clean. React Native and Lynx are in the pnpm workspace;
