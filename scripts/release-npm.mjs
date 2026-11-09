@@ -109,13 +109,21 @@ function tagExists(tag) {
 }
 
 async function plan() {
+  // Set by hand on a manual run, for a package that cannot go out yet: a first
+  // publish has to precede its trusted publisher, and a package can depend on
+  // a version the same run is about to release.
+  const excluded = (process.env.EXCLUDE ?? '')
+    .split(',')
+    .map((name) => name.trim())
+    .filter(Boolean)
   const fresh = []
   for (const pkg of ordered()) {
     const published = await isOnRegistry(pkg.name, pkg.version)
     const tagged = tagExists(tagOf(pkg))
-    const state = published ? 'already on npm' : tagged ? 'already tagged' : 'new'
+    const skipped = excluded.includes(pkg.name)
+    const state = published ? 'already on npm' : tagged ? 'already tagged' : skipped ? 'excluded' : 'new'
     console.log(`${tagOf(pkg)}: ${state}`)
-    if (!published && !tagged) fresh.push(pkg.name)
+    if (!published && !tagged && !skipped) fresh.push(pkg.name)
   }
   const packages = JSON.stringify(fresh)
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `packages=${packages}\n`)

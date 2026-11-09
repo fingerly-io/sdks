@@ -8,6 +8,12 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      exclude:
+        description: Comma-separated package names to leave out of this run
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -37,6 +43,8 @@ jobs:
           node-version: 24
       - id: plan
         name: Find the versions not yet released
+        env:
+          EXCLUDE: ${{ inputs.exclude }}
         run: node scripts/release-npm.mjs plan
 
   publish:
