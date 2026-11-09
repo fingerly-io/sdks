@@ -150,7 +150,6 @@ describe('the module', () => {
     expect(addImports.mock.calls.map(([call]) => call)).toEqual([
       { name: 'useFingerly', from: '@fingerly/vue' },
       { name: 'useIdentify', from: '@fingerly/vue' },
-      { name: 'useVerdict', from: '@fingerly/vue' },
     ])
   })
 })

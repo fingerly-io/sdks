@@ -16,8 +16,6 @@ export type {
 export { useFingerly } from './useFingerly.js'
 export { useIdentify } from './useIdentify.js'
 export type { UseIdentifyOptions, UseIdentifyReturn } from './useIdentify.js'
-export { useVerdict } from './useVerdict.js'
-export type { UseVerdictReturn, VerdictName } from './useVerdict.js'
 
 // Re-exported so a component can name what it receives without also declaring a
 // dependency on the browser SDK.
@@ -31,7 +29,5 @@ export type {
   SignalOutcome,
   SignalReport,
   SignalStatus,
-  Verdict,
-  Verdicts,
 } from '@fingerly/web-js'
 export { ConsentError, TransportError } from '@fingerly/web-js'

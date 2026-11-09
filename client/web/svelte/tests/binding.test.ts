@@ -61,12 +61,6 @@ function fakeClient(options: { consent?: string } = {}) {
 const Page = (await import('./fixtures/Page.svelte')).default
 const Orphan = (await import('./fixtures/Orphan.svelte')).default
 
-const verdict = (value: boolean, confidence: 'low' | 'medium' | 'high', reasons: string[] = []) => ({
-  value,
-  confidence,
-  reasons,
-})
-
 const RESULT = {
   requestId: 'req_1',
   visitorId: 'vis_1',
@@ -77,14 +71,6 @@ const RESULT = {
   state: 'scored',
   suspectScore: 41,
   suspectLevel: 'medium',
-  triggers: [{ signal: 'patched-natives', group: 'automation', weight: 22, confidence: 'high', reason: '' }],
-  verdicts: {
-    incognito: verdict(true, 'medium', ['firefox-private-origin-filesystem-refused']),
-    tor: verdict(false, 'low'),
-    emulator: verdict(false, 'low'),
-    automation: verdict(true, 'high', ['patched-natives-3']),
-    farm: verdict(false, 'low'),
-  },
   report: { schema: 1, sources: {}, elapsed_ms: 31 },
 }
 
@@ -194,8 +180,8 @@ describe('useIdentify', () => {
     expect(page.state.state).toBe('scored')
     expect(page.state.suspectScore).toBe(41)
     expect(page.state.suspectLevel).toBe('medium')
-    expect(page.state.triggers).toHaveLength(1)
-    expect(page.state.triggers[0]?.signal).toBe('patched-natives')
+    expect(page.state).not.toHaveProperty('triggers')
+    expect(page.state).not.toHaveProperty('verdicts')
     // A 0.1.1 result has no reason at all. The deprecated field is null, not
     // undefined, so it still matches its type.
     expect(page.state.reason).toBeNull()
@@ -209,7 +195,6 @@ describe('useIdentify', () => {
       reason: 'ip-database-not-loaded',
       suspectScore: null,
       suspectLevel: null,
-      triggers: [],
     })
     const page = render({ options: { apiKey: 'fly_pk_development_test', consent: 'granted' } })
 
@@ -219,12 +204,8 @@ describe('useIdentify', () => {
     expect(page.state.reason).toBeNull()
   })
 
-  it('reads isSuspicious from the server level, whatever the verdicts say', async () => {
-    identifyMock.mockResolvedValueOnce({
-      ...RESULT,
-      suspectLevel: 'low',
-      verdicts: { ...RESULT.verdicts, automation: verdict(true, 'high', ['navigator-webdriver-true']) },
-    })
+  it('reads isSuspicious from the server level', async () => {
+    identifyMock.mockResolvedValueOnce({ ...RESULT, suspectLevel: 'low' })
     const page = render({ options: { apiKey: 'fly_pk_development_test', consent: 'granted' } })
 
     await page.state.identify()
@@ -244,22 +225,6 @@ describe('useIdentify', () => {
     expect(page.state.isSuspicious).toBeNull()
   })
 
-  it('reports useVerdict as nothing, not a false clean, when no server answered', async () => {
-    identifyMock.mockResolvedValueOnce({
-      ...RESULT,
-      verdicts: { ...RESULT.verdicts, incognito: { value: null, confidence: 'low', reasons: [] } },
-    })
-    const page = render({ options: { apiKey: 'fly_pk_development_test', consent: 'granted' } })
-
-    await page.state.identify()
-    await settle()
-
-    // Svelte renders null as nothing, so an unanswered match shows as a gap
-    // rather than as a clean "false".
-    expect(page.text()).toContain('incognito: confidence')
-    expect(page.state.verdicts?.incognito.value).toBeNull()
-  })
-
   it('reports an unscored check as null, not zero', async () => {
     // Null and zero are different answers. Zero is "we scored it and found
     // nothing"; null is "nobody scored it". A binding that collapsed them
@@ -271,7 +236,6 @@ describe('useIdentify', () => {
       identifiable: false,
       suspectScore: null,
       suspectLevel: null,
-      triggers: [],
     })
     const page = render({ options: { apiKey: 'fly_pk_development_test', consent: 'granted' } })
 
@@ -413,33 +377,13 @@ describe('useIdentify', () => {
   })
 })
 
-describe('useVerdict', () => {
-  it('reports nothing, however confident a hand-built result claims to be', async () => {
-    const page = render({ options: { apiKey: 'fly_pk_development_test', consent: 'granted' }, immediate: true })
-    await settle()
-
-    // RESULT has a high-confidence incognito verdict; null renders as nothing.
-    expect(page.text()).toContain('incognito: confidence:low')
-    expect(page.text()).toContain('reasons:-')
-  })
-
-  it('reports nothing rather than guessing before identification', () => {
-    const page = render({ options: { apiKey: 'fly_pk_development_test', consent: 'granted' } })
-
-    // Svelte renders null as nothing, so the matched value is simply absent here.
-    expect(page.text()).toContain('incognito: confidence')
-    expect(page.text()).toContain('confidence:-')
-    expect(page.text()).toContain('reasons:-')
-  })
-})
-
 // The server's answers, through the real client rather than a fake result:
 // mapping them is exactly what is under test.
 const OLD_TRIGGER = { signal: 'automation', group: 'bot', weight: 9, confidence: 'high', reason: 'cdp-artifacts-1' }
 const PUBLIC_ANSWERS = [
-  ['score and no triggers', { suspect_score: 7, suspect_level: 'low' }, 7, 'low', false, 0],
-  ['neither score nor triggers', {}, null, null, null, 0],
-  ['an old shape with triggers', { suspect_score: 22, suspect_level: 'medium', triggers: [OLD_TRIGGER] }, 22, 'medium', true, 1],
+  ['a score', { suspect_score: 7, suspect_level: 'low' }, 7, 'low', false],
+  ['no score', {}, null, null, null],
+  ['a proxy passing signals through', { suspect_score: 22, suspect_level: 'medium', triggers: [OLD_TRIGGER] }, 22, 'medium', true],
 ] as const
 
 async function answering(answer: Record<string, unknown>) {
@@ -451,7 +395,7 @@ async function answering(answer: Record<string, unknown>) {
 }
 
 describe('a public response', () => {
-  it.each(PUBLIC_ANSWERS)('%s: absent stays null and verdicts report nothing', async (_name, answer, score, level, suspicious, triggers) => {
+  it.each(PUBLIC_ANSWERS)('%s: absent stays null and no signal is surfaced', async (_name, answer, score, level, suspicious) => {
     await answering(answer)
     const page = render({ options: { apiKey: 'fly_pk_development_test', consent: 'granted' }, immediate: true })
     await vi.waitFor(() => {
@@ -464,9 +408,8 @@ describe('a public response', () => {
     expect(page.state.suspectScore).toBe(score)
     expect(page.state.suspectLevel).toBe(level)
     expect(page.state.isSuspicious).toBe(suspicious)
-    expect(page.state.triggers).toHaveLength(triggers)
-    expect(page.state.verdicts?.automation.value).toBeNull()
-    expect(page.text()).toContain('incognito: confidence:low')
+    expect(page.state).not.toHaveProperty('triggers')
+    expect(page.state).not.toHaveProperty('verdicts')
   })
 })
 

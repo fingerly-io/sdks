@@ -21,9 +21,9 @@ export interface ModuleOptions {
    * Collect without submitting anything.
    *
    * Everything the server decides comes back empty: no `requestId`, no
-   * `visitorId`, no `suspectScore`, and `verdicts` holding nothing rather
-   * than all clear. That is the honest answer rather than a gap - nothing was
-   * sent, so nobody scored it, and this SDK decides nothing on its own.
+   * `visitorId`, no `suspectScore`, no `suspectLevel`. That is the honest
+   * answer rather than a gap - nothing was sent, so nobody scored it, and
+   * this SDK decides nothing on its own.
    */
   submit?: boolean
   /**

@@ -27,7 +27,7 @@ const { FingerlyServerError } = await import('../src/state.svelte.js')
 
 beforeEach(() => {
   vi.clearAllMocks()
-  identifyMock.mockResolvedValue({ requestId: 'req_1', verdicts: {}, report: {} })
+  identifyMock.mockResolvedValue({ requestId: 'req_1', report: {} })
   loadMock.mockResolvedValue({ identify: identifyMock })
   delete globals.__fingerlyServerError
 })

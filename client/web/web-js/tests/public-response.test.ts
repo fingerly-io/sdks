@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { isSuspiciousLevel, load, verdictsOf } from '../src/index.js'
+import { isSuspiciousLevel, load } from '../src/index.js'
 
 const OLD_TRIGGER = { signal: 'automation', group: 'bot', weight: 9, confidence: 'high', reason: 'cdp-artifacts-1' }
 
@@ -16,17 +16,17 @@ async function identify(answer: Record<string, unknown>) {
 
 describe('what a public caller is told', () => {
   it.each([
-    ['score and no triggers', { suspect_score: 7, suspect_level: 'low' }, 7, 'low', false, 0],
-    ['neither score nor triggers', {}, null, null, null, 0],
-    ['an old shape with triggers', { suspect_score: 22, suspect_level: 'medium', triggers: [OLD_TRIGGER] }, 22, 'medium', true, 1],
-  ] as const)('%s: absent stays null and verdicts report nothing', async (_name, answer, score, level, suspicious, triggers) => {
+    ['a score', { suspect_score: 7, suspect_level: 'low' }, 7, 'low', false],
+    ['no score', {}, null, null, null],
+    ['a proxy passing signals through', { suspect_score: 22, suspect_level: 'medium', triggers: [OLD_TRIGGER] }, 22, 'medium', true],
+  ] as const)('%s: absent stays null and no signal is surfaced', async (_name, answer, score, level, suspicious) => {
     const result = await identify(answer)
 
     expect(result.requestId).toBe('req_public')
     expect(result.suspectScore).toBe(score)
     expect(result.suspectLevel).toBe(level)
     expect(isSuspiciousLevel(result.suspectLevel)).toBe(suspicious)
-    expect(result.triggers).toHaveLength(triggers)
-    for (const verdict of Object.values(verdictsOf(result))) expect(verdict.value).toBeNull()
+    expect(result).not.toHaveProperty('triggers')
+    expect(result).not.toHaveProperty('verdicts')
   })
 })

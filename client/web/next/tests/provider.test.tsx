@@ -41,13 +41,12 @@ function fakeClient(options: { consent?: string } = {}) {
 }
 
 const { FingerlyProvider } = await import('../src/provider.js')
-const { useIdentify, useVerdict } = await import('@fingerly/react')
+const { useIdentify } = await import('@fingerly/react')
 const { FingerlyRequestId } = await import('../src/field.js')
 const { REQUEST_ID_FIELD } = await import('../src/field-name.js')
 
 const RESULT = {
   requestId: 'req_1',
-  verdicts: { incognito: { value: false, confidence: 'low', reasons: [] } },
   report: { schema: 1, sources: {}, elapsed_ms: 12 },
 }
 
@@ -329,9 +328,9 @@ describe('FingerlyRequestId', () => {
 // mapping them is exactly what is under test.
 const OLD_TRIGGER = { signal: 'automation', group: 'bot', weight: 9, confidence: 'high', reason: 'cdp-artifacts-1' }
 const PUBLIC_ANSWERS = [
-  ['score and no triggers', { suspect_score: 7, suspect_level: 'low' }, 7, 'low', false, 0],
-  ['neither score nor triggers', {}, null, null, null, 0],
-  ['an old shape with triggers', { suspect_score: 22, suspect_level: 'medium', triggers: [OLD_TRIGGER] }, 22, 'medium', true, 1],
+  ['a score', { suspect_score: 7, suspect_level: 'low' }, 7, 'low', false],
+  ['no score', {}, null, null, null],
+  ['a proxy passing signals through', { suspect_score: 22, suspect_level: 'medium', triggers: [OLD_TRIGGER] }, 22, 'medium', true],
 ] as const
 
 async function answering(answer: Record<string, unknown>) {
@@ -343,12 +342,12 @@ async function answering(answer: Record<string, unknown>) {
 }
 
 describe('a public response', () => {
-  it.each(PUBLIC_ANSWERS)('%s: absent stays null and verdicts report nothing', async (_name, answer, score, level, suspicious, triggers) => {
+  it.each(PUBLIC_ANSWERS)('%s: absent stays null and no signal is surfaced', async (_name, answer, score, level, suspicious) => {
     await answering(answer)
     environment.NEXT_PUBLIC_FINGERLY_API_KEY = 'pk_from_env'
-    let seen!: { identify: ReturnType<typeof useIdentify>; verdict: ReturnType<typeof useVerdict> }
+    let seen!: { identify: ReturnType<typeof useIdentify> }
     const Probe = () => {
-      seen = { identify: useIdentify({ immediate: true }), verdict: useVerdict('automation') }
+      seen = { identify: useIdentify({ immediate: true }) }
       return null
     }
 
@@ -362,8 +361,7 @@ describe('a public response', () => {
     expect(seen.identify.suspectScore).toBe(score)
     expect(seen.identify.suspectLevel).toBe(level)
     expect(seen.identify.isSuspicious).toBe(suspicious)
-    expect(seen.identify.triggers).toHaveLength(triggers)
-    expect(seen.verdict.verdict?.value).toBeNull()
-    expect(seen.verdict.matched).toBeNull()
+    expect(seen.identify).not.toHaveProperty('triggers')
+    expect(seen.identify).not.toHaveProperty('verdicts')
   })
 })

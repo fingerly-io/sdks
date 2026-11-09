@@ -23,7 +23,7 @@ const { createFingerly, FingerlyServerError } = await import('../src/state.js')
 
 beforeEach(() => {
   vi.clearAllMocks()
-  identifyMock.mockResolvedValue({ requestId: 'req_1', verdicts: {}, report: {} })
+  identifyMock.mockResolvedValue({ requestId: 'req_1', report: {} })
   loadMock.mockResolvedValue({ identify: identifyMock })
 })
 

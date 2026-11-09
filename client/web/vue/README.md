@@ -124,12 +124,7 @@ unscored, or the SDK key hides the score from the page, which cannot tell those
 apart. Null is not a clean result.
 
 Signals are read on your backend, by `requestId`, never in the page: which check
-tripped is what a fraudster wants to learn. `triggers` is deprecated and empty from a
-public key.
-
-`useVerdict()` and `verdicts` are **deprecated** and warn once in development. They hold
-nothing, `matched` is `null` and never a clean `false`, so read `suspectLevel` and read
-signals on your backend.
+tripped is what a fraudster wants to learn.
 
 ## A correlation tag
 
@@ -151,7 +146,7 @@ app.use(createFingerly({ apiKey: 'fly_pk_production_…', submit: false }))
 ```
 
 Everything the server decides comes back empty: no `requestId`, no `visitorId`,
-`suspectScore` is `null` rather than `0`, and `isSuspicious` and `matched` are
+`suspectScore` is `null` rather than `0`, and `isSuspicious` is
 `null` rather than `false`. That is the honest answer rather than a gap: nothing
 was sent, so nobody scored it, and this SDK decides nothing on its own.
 
@@ -218,7 +213,6 @@ const {
   reason,            // Ref<string | null>:        always null (deprecated); your backend reads it on the event
   suspectScore,      // Ref<number | null>:        null when nothing scored it
   suspectLevel,      // Ref<string | null>:        low, medium, high
-  verdicts,          // Ref<Verdicts | null>:      deprecated; holds nothing, read signals on your backend
   report,            // Ref<SignalReport | null>:  every source, with status and timing
   error,             // Ref<Error | null>
   consent,           // Ref<ConsentState>        (granted, pending or denied)

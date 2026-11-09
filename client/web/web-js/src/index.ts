@@ -82,19 +82,13 @@ export type {
   ConsentState,
   IdentifyOptions,
   IdentifyResult,
-  IdentifyTrigger,
   IntegrityReport,
   Lie,
   SignalOutcome,
   SignalReport,
   SignalStatus,
-  Verdict,
-  Verdicts,
 } from '@fingerly/core'
 export { ConsentError, FingerlyClient, SOURCE, TransportError } from '@fingerly/core'
 
-// For the framework bindings: copying a result without warning on the reader's
-// behalf, and the one shared once-only deprecation set. Not part of the public
-// contract; bindings import them so the warnings stay one per page, not one per
-// package, and they stay in the page's own bundle.
-export { isSuspiciousLevel, verdictsOf, warnDeprecated } from '@fingerly/core'
+// For the framework bindings, so each reads the server's level the same way.
+export { isSuspiciousLevel } from '@fingerly/core'

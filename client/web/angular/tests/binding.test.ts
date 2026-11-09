@@ -58,14 +58,8 @@ function fakeClient(options: { consent?: string } = {}) {
 }
 
 const { provideFingerly } = await import('../src/provide.js')
-const { injectFingerly, injectIdentify, injectVerdict } = await import('../src/inject.js')
+const { injectFingerly, injectIdentify } = await import('../src/inject.js')
 const { createFingerly } = await import('../src/state.js')
-
-const verdict = (value: boolean, confidence: 'low' | 'medium' | 'high', reasons: string[] = []) => ({
-  value,
-  confidence,
-  reasons,
-})
 
 const RESULT = {
   requestId: 'req_1',
@@ -77,14 +71,6 @@ const RESULT = {
   state: 'scored',
   suspectScore: 41,
   suspectLevel: 'medium',
-  triggers: [{ signal: 'patched-natives', group: 'automation', weight: 22, confidence: 'high', reason: '' }],
-  verdicts: {
-    incognito: verdict(true, 'medium', ['firefox-private-origin-filesystem-refused']),
-    tor: verdict(false, 'low'),
-    emulator: verdict(false, 'low'),
-    automation: verdict(true, 'high', ['patched-natives-3']),
-    farm: verdict(false, 'low'),
-  },
   report: { schema: 1, sources: {}, elapsed_ms: 26 },
 }
 
@@ -188,8 +174,8 @@ describe('injectIdentify', () => {
     expect(fingerly.state()).toBe('scored')
     expect(fingerly.suspectScore()).toBe(41)
     expect(fingerly.suspectLevel()).toBe('medium')
-    expect(fingerly.triggers()).toHaveLength(1)
-    expect(fingerly.triggers()[0]?.signal).toBe('patched-natives')
+    expect(fingerly).not.toHaveProperty('triggers')
+    expect(fingerly).not.toHaveProperty('verdicts')
     // A 0.1.1 result has no reason at all. The deprecated field is null, not
     // undefined, so it still matches its type.
     expect(fingerly.reason()).toBeNull()
@@ -203,7 +189,6 @@ describe('injectIdentify', () => {
       reason: 'ip-database-not-loaded',
       suspectScore: null,
       suspectLevel: null,
-      triggers: [],
     })
     application({ apiKey: 'fly_pk_development_test', consent: 'granted' })
     const fingerly = TestBed.runInInjectionContext(() => injectIdentify({ immediate: true }))
@@ -214,12 +199,8 @@ describe('injectIdentify', () => {
     expect(fingerly.reason()).toBeNull()
   })
 
-  it('reads isSuspicious from the server level, whatever the verdicts say', async () => {
-    identifyMock.mockResolvedValueOnce({
-      ...RESULT,
-      suspectLevel: 'low',
-      verdicts: { ...RESULT.verdicts, automation: verdict(true, 'high', ['navigator-webdriver-true']) },
-    })
+  it('reads isSuspicious from the server level', async () => {
+    identifyMock.mockResolvedValueOnce({ ...RESULT, suspectLevel: 'low' })
     application({ apiKey: 'fly_pk_development_test', consent: 'granted' })
     const fingerly = TestBed.runInInjectionContext(() => injectIdentify({ immediate: true }))
 
@@ -238,21 +219,6 @@ describe('injectIdentify', () => {
     expect(fingerly.isSuspicious()).toBeNull()
   })
 
-  it('reports injectVerdict as nothing, not a false clean, when no server answered', async () => {
-    identifyMock.mockResolvedValueOnce({
-      ...RESULT,
-      verdicts: { ...RESULT.verdicts, automation: { value: null, confidence: 'low', reasons: [] } },
-    })
-    application({ apiKey: 'fly_pk_development_test', consent: 'granted' })
-    const fingerly = TestBed.runInInjectionContext(() => injectIdentify({ immediate: true }))
-    const automation = TestBed.runInInjectionContext(() => injectVerdict('automation'))
-
-    await render()
-
-    expect(fingerly.isReady()).toBe(true)
-    expect(automation.matched()).toBeNull()
-  })
-
   it('reports an unscored check as null, not zero', async () => {
     // Null and zero are different answers. Zero is "we scored it and found
     // nothing"; null is "nobody scored it". A binding that collapsed them
@@ -264,7 +230,6 @@ describe('injectIdentify', () => {
       identifiable: false,
       suspectScore: null,
       suspectLevel: null,
-      triggers: [],
     })
     application({ apiKey: 'fly_pk_development_test', consent: 'granted' })
     const fingerly = TestBed.runInInjectionContext(() => injectIdentify({ immediate: true }))
@@ -422,33 +387,6 @@ describe('injectIdentify', () => {
   })
 })
 
-describe('injectVerdict', () => {
-  it('reports nothing, however confident a hand-built result claims to be', async () => {
-    application({ apiKey: 'fly_pk_development_test', consent: 'granted' })
-    const name = signal<'tor' | 'automation'>('tor')
-    const watched = TestBed.runInInjectionContext(() => {
-      injectIdentify({ immediate: true })
-      return injectVerdict(name)
-    })
-    await render()
-
-    expect(watched.matched()).toBeNull()
-    name.set('automation')
-    expect(watched.matched()).toBeNull()
-    expect(watched.verdict()?.value).toBeNull()
-  })
-
-  it('reports nothing rather than guessing before identification', () => {
-    application({ apiKey: 'fly_pk_development_test', consent: 'granted' })
-    const incognito = TestBed.runInInjectionContext(() => injectVerdict('incognito'))
-
-    expect(incognito.verdict()).toBeNull()
-    expect(incognito.confidence()).toBeNull()
-    expect(incognito.matched()).toBeNull()
-    expect(incognito.reasons()).toEqual([])
-  })
-})
-
 describe('the state itself', () => {
   it('hands out signals that a component cannot write to', () => {
     const fingerly = createFingerly({ apiKey: 'fly_pk_development_test' })
@@ -533,9 +471,9 @@ describe('consent', () => {
 // mapping them is exactly what is under test.
 const OLD_TRIGGER = { signal: 'automation', group: 'bot', weight: 9, confidence: 'high', reason: 'cdp-artifacts-1' }
 const PUBLIC_ANSWERS = [
-  ['score and no triggers', { suspect_score: 7, suspect_level: 'low' }, 7, 'low', false, 0],
-  ['neither score nor triggers', {}, null, null, null, 0],
-  ['an old shape with triggers', { suspect_score: 22, suspect_level: 'medium', triggers: [OLD_TRIGGER] }, 22, 'medium', true, 1],
+  ['a score', { suspect_score: 7, suspect_level: 'low' }, 7, 'low', false],
+  ['no score', {}, null, null, null],
+  ['a proxy passing signals through', { suspect_score: 22, suspect_level: 'medium', triggers: [OLD_TRIGGER] }, 22, 'medium', true],
 ] as const
 
 async function answering(answer: Record<string, unknown>) {
@@ -547,13 +485,10 @@ async function answering(answer: Record<string, unknown>) {
 }
 
 describe('a public response', () => {
-  it.each(PUBLIC_ANSWERS)('%s: absent stays null and verdicts report nothing', async (_name, answer, score, level, suspicious, triggers) => {
+  it.each(PUBLIC_ANSWERS)('%s: absent stays null and no signal is surfaced', async (_name, answer, score, level, suspicious) => {
     await answering(answer)
     application({ apiKey: 'fly_pk_development_test', consent: 'granted' })
-    const { fingerly, verdict } = TestBed.runInInjectionContext(() => ({
-      fingerly: injectIdentify({ immediate: true }),
-      verdict: injectVerdict('automation'),
-    }))
+    const fingerly = TestBed.runInInjectionContext(() => injectIdentify({ immediate: true }))
     await render()
     await vi.waitFor(() => expect(fingerly.isReady()).toBe(true))
 
@@ -562,9 +497,7 @@ describe('a public response', () => {
     expect(fingerly.suspectScore()).toBe(score)
     expect(fingerly.suspectLevel()).toBe(level)
     expect(fingerly.isSuspicious()).toBe(suspicious)
-    expect(fingerly.triggers()).toHaveLength(triggers)
-    expect(verdict.verdict()?.value).toBeNull()
-    expect(verdict.matched()).toBeNull()
-    expect(verdict.reasons()).toEqual([])
+    expect(fingerly).not.toHaveProperty('triggers')
+    expect(fingerly).not.toHaveProperty('verdicts')
   })
 })

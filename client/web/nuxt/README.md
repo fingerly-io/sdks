@@ -125,8 +125,7 @@ const { suspectLevel, isSuspicious, isReady } = useIdentify({ immediate: true })
 </template>
 ```
 
-`useIdentify` · `useFingerly` · `useVerdict` (**deprecated**; it holds nothing,
-read `suspectLevel` from `useIdentify()`): the same three from `@fingerly/vue`,
+`useIdentify` · `useFingerly`: the same two from `@fingerly/vue`,
 unchanged. Their full surface is in that
 [package's README](../vue/README.md): `immediate`, `refresh`, a correlation
 `tag`, and reading `suspectLevel` and `isSuspicious`, which is `null`, not `false`, when the level is absent.

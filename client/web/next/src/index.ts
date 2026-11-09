@@ -26,7 +26,7 @@ export { REQUEST_ID_FIELD } from './field-name.js'
 // are @fingerly/react's, unchanged - there is nothing Next-specific about
 // reading an answer, and wrapping them to say so would only add a layer to
 // step through when something is wrong.
-export { useFingerly, useIdentify, useVerdict, createFingerlyStore, FingerlyServerError } from '@fingerly/react'
+export { useFingerly, useIdentify, createFingerlyStore, FingerlyServerError } from '@fingerly/react'
 export type {
   FingerlyReactOptions,
   FingerlyState,
@@ -34,13 +34,8 @@ export type {
   Confidence,
   ConsentState,
   IdentifyResult,
-  IdentifyTrigger,
   SignalReport,
   UseIdentifyOptions,
   UseIdentifyReturn,
-  UseVerdictReturn,
-  Verdict,
-  VerdictName,
-  Verdicts,
 } from '@fingerly/react'
 export { ConsentError, TransportError } from '@fingerly/react'

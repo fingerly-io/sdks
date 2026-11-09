@@ -57,18 +57,9 @@ function fakeClient(options: { consent?: string } = {}) {
   return client
 }
 
-import type { UseVerdictReturn } from '../src/useVerdict.js'
-
 const { FingerlyProvider } = await import('../src/context.js')
 const { useFingerly } = await import('../src/useFingerly.js')
 const { useIdentify } = await import('../src/useIdentify.js')
-const { useVerdict } = await import('../src/useVerdict.js')
-
-const verdict = (value: boolean, confidence: 'low' | 'medium' | 'high', reasons: string[] = []) => ({
-  value,
-  confidence,
-  reasons,
-})
 
 const RESULT = {
   requestId: 'req_1',
@@ -80,14 +71,6 @@ const RESULT = {
   state: 'scored',
   suspectScore: 41,
   suspectLevel: 'medium',
-  triggers: [{ signal: 'patched-natives', group: 'automation', weight: 22, confidence: 'high', reason: '' }],
-  verdicts: {
-    incognito: verdict(true, 'medium', ['firefox-private-origin-filesystem-refused']),
-    tor: verdict(false, 'low'),
-    emulator: verdict(false, 'low'),
-    automation: verdict(true, 'high', ['patched-natives-3']),
-    farm: verdict(false, 'low'),
-  },
   report: { schema: 1, sources: {}, elapsed_ms: 29 },
 }
 
@@ -264,7 +247,6 @@ describe('useIdentify', () => {
     expect(latest().isReady).toBe(true)
     expect(latest().isLoading).toBe(false)
     expect(latest().requestId).toBe('req_1')
-    expect(latest().verdicts?.automation.value).toBeNull()
     expect(latest().error).toBeNull()
   })
 
@@ -283,8 +265,8 @@ describe('useIdentify', () => {
     expect(latest().state).toBe('scored')
     expect(latest().suspectScore).toBe(41)
     expect(latest().suspectLevel).toBe('medium')
-    expect(latest().triggers).toHaveLength(1)
-    expect(latest().triggers[0]?.signal).toBe('patched-natives')
+    expect(latest()).not.toHaveProperty('triggers')
+    expect(latest()).not.toHaveProperty('verdicts')
     // A 0.1.1 result has no reason at all. The deprecated field is null, not
     // undefined, so it still matches its type.
     expect(latest().reason).toBeNull()
@@ -298,7 +280,6 @@ describe('useIdentify', () => {
       reason: 'ip-database-not-loaded',
       suspectScore: null,
       suspectLevel: null,
-      triggers: [],
     })
     const { latest, element } = probe(() => useIdentify({ immediate: true }))
 
@@ -321,7 +302,6 @@ describe('useIdentify', () => {
       identifiable: false,
       suspectScore: null,
       suspectLevel: null,
-      triggers: [],
     })
     const { latest, element } = probe(() => useIdentify({ immediate: true }))
 
@@ -546,11 +526,8 @@ describe('useIdentify', () => {
       expect((await withAnswer({ suspectLevel: 'high' }))().isSuspicious).toBe(true)
     })
 
-    it('is false for a low server level, whatever the verdicts say', async () => {
-      const latest = await withAnswer({
-        suspectLevel: 'low',
-        verdicts: { automation: verdict(true, 'high', ['navigator-webdriver-true']) },
-      })
+    it('is false for a low server level', async () => {
+      const latest = await withAnswer({ suspectLevel: 'low' })
       expect(latest().isSuspicious).toBe(false)
     })
 
@@ -566,76 +543,15 @@ describe('useIdentify', () => {
       expect(latest().isReady).toBe(false)
     })
   })
-
-  describe('useVerdict', () => {
-    const withVerdicts = async (verdicts: unknown) => {
-      identifyMock.mockResolvedValue({ ...RESULT, verdicts })
-      const { latest, element } = probe(() => useVerdict('automation'))
-      await act(async () => {
-        render(<FingerlyProvider apiKey="fly_pk_development_test" consent="granted">{element}</FingerlyProvider>)
-      })
-      return latest
-    }
-
-    it('reports nothing, not a false clean, when no server answered', async () => {
-      const latest = await withVerdicts({ automation: { value: null, confidence: 'low', reasons: [] } })
-      expect(latest().matched).toBeNull()
-    })
-
-    it('is null before anything has been collected', () => {
-      const { latest, element } = probe(() => useVerdict('automation'))
-      render(<FingerlyProvider apiKey="fly_pk_development_test" consent="granted">{element}</FingerlyProvider>)
-      expect(latest().matched).toBeNull()
-      expect(latest().verdict).toBeNull()
-    })
-  })
-})
-
-describe('useVerdict', () => {
-  const mount = (use: () => UseVerdictReturn) => {
-    const { latest, element } = probe(use)
-    const identifier = probe(() => useIdentify({ immediate: true }))
-    return { latest, identifier, element }
-  }
-
-  it('reports nothing, however confident a hand-built result claims to be', async () => {
-    identifyMock.mockResolvedValue({ ...RESULT, verdicts: { tor: verdict(true, 'high', ['x']), incognito: verdict(false, 'high') } })
-    const tor = mount(() => useVerdict('tor'))
-    const incognito = mount(() => useVerdict('incognito'))
-
-    await act(async () => {
-      render(
-        <FingerlyProvider apiKey="fly_pk_development_test" consent="granted">
-          {tor.identifier.element}
-          {tor.element}
-          {incognito.element}
-        </FingerlyProvider>,
-      )
-    })
-
-    expect(tor.latest().matched).toBeNull()
-    expect(tor.latest().verdict?.value).toBeNull()
-    expect(incognito.latest().matched).toBeNull()
-  })
-
-  it('reports nothing rather than guessing before identification', () => {
-    const { latest, element } = probe(() => useVerdict('automation'))
-    render(<FingerlyProvider apiKey="fly_pk_development_test" consent="granted">{element}</FingerlyProvider>)
-
-    expect(latest().verdict).toBeNull()
-    expect(latest().confidence).toBeNull()
-    expect(latest().matched).toBeNull()
-    expect(latest().reasons).toEqual([])
-  })
 })
 
 // The server's answers, through the real client rather than a fake result:
 // mapping them is exactly what is under test.
 const OLD_TRIGGER = { signal: 'automation', group: 'bot', weight: 9, confidence: 'high', reason: 'cdp-artifacts-1' }
 const PUBLIC_ANSWERS = [
-  ['score and no triggers', { suspect_score: 7, suspect_level: 'low' }, 7, 'low', false, 0],
-  ['neither score nor triggers', {}, null, null, null, 0],
-  ['an old shape with triggers', { suspect_score: 22, suspect_level: 'medium', triggers: [OLD_TRIGGER] }, 22, 'medium', true, 1],
+  ['a score', { suspect_score: 7, suspect_level: 'low' }, 7, 'low', false],
+  ['no score', {}, null, null, null],
+  ['a proxy passing signals through', { suspect_score: 22, suspect_level: 'medium', triggers: [OLD_TRIGGER] }, 22, 'medium', true],
 ] as const
 
 async function answering(answer: Record<string, unknown>) {
@@ -647,24 +563,22 @@ async function answering(answer: Record<string, unknown>) {
 }
 
 describe('a public response', () => {
-  it.each(PUBLIC_ANSWERS)('%s: absent stays null and verdicts report nothing', async (_name, answer, score, level, suspicious, triggers) => {
+  it.each(PUBLIC_ANSWERS)('%s: absent stays null and no signal is surfaced', async (_name, answer, score, level, suspicious) => {
     await answering(answer)
-    const { latest, element } = probe(() => ({ identify: useIdentify({ immediate: true }), verdict: useVerdict('automation') }))
+    const { latest, element } = probe(() => useIdentify({ immediate: true }))
 
     await act(async () => {
       render(<FingerlyProvider apiKey="fly_pk_development_test" consent="granted">{element}</FingerlyProvider>)
     })
-    await vi.waitFor(() => expect(latest().identify.isReady).toBe(true))
+    await vi.waitFor(() => expect(latest().isReady).toBe(true))
 
-    expect(latest().identify.error).toBeNull()
-    expect(latest().identify.requestId).toBe('req_public')
-    expect(latest().identify.suspectScore).toBe(score)
-    expect(latest().identify.suspectLevel).toBe(level)
-    expect(latest().identify.isSuspicious).toBe(suspicious)
-    expect(latest().identify.triggers).toHaveLength(triggers)
-    expect(latest().verdict.verdict?.value).toBeNull()
-    expect(latest().verdict.matched).toBeNull()
-    expect(latest().verdict.reasons).toEqual([])
+    expect(latest().error).toBeNull()
+    expect(latest().requestId).toBe('req_public')
+    expect(latest().suspectScore).toBe(score)
+    expect(latest().suspectLevel).toBe(level)
+    expect(latest().isSuspicious).toBe(suspicious)
+    expect(latest()).not.toHaveProperty('triggers')
+    expect(latest()).not.toHaveProperty('verdicts')
   })
 })
 
@@ -701,10 +615,9 @@ describe('suspend', () => {
   })
 
   it('suspends once, however many components read it', async () => {
-    const Card = ({ name }: { name: 'incognito' | 'automation' }) => {
-      useIdentify({ suspend: true })
-      const { matched } = useVerdict(name)
-      return <span>{`${name}:${matched} `}</span>
+    const Card = ({ name }: { name: string }) => {
+      const { suspectLevel } = useIdentify({ suspend: true })
+      return <span>{`${name}:${suspectLevel} `}</span>
     }
 
     const { container } = await renderAsync(
@@ -719,7 +632,7 @@ describe('suspend', () => {
     // Both components suspended on the same promise, so they came back
     // together and cost one identification between them.
     expect(identifyMock).toHaveBeenCalledTimes(1)
-    expect(container.textContent).toBe('incognito:null automation:null ')
+    expect(container.textContent).toBe('incognito:medium automation:medium ')
   })
 })
 
@@ -828,8 +741,8 @@ describe('consent', () => {
 
   it('renders the unidentified state instead of suspending until consent is granted', async () => {
     const Card = () => {
-      const { verdicts } = useIdentify({ suspend: true })
-      return <span>{verdicts ? 'identified' : 'waiting'}</span>
+      const { report } = useIdentify({ suspend: true })
+      return <span>{report ? 'identified' : 'waiting'}</span>
     }
 
     const { container } = await renderAsync(

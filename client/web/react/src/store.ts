@@ -16,13 +16,10 @@
 
 import {
   type ConsentState,
-  type IdentifyTrigger,
   load,
   type FingerlyClient,
   type IdentifyResult,
   type SignalReport,
-  type Verdicts,
-  verdictsOf,
 } from '@fingerly/web-js'
 
 /** Options for [[createFingerlyStore]] and for `<FingerlyProvider>`. */
@@ -41,9 +38,9 @@ export interface FingerlyReactOptions {
    * Collect without submitting anything.
    *
    * Everything the server decides comes back empty: no `requestId`, no
-   * `visitorId`, no `suspectScore`, and `verdicts` holding nothing rather
-   * than all clear. That is the honest answer rather than a gap - nothing was
-   * sent, so nobody scored it, and this SDK decides nothing on its own.
+   * `visitorId`, no `suspectScore`, no `suspectLevel`. That is the honest
+   * answer rather than a gap - nothing was sent, so nobody scored it, and
+   * this SDK decides nothing on its own.
    */
   submit?: boolean
   /**
@@ -87,10 +84,6 @@ export interface FingerlyState {
   /** Null when not scored, which is a different answer from zero. */
   suspectScore: number | null
   suspectLevel: string | null
-  /** @deprecated Empty from a public key. Read signals on your backend. */
-  triggers: IdentifyTrigger[]
-  /** @deprecated Read `suspectLevel`, and read signals on your backend. Holds nothing, never all clear. */
-  verdicts: Verdicts | null
   report: SignalReport | null
   error: Error | null
   isLoading: boolean
@@ -120,10 +113,6 @@ const INITIAL: FingerlyState = Object.freeze({
   reason: null,
   suspectScore: null,
   suspectLevel: null,
-  // Frozen and shared, like the rest of INITIAL: an empty array allocated per
-  // render would make every consumer re-render on every state read.
-  triggers: [],
-  verdicts: null,
   report: null,
   error: null,
   isLoading: false,
@@ -316,10 +305,6 @@ export function createFingerlyStore(options: FingerlyReactOptions): FingerlyStor
           reason: null,
           suspectScore: result.suspectScore ?? null,
           suspectLevel: result.suspectLevel ?? null,
-          triggers: result.triggers ?? [],
-          // Copied without reading the deprecated field, so a page that never
-          // looks at verdicts is not warned about them.
-          verdicts: verdictsOf(result),
           report: result.report,
         })
         held = undefined

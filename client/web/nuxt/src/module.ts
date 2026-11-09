@@ -20,7 +20,7 @@ import { resolvePublicConfig, type FingerlyPublicConfig, type ModuleOptions } fr
 export type { FingerlyPublicConfig, ModuleOptions } from './options.js'
 
 /** The composables the module auto-imports, from `@fingerly/vue` unchanged. */
-const COMPOSABLES = ['useFingerly', 'useIdentify', 'useVerdict'] as const
+const COMPOSABLES = ['useFingerly', 'useIdentify'] as const
 
 export default defineNuxtModule<ModuleOptions>({
   meta: {

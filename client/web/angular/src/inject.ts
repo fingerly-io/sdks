@@ -1,5 +1,5 @@
 /**
- * The two things a component asks for: the identification, and one verdict.
+ * What a component asks for: the identification.
  *
  * Named `inject…` rather than the `use…` the other bindings use, because in
  * Angular the prefix carries a rule: these must run in an injection context -
@@ -7,21 +7,10 @@
  * name that hid that would be a name that made the error message a surprise.
  */
 
-import {
-  afterNextRender,
-  computed,
-  effect,
-  inject,
-  Injector,
-  untracked,
-  type Signal,
-} from '@angular/core'
-import { warnDeprecated, type Confidence, type Verdict, type Verdicts } from '@fingerly/web-js'
+import { afterNextRender, effect, inject, Injector, untracked } from '@angular/core'
 
 import { FINGERLY } from './provide.js'
 import type { Fingerly } from './state.js'
-
-export type VerdictName = keyof Verdicts
 
 /** The shared state. Throws, with an explanation, if nothing provided it. */
 export function injectFingerly(): Fingerly {
@@ -131,70 +120,4 @@ export function injectIdentify(options: InjectIdentifyOptions = {}): Fingerly {
   }
 
   return { ...fingerly, identify, refresh }
-}
-
-export interface InjectVerdictResult {
-  /**
-   * `null`: a browser is no longer told which signals fired, and nobody
-   * reporting is not a clean result. Read signals on your backend.
-   */
-  readonly matched: Signal<boolean | null>
-  /** The verdict itself, or null before the first identification. */
-  readonly verdict: Signal<Verdict | null>
-  readonly confidence: Signal<Confidence | null>
-  /** Why, strongest first. Empty before identification, never null. */
-  readonly reasons: Signal<readonly string[]>
-}
-
-const RANK: Record<Confidence, number> = { low: 0, medium: 1, high: 2 }
-
-/** One array for every un-identified verdict, rather than one per read. */
-const NO_REASONS: readonly string[] = Object.freeze([])
-
-/**
- * @deprecated Read `suspectLevel` from `injectIdentify()`, and read signals on your backend.
- *
- * Watch one verdict. Holds nothing now: `matched` is `null`, never a false clean.
- *
- * ```ts
- * readonly automation = injectVerdict('automation', { min: 'high' })
- * ```
- *
- * `min` defaults to `medium`. Pass `min: 'low'` deliberately if the intent is
- * to observe rather than to block.
- *
- * Both arguments take a signal as well as a value, because this is called once
- * when the component is constructed and either may be an input that changes
- * afterwards.
- */
-export function injectVerdict(
-  name: VerdictName | Signal<VerdictName> | (() => VerdictName),
-  options: { min?: Confidence | Signal<Confidence> | (() => Confidence) } = {},
-): InjectVerdictResult {
-  warnDeprecated('injectVerdict', 'read suspectLevel from injectIdentify() instead, and read signals on your backend. This holds nothing now.')
-  const fingerly = injectFingerly()
-
-  const which = computed(() => (typeof name === 'function' ? name() : name))
-  const floor = computed(() =>
-    typeof options.min === 'function' ? options.min() : (options.min ?? 'medium'),
-  )
-
-  const verdict = computed<Verdict | null>(() => {
-    const all = fingerly.verdicts()
-    return all ? (all[which()] as Verdict) : null
-  })
-
-  return {
-    verdict,
-    confidence: computed(() => verdict()?.confidence ?? null),
-    reasons: computed(() => verdict()?.reasons ?? NO_REASONS),
-    // Null when the server has not answered, which is the difference between
-    // "the server looked and found nothing" and "nobody looked".
-    matched: computed(() => {
-      const current = verdict()
-      if (!current || current.value === null) return null
-      if (current.value !== true) return false
-      return RANK[current.confidence] >= RANK[floor()]
-    }),
-  }
 }

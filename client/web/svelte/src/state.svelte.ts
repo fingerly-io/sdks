@@ -5,7 +5,7 @@
  * live outside a component: the file is compiled by the Svelte compiler in the
  * consuming app, so the fields below are reactive wherever they are read.
  * That is the whole reason this binding needs no store, no subscription and no
- * `$` prefix at the call site - a component reads `fingerly.verdicts` and
+ * `$` prefix at the call site - a component reads `fingerly.suspectLevel` and
  * re-renders when it changes.
  *
  * One state per app, not one per component. Identification is a *page-level*
@@ -21,10 +21,7 @@ import {
   type ConsentState,
   type FingerlyClient,
   type IdentifyResult,
-  type IdentifyTrigger,
   type SignalReport,
-  type Verdicts,
-  verdictsOf,
 } from '@fingerly/web-js'
 
 /** Options for [[createFingerly]] and [[setupFingerly]]. */
@@ -41,9 +38,9 @@ export interface FingerlyOptions {
    * Collect without submitting anything.
    *
    * Everything the server decides comes back empty: no `requestId`, no
-   * `visitorId`, no `suspectScore`, and `verdicts` holding nothing rather
-   * than all clear. That is the honest answer rather than a gap - nothing was
-   * sent, so nobody scored it, and this SDK decides nothing on its own.
+   * `visitorId`, no `suspectScore`, no `suspectLevel`. That is the honest
+   * answer rather than a gap - nothing was sent, so nobody scored it, and
+   * this SDK decides nothing on its own.
    */
   submit?: boolean
   /**
@@ -92,11 +89,6 @@ export interface Fingerly {
   readonly suspectScore: number | null
   /** The score as a band - `low`, `medium`, `high`. Null when unscored. */
   readonly suspectLevel: string | null
-  /** What the server scored on. Empty when it found nothing. */
-  /** @deprecated Empty from a public key. Read signals on your backend. */
-  readonly triggers: readonly IdentifyTrigger[]
-  /** @deprecated Read `suspectLevel`, and read signals on your backend. Holds nothing, never all clear. */
-  readonly verdicts: Verdicts | null
   readonly report: SignalReport | null
   readonly error: Error | null
   readonly isLoading: boolean
@@ -179,8 +171,6 @@ export function createFingerly(options: FingerlyOptions): Fingerly {
   let checkState = $state<string | null>(null)
   let suspectScore = $state<number | null>(null)
   let suspectLevel = $state<string | null>(null)
-  let triggers = $state<readonly IdentifyTrigger[]>([])
-  let verdicts = $state<Verdicts | null>(null)
   let report = $state<SignalReport | null>(null)
   let error = $state<Error | null>(null)
   let isLoading = $state(false)
@@ -272,8 +262,6 @@ export function createFingerly(options: FingerlyOptions): Fingerly {
         checkState = result.state === '' ? null : result.state
         suspectScore = result.suspectScore ?? null
         suspectLevel = result.suspectLevel ?? null
-        triggers = result.triggers ?? []
-        verdicts = verdictsOf(result)
         report = result.report
         held = undefined
         consecutiveFailures = 0
@@ -337,12 +325,6 @@ export function createFingerly(options: FingerlyOptions): Fingerly {
     },
     get suspectLevel() {
       return suspectLevel
-    },
-    get triggers() {
-      return triggers
-    },
-    get verdicts() {
-      return verdicts
     },
     get report() {
       return report

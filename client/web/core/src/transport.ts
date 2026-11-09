@@ -28,18 +28,6 @@ export const REDACTED = '[redacted]'
 export const INSPECT = Symbol.for('nodejs.util.inspect.custom')
 const IDEMPOTENCY_KEY_HEADER = 'Idempotency-Key'
 
-/** One signal that fired. The server no longer sends a weight to a browser. */
-export interface SubmitTrigger {
-  signal: string
-  /** The card this signal is reported under, such as `vpn` for `vpn_public`. */
-  group?: string
-  /** @deprecated Only a secret-key backend is told this. A browser's answer does not carry it. */
-  weight?: number
-  confidence?: string
-  /** The tell that fired it, such as `known-tor-exit`. */
-  reason?: string
-}
-
 /**
  * What the server sends back - the wire shape of `schemas.IdentifyOut`.
  *
@@ -102,12 +90,6 @@ export interface SubmitResponse {
   suspect_score?: number
   /** `low`, `medium` or `high`. Absent for the same reasons as `suspect_score`. */
   suspect_level?: string
-
-  /**
-   * @deprecated Never sent to a public key. Only present if a backend proxy
-   * passes through what a secret key read.
-   */
-  triggers?: SubmitTrigger[]
 }
 
 export interface Transport {

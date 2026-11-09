@@ -20,10 +20,7 @@ import {
   type ConsentState,
   type FingerlyClient,
   type IdentifyResult,
-  type IdentifyTrigger,
   type SignalReport,
-  type Verdicts,
-  verdictsOf,
 } from '@fingerly/web-js'
 
 /** Options for [[provideFingerly]]. */
@@ -40,9 +37,9 @@ export interface FingerlyOptions {
    * Collect without submitting anything.
    *
    * Everything the server decides comes back empty: no `requestId`, no
-   * `visitorId`, no `suspectScore`, and `verdicts` holding nothing rather
-   * than all clear. That is the honest answer rather than a gap - nothing was
-   * sent, so nobody scored it, and this SDK decides nothing on its own.
+   * `visitorId`, no `suspectScore`, no `suspectLevel`. That is the honest
+   * answer rather than a gap - nothing was sent, so nobody scored it, and
+   * this SDK decides nothing on its own.
    */
   submit?: boolean
   /**
@@ -91,11 +88,6 @@ export interface Fingerly {
   readonly suspectScore: Signal<number | null>
   /** The score as a band - `low`, `medium`, `high`. Null when unscored. */
   readonly suspectLevel: Signal<string | null>
-  /** What the server scored on. Empty when it found nothing. */
-  /** @deprecated Empty from a public key. Read signals on your backend. */
-  readonly triggers: Signal<readonly IdentifyTrigger[]>
-  /** @deprecated Read `suspectLevel`, and read signals on your backend. Holds nothing, never all clear. */
-  readonly verdicts: Signal<Verdicts | null>
   readonly report: Signal<SignalReport | null>
   readonly error: Signal<Error | null>
   readonly isLoading: Signal<boolean>
@@ -180,8 +172,6 @@ export function createFingerly(options: FingerlyOptions): Fingerly {
   const reason = signal<string | null>(null)
   const suspectScore = signal<number | null>(null)
   const suspectLevel = signal<string | null>(null)
-  const triggers = signal<readonly IdentifyTrigger[]>([])
-  const verdicts = signal<Verdicts | null>(null)
   const report = signal<SignalReport | null>(null)
   const error = signal<Error | null>(null)
   const isLoading = signal(false)
@@ -269,10 +259,6 @@ export function createFingerly(options: FingerlyOptions): Fingerly {
         state.set(result.state === '' ? null : result.state)
         suspectScore.set(result.suspectScore ?? null)
         suspectLevel.set(result.suspectLevel ?? null)
-        triggers.set(result.triggers ?? [])
-        // Copied without reading the deprecated field, so a page that never
-        // looks at verdicts is not warned about them.
-        verdicts.set(verdictsOf(result))
         report.set(result.report)
         held = undefined
         consecutiveFailures = 0
@@ -316,8 +302,6 @@ export function createFingerly(options: FingerlyOptions): Fingerly {
     reason: reason.asReadonly(),
     suspectScore: suspectScore.asReadonly(),
     suspectLevel: suspectLevel.asReadonly(),
-    triggers: triggers.asReadonly(),
-    verdicts: verdicts.asReadonly(),
     report: report.asReadonly(),
     error: error.asReadonly(),
     isLoading: isLoading.asReadonly(),

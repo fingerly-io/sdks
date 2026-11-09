@@ -40,13 +40,12 @@ function fakeClient(options: { consent?: string } = {}) {
   return client
 }
 
-const { useFingerly, useIdentify, useVerdict } = await import('@fingerly/vue')
+const { useFingerly, useIdentify } = await import('@fingerly/vue')
 const { __setRuntimeConfig } = await import('./stubs/nuxt-app.js')
 const plugin = (await import('../src/runtime/plugin.js')).default
 
 const RESULT = {
   requestId: 'req_1',
-  verdicts: { incognito: { value: true, confidence: 'medium', reasons: ['firefox-private'] } },
   report: { schema: 1, sources: {}, elapsed_ms: 18 },
 }
 
@@ -166,7 +165,7 @@ describe('the runtime plugin', () => {
     await Promise.all([first.identify(), second.identify()])
 
     expect(identifyMock).toHaveBeenCalledTimes(1)
-    expect(second.verdicts.value?.incognito.value).toBeNull()
+    expect(second.requestId.value).toBe('req_1')
   })
 
   it('still installs with no key, and says so once', async () => {
@@ -220,9 +219,9 @@ describe('the runtime plugin', () => {
 // mapping them is exactly what is under test.
 const OLD_TRIGGER = { signal: 'automation', group: 'bot', weight: 9, confidence: 'high', reason: 'cdp-artifacts-1' }
 const PUBLIC_ANSWERS = [
-  ['score and no triggers', { suspect_score: 7, suspect_level: 'low' }, 7, 'low', false, 0],
-  ['neither score nor triggers', {}, null, null, null, 0],
-  ['an old shape with triggers', { suspect_score: 22, suspect_level: 'medium', triggers: [OLD_TRIGGER] }, 22, 'medium', true, 1],
+  ['a score', { suspect_score: 7, suspect_level: 'low' }, 7, 'low', false],
+  ['no score', {}, null, null, null],
+  ['a proxy passing signals through', { suspect_score: 22, suspect_level: 'medium', triggers: [OLD_TRIGGER] }, 22, 'medium', true],
 ] as const
 
 async function answering(answer: Record<string, unknown>) {
@@ -234,11 +233,11 @@ async function answering(answer: Record<string, unknown>) {
 }
 
 describe('a public response', () => {
-  it.each(PUBLIC_ANSWERS)('%s: absent stays null and verdicts report nothing', async (_name, answer, score, level, suspicious, triggers) => {
+  it.each(PUBLIC_ANSWERS)('%s: absent stays null and no signal is surfaced', async (_name, answer, score, level, suspicious) => {
     await answering(answer)
     __setRuntimeConfig({ fingerly: { apiKey: 'pk_runtime', consent: 'granted' } })
 
-    const { identify, automation } = mountWithPlugin(() => ({ identify: useIdentify(), automation: useVerdict('automation') }))
+    const identify = mountWithPlugin(() => useIdentify())
     await identify.identify()
 
     expect(identify.error.value).toBeNull()
@@ -246,8 +245,7 @@ describe('a public response', () => {
     expect(identify.suspectScore.value).toBe(score)
     expect(identify.suspectLevel.value).toBe(level)
     expect(identify.isSuspicious.value).toBe(suspicious)
-    expect(identify.triggers.value).toHaveLength(triggers)
-    expect(automation.verdict.value?.value).toBeNull()
-    expect(automation.matched.value).toBeNull()
+    expect(identify).not.toHaveProperty('triggers')
+    expect(identify).not.toHaveProperty('verdicts')
   })
 })

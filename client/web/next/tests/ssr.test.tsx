@@ -25,7 +25,7 @@ const { FingerlyRequestId } = await import('../src/field.js')
 
 beforeEach(() => {
   vi.clearAllMocks()
-  identifyMock.mockResolvedValue({ requestId: 'req_1', verdicts: {}, report: {} })
+  identifyMock.mockResolvedValue({ requestId: 'req_1', report: {} })
   loadMock.mockResolvedValue({ identify: identifyMock })
   ;(process.env as Record<string, string | undefined>).NEXT_PUBLIC_FINGERLY_API_KEY = 'pk_from_env'
 })

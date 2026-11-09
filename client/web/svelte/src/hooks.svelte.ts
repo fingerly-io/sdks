@@ -1,7 +1,7 @@
 /**
- * The two things a component asks for: the identification, and one verdict.
+ * What a component asks for: the identification.
  *
- * Named `useIdentify` and `useVerdict` to match the Vue, React and Next
+ * Named `useIdentify` to match the Vue, React and Next
  * bindings rather than to follow any Svelte convention. An SDK whose four
  * bindings answer the same question under four different names makes its own
  * documentation harder to read than the code it documents. What is Svelte's
@@ -9,12 +9,8 @@
  * `$` prefix, no subscription.
  */
 
-import { warnDeprecated, type Confidence, type Verdict, type Verdicts } from '@fingerly/web-js'
-
 import { useFingerly } from './context.js'
 import type { Fingerly } from './state.svelte.js'
-
-export type VerdictName = keyof Verdicts
 
 export interface UseIdentifyOptions {
   /**
@@ -56,8 +52,8 @@ export interface UseIdentifyOptions {
  * {/if}
  * ```
  *
- * Returns the same object `setupFingerly()` created, so `fingerly.verdicts` in a
- * template re-renders when the answer arrives.
+ * Returns the same object `setupFingerly()` created, so `fingerly.suspectLevel`
+ * in a template re-renders when the answer arrives.
  */
 export function useIdentify(options: UseIdentifyOptions = {}): Fingerly {
   const fingerly = useFingerly()
@@ -127,12 +123,6 @@ export function useIdentify(options: UseIdentifyOptions = {}): Fingerly {
     get suspectLevel() {
       return fingerly.suspectLevel
     },
-    get triggers() {
-      return fingerly.triggers
-    },
-    get verdicts() {
-      return fingerly.verdicts
-    },
     get report() {
       return fingerly.report
     },
@@ -155,80 +145,5 @@ export function useIdentify(options: UseIdentifyOptions = {}): Fingerly {
     identify,
     refresh,
     client: fingerly.client,
-  }
-}
-
-export interface UseVerdictReturn {
-  /**
-   * `null`: a browser is no longer told which signals fired, and nobody
-   * reporting is not a clean result. Read signals on your backend.
-   */
-  readonly matched: boolean | null
-  /** The verdict itself, or null before the first identification. */
-  readonly verdict: Verdict | null
-  readonly confidence: Confidence | null
-  /** Why, strongest first. Empty before identification, never null. */
-  readonly reasons: readonly string[]
-}
-
-const RANK: Record<Confidence, number> = { low: 0, medium: 1, high: 2 }
-
-/** One array for every un-identified verdict, rather than one per read. */
-const NO_REASONS: readonly string[] = Object.freeze([])
-
-/**
- * @deprecated Read `suspectLevel` from `useIdentify()`, and read signals on your backend.
- *
- * Watch one verdict. Holds nothing now: `matched` is `null`, never a false clean.
- *
- * ```svelte
- * <script lang="ts">
- *   const incognito = useVerdict('incognito')
- * </script>
- *
- * {#if incognito.matched}Private window ({incognito.confidence}){/if}
- * ```
- *
- * `min` defaults to `medium`. Pass `min: 'low'` deliberately if the intent is
- * to observe rather than to block.
- */
-export function useVerdict(
-  name: VerdictName | (() => VerdictName),
-  options: { min?: Confidence | (() => Confidence) } = {},
-): UseVerdictReturn {
-  warnDeprecated('useVerdict', 'read suspectLevel from useIdentify() instead, and read signals on your backend. This holds nothing now.')
-  const fingerly = useFingerly()
-
-  // Getters accepted as well as values, because this is called once when the
-  // component initialises and its arguments may be props that change after
-  // that. A plain value read here would be the value that prop had at
-  // initialisation, forever.
-  const which = $derived(typeof name === 'function' ? name() : name)
-  const floor = $derived(
-    (typeof options.min === 'function' ? options.min() : options.min) ?? 'medium',
-  )
-
-  const verdict = $derived(fingerly.verdicts ? (fingerly.verdicts[which] as Verdict) : null)
-  // Null when the server has not answered, which is the difference between
-  // "the server looked and found nothing" and "nobody looked".
-  const matched = $derived(
-    verdict === null || verdict.value === null
-      ? null
-      : verdict.value === true && RANK[verdict.confidence] >= RANK[floor],
-  )
-
-  return {
-    get verdict() {
-      return verdict
-    },
-    get confidence() {
-      return verdict?.confidence ?? null
-    },
-    get reasons() {
-      return verdict?.reasons ?? NO_REASONS
-    },
-    get matched() {
-      return matched
-    },
   }
 }

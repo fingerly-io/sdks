@@ -1,15 +1,11 @@
 # Changelog
 
-## 0.2.0
-
-- Follows `@fingerly/react` 0.2.0: `isSuspicious` comes from the server's `suspectLevel` and is `null` when the level is absent; `useVerdict()` and `verdicts` are deprecated and hold nothing; `triggers` is deprecated and empty from a public key. Read signals on your backend.
-
 ## 0.1.1
 
+- From `@fingerly/react` 0.1.1: `isSuspicious` comes from the server's `suspectLevel` and is `null` when the level is absent; `useVerdict()`, `verdicts` and `triggers` are removed. Read signals on your backend.
 - `NEXT_PUBLIC_FINGERLY_ENDPOINTS` is parsed once per value; a malformed value is reported and ignored instead of thrown from render.
 - A missing key is reported once on the console instead of thrown from render, so the page keeps rendering.
 - The README's proxy route is a complete file that builds the proxy on first use and reads the visitor address from the last `X-Forwarded-For` entry.
-- `isSuspicious` no longer counts the `shields` verdict, from @fingerly/react 0.1.1: a privacy browser alone never makes a session look suspicious.
 - `reason` is deprecated and always `null`, from @fingerly/react 0.1.1: a browser is no longer told why a check went unscored.
 - Uses @fingerly/react 0.1.1, with its fixes.
 

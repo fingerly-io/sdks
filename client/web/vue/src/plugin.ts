@@ -14,14 +14,10 @@ import {
   type ConsentState,
   type FingerlyClient,
   type IdentifyResult,
-  type IdentifyTrigger,
   type SignalReport,
-  type Verdicts,
-  verdictsOf,
 } from '@fingerly/web-js'
 import {
   readonly,
-  shallowReadonly,
   ref,
   shallowRef,
   type App,
@@ -46,9 +42,9 @@ export interface FingerlyVueOptions {
    * Collect without submitting anything.
    *
    * Everything the server decides comes back empty: no `requestId`, no
-   * `visitorId`, no `suspectScore`, and `verdicts` holding nothing rather
-   * than all clear. That is the honest answer rather than a gap - nothing was
-   * sent, so nobody scored it, and this SDK decides nothing on its own.
+   * `visitorId`, no `suspectScore`, no `suspectLevel`. That is the honest
+   * answer rather than a gap - nothing was sent, so nobody scored it, and
+   * this SDK decides nothing on its own.
    */
   submit?: boolean
   /**
@@ -80,9 +76,6 @@ export interface FingerlyState {
   reason: ShallowRef<string | null>
   suspectScore: ShallowRef<number | null>
   suspectLevel: ShallowRef<string | null>
-  /** @deprecated Empty from a public key. Read signals on your backend. */
-  triggers: ShallowRef<IdentifyTrigger[]>
-  verdicts: ShallowRef<Verdicts | null>
   report: ShallowRef<SignalReport | null>
   error: ShallowRef<Error | null>
   isLoading: Ref<boolean>
@@ -168,8 +161,6 @@ function createState(consent: ConsentState): FingerlyState {
     reason: shallowRef<string | null>(null),
     suspectScore: shallowRef<number | null>(null),
     suspectLevel: shallowRef<string | null>(null),
-    triggers: shallowRef<IdentifyTrigger[]>([]),
-    verdicts: shallowRef<Verdicts | null>(null),
     report: shallowRef<SignalReport | null>(null),
     error: shallowRef<Error | null>(null),
     isLoading: ref(false),
@@ -282,10 +273,6 @@ export function createFingerly(options: FingerlyVueOptions): Plugin {
         state.state.value = result.state === '' ? null : result.state
         state.suspectScore.value = result.suspectScore ?? null
         state.suspectLevel.value = result.suspectLevel ?? null
-        state.triggers.value = result.triggers ?? []
-        // Copied without reading the deprecated field, so a page that never
-        // looks at verdicts is not warned about them.
-        state.verdicts.value = verdictsOf(result)
         state.report.value = result.report
         completed = result
         held = undefined
@@ -338,9 +325,6 @@ export type ReadonlyState = {
   reason: Readonly<ShallowRef<string | null>>
   suspectScore: Readonly<ShallowRef<number | null>>
   suspectLevel: Readonly<ShallowRef<string | null>>
-  /** @deprecated Empty from a public key. Read signals on your backend. */
-  triggers: Readonly<ShallowRef<IdentifyTrigger[]>>
-  verdicts: Readonly<ShallowRef<DeepReadonly<Verdicts> | null>>
   report: Readonly<ShallowRef<DeepReadonly<SignalReport> | null>>
   error: Readonly<ShallowRef<Error | null>>
   isLoading: Readonly<Ref<boolean>>
@@ -359,12 +343,6 @@ export function toReadonly(state: FingerlyState): ReadonlyState {
     reason: readonly(state.reason),
     suspectScore: readonly(state.suspectScore),
     suspectLevel: readonly(state.suspectLevel),
-    // shallowReadonly, not readonly: the array is replaced wholesale on every
-    // identification and never mutated in place, so deep-freezing each element
-    // buys nothing and costs the element type - a DeepReadonly<IdentifyTrigger>
-    // is not an IdentifyTrigger, and a consumer would have to widen it back.
-    triggers: shallowReadonly(state.triggers),
-    verdicts: readonly(state.verdicts) as ReadonlyState['verdicts'],
     report: readonly(state.report) as ReadonlyState['report'],
     error: readonly(state.error) as ReadonlyState['error'],
     isLoading: readonly(state.isLoading),

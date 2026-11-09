@@ -15,16 +15,13 @@ import type {
   ConsentState,
   IdentifyResult,
   IdentifySubmission,
-  IdentifyTrigger,
   DeferredIdentifyResult,
   DeferredSubmission,
   IntegrityReport,
   SdkPlatform,
   SignalReport,
   SourceTier,
-  Verdicts,
 } from './types.js'
-import { attachVerdicts, unansweredVerdicts } from './verdicts.js'
 import { SDK_VERSION } from './version.js'
 
 /**
@@ -84,32 +81,11 @@ export interface IdentifyOptions {
    * Collect without sending anything.
    *
    * Everything the server decides comes back empty: no `requestId`, no
-   * `visitorId`, `suspectScore` null rather than zero, and `verdicts` holding
-   * nothing rather than all clear. That is the honest answer rather than a gap
-   * - nothing was submitted, so nobody scored it, and this client decides
-   * nothing on its own.
+   * `visitorId`, and `suspectScore` and `suspectLevel` null rather than zero.
+   * That is the honest answer rather than a gap - nothing was submitted, so
+   * nobody scored it, and this client decides nothing on its own.
    */
   submit?: boolean
-}
-
-/**
- * The `triggers` of an answer, if a backend proxy still passes them through.
- *
- * A public key's answer has none, which reads as empty. Copied field by field,
- * weight left out: a customer's weights are not a page's business, whatever a
- * server or proxy answered. Anything that is not a trigger is dropped rather
- * than left to throw on a page that only wanted the visitor.
- */
-function readTriggers(raw: SubmitResponse['triggers'] | null): IdentifyTrigger[] {
-  if (!Array.isArray(raw)) return []
-  return raw
-    .filter((trigger) => typeof trigger?.signal === 'string')
-    .map((trigger) => ({
-      signal: trigger.signal,
-      group: trigger.group ?? '',
-      confidence: trigger.confidence ?? '',
-      reason: trigger.reason ?? '',
-    }))
 }
 
 /**
@@ -255,8 +231,7 @@ export class FingerlyClient {
    * Returns the server's answer: who this visitor is, how sure it is, and what
    * the submission scored. One round trip. Nothing about the answer is
    * decided in the page: the score and level are what the server sent, and
-   * are absent, not zero, when it sent none. Signals are read on your backend;
-   * the deprecated [[IdentifyResult.verdicts]] hold nothing.
+   * are absent, not zero, when it sent none. Signals are read on your backend.
    *
    * Fails with a [[ConsentError]], before any source runs, while consent is
    * not granted - and again if consent is withdrawn before the submission.
@@ -291,7 +266,7 @@ export class FingerlyClient {
       // because a made-up visitor here would be indistinguishable from a real
       // one to everything downstream. The report is the whole result: this
       // client decides nothing on its own.
-      const result: IdentifyResult = {
+      return {
         requestId: '',
         visitorId: '',
         visitorIsNew: false,
@@ -301,13 +276,9 @@ export class FingerlyClient {
         state: '',
         suspectScore: null,
         suspectLevel: null,
-        triggers: [],
-        verdicts: unansweredVerdicts(),
         report,
         deferred: Promise.resolve({ status: 'skipped', reason: 'not-submitted' }),
       }
-      attachVerdicts(result, unansweredVerdicts())
-      return result
     }
 
     const submission: IdentifySubmission = {
@@ -328,7 +299,6 @@ export class FingerlyClient {
       this.requireConsent()
       throw consentRefusal(error)
     }
-    const verdicts = unansweredVerdicts()
     const result: IdentifyResult = {
       requestId: answer.request_id,
       visitorId: answer.visitor_id ?? '',
@@ -346,12 +316,9 @@ export class FingerlyClient {
       // a proxy that kept only one does not lose it.
       suspectScore: typeof answer.suspect_score === 'number' && Number.isFinite(answer.suspect_score) ? answer.suspect_score : null,
       suspectLevel: typeof answer.suspect_level === 'string' && answer.suspect_level !== '' ? answer.suspect_level : null,
-      triggers: readTriggers(answer.triggers),
-      verdicts,
       report,
       deferred: Promise.resolve({ status: 'skipped', reason: 'explicit-tiers' }),
     }
-    attachVerdicts(result, verdicts)
 
     if (!automaticDeferred) return result
     if (answer.duplicate || !answer.deferred_token) {
@@ -366,7 +333,7 @@ export class FingerlyClient {
       return result
     }
 
-    result.deferred = this.finishDeferred(report, answer.request_id, answer.deferred_token, verdicts, options.signal)
+    result.deferred = this.finishDeferred(report, answer.request_id, answer.deferred_token, options.signal)
     return result
   }
 
@@ -374,7 +341,6 @@ export class FingerlyClient {
     initial: SignalReport,
     requestId: string,
     token: string,
-    verdicts: Verdicts,
     signal?: AbortSignal,
   ): Promise<DeferredIdentifyResult> {
     // Skipped rather than failed: nothing went wrong, the visitor changed
@@ -407,7 +373,7 @@ export class FingerlyClient {
         token,
       }
       await this.transport.submitSupplement!(requestId, submission, scope.signal)
-      return { status: 'submitted', report, combinedReport, verdicts }
+      return { status: 'submitted', report, combinedReport }
     } catch (error) {
       // The supplement was abandoned because consent was withdrawn mid-flight.
       if (this.consentState !== 'granted') return withdrawn
@@ -417,7 +383,6 @@ export class FingerlyClient {
         error: failure instanceof Error ? failure : new Error(String(failure)),
         ...(report === undefined ? {} : { report }),
         ...(combinedReport === undefined ? {} : { combinedReport }),
-        verdicts,
       }
     } finally {
       scope.close()

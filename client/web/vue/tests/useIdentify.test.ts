@@ -56,13 +56,6 @@ function fakeClient(options: { consent?: string } = {}) {
 const { createFingerly } = await import('../src/plugin.js')
 const { useFingerly } = await import('../src/useFingerly.js')
 const { useIdentify } = await import('../src/useIdentify.js')
-const { useVerdict } = await import('../src/useVerdict.js')
-
-const verdict = (value: boolean, confidence: 'low' | 'medium' | 'high', reasons: string[] = []) => ({
-  value,
-  confidence,
-  reasons,
-})
 
 const RESULT = {
   requestId: 'req_1',
@@ -74,14 +67,6 @@ const RESULT = {
   state: 'scored',
   suspectScore: 41,
   suspectLevel: 'medium',
-  triggers: [{ signal: 'patched-natives', group: 'automation', weight: 22, confidence: 'high', reason: '' }],
-  verdicts: {
-    incognito: verdict(false, 'low'),
-    tor: verdict(false, 'low'),
-    emulator: verdict(false, 'low'),
-    automation: verdict(true, 'high', ['patched-natives-3']),
-    farm: verdict(false, 'low'),
-  },
   report: { schema: 1, sources: {}, elapsed_ms: 29 },
 }
 
@@ -153,13 +138,13 @@ describe('createFingerly', () => {
     // by poking at globalProperties: not every Vue 3 component is
     // `<script setup>`, and a fraud check is the kind of thing that gets
     // retrofitted into an older one.
-    let suspicious: boolean | undefined
+    let level: string | null | undefined
 
     const app = createApp(
       defineComponent({
         async mounted() {
-          const { verdicts } = await this.$fingerly.identify()
-          suspicious = verdicts.automation.value
+          const { suspectLevel } = await this.$fingerly.identify()
+          level = suspectLevel
         },
         render: () => h('div'),
       }),
@@ -167,7 +152,7 @@ describe('createFingerly', () => {
     app.use(createFingerly({ apiKey: 'fly_pk_development_test', consent: 'granted' }))
     app.mount(document.createElement('div'))
 
-    await vi.waitFor(() => expect(suspicious).toBe(true))
+    await vi.waitFor(() => expect(level).toBe('medium'))
   })
 
   it('still shares one identification when submit is off', async () => {
@@ -239,7 +224,6 @@ describe('useIdentify', () => {
     expect(result.isLoading.value).toBe(false)
     expect(result.isReady.value).toBe(true)
     expect(result.requestId.value).toBe('req_1')
-    expect(result.verdicts.value?.automation.value).toBeNull()
   })
 
   it('shares one identification across every component that asks', async () => {
@@ -298,8 +282,8 @@ describe('useIdentify', () => {
     expect(result.state.value).toBe('scored')
     expect(result.suspectScore.value).toBe(41)
     expect(result.suspectLevel.value).toBe('medium')
-    expect(result.triggers.value).toHaveLength(1)
-    expect(result.triggers.value[0]?.signal).toBe('patched-natives')
+    expect(result).not.toHaveProperty('triggers')
+    expect(result).not.toHaveProperty('verdicts')
     // A 0.1.1 result has no reason at all. The deprecated field is null, not
     // undefined, so it still matches its type.
     expect(result.reason.value).toBeNull()
@@ -313,7 +297,6 @@ describe('useIdentify', () => {
       reason: 'ip-database-not-loaded',
       suspectScore: null,
       suspectLevel: null,
-      triggers: [],
     })
     const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'fly_pk_development_test', consent: 'granted' }))
 
@@ -334,7 +317,6 @@ describe('useIdentify', () => {
       identifiable: false,
       suspectScore: null,
       suspectLevel: null,
-      triggers: [],
     })
     const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'fly_pk_development_test', consent: 'granted' }))
 
@@ -483,12 +465,8 @@ describe('useIdentify', () => {
       expect(result.isSuspicious.value).toBe(true)
     })
 
-    it('is false for a low server level, whatever the verdicts say', async () => {
-      identifyMock.mockResolvedValueOnce({
-        ...RESULT,
-        suspectLevel: 'low',
-        verdicts: { ...RESULT.verdicts, automation: verdict(true, 'high', ['navigator-webdriver-true']) },
-      })
+    it('is false for a low server level', async () => {
+      identifyMock.mockResolvedValueOnce({ ...RESULT, suspectLevel: 'low' })
 
       const { result } = withSetup(() => useIdentify(), createFingerly({ apiKey: 'fly_pk_development_test', consent: 'granted' }))
       await result.identify()
@@ -510,51 +488,15 @@ describe('useIdentify', () => {
       expect(result.isSuspicious.value).toBeNull()
     })
   })
-
-  describe('useVerdict', () => {
-    it('reports nothing, not a false clean, when no server answered', async () => {
-      identifyMock.mockResolvedValueOnce({
-        ...RESULT,
-        verdicts: { ...RESULT.verdicts, automation: { value: null, confidence: 'low', reasons: [] } },
-      })
-      const fingerly = createFingerly({ apiKey: 'fly_pk_development_test', consent: 'granted' })
-      const { result } = withSetup(() => ({ identify: useIdentify(), verdict: useVerdict('automation') }), fingerly)
-
-      await result.identify.identify()
-
-      expect(result.verdict.matched.value).toBeNull()
-    })
-
-    it('is null before anything has been collected', () => {
-      const { result } = withSetup(() => useVerdict('automation'), createFingerly({ apiKey: 'fly_pk_development_test', consent: 'granted' }))
-      expect(result.matched.value).toBeNull()
-    })
-  })
-})
-
-describe('useVerdict', () => {
-  it('reports nothing, however confident a hand-built result claims to be', async () => {
-    const plugin = createFingerly({ apiKey: 'fly_pk_development_test', consent: 'granted' })
-    const identifier = withSetup(() => useIdentify(), plugin).result
-    const automation = withSetup(() => useVerdict('automation'), plugin).result
-    const tor = withSetup(() => useVerdict('tor'), plugin).result
-
-    expect(automation.matched.value).toBeNull()
-    await identifier.identify()
-
-    expect(automation.matched.value).toBeNull()
-    expect(automation.verdict.value?.value).toBeNull()
-    expect(tor.matched.value).toBeNull()
-  })
 })
 
 // The server's answers, through the real client rather than a fake result:
 // mapping them is exactly what is under test.
 const OLD_TRIGGER = { signal: 'automation', group: 'bot', weight: 9, confidence: 'high', reason: 'cdp-artifacts-1' }
 const PUBLIC_ANSWERS = [
-  ['score and no triggers', { suspect_score: 7, suspect_level: 'low' }, 7, 'low', false, 0],
-  ['neither score nor triggers', {}, null, null, null, 0],
-  ['an old shape with triggers', { suspect_score: 22, suspect_level: 'medium', triggers: [OLD_TRIGGER] }, 22, 'medium', true, 1],
+  ['a score', { suspect_score: 7, suspect_level: 'low' }, 7, 'low', false],
+  ['no score', {}, null, null, null],
+  ['a proxy passing signals through', { suspect_score: 22, suspect_level: 'medium', triggers: [OLD_TRIGGER] }, 22, 'medium', true],
 ] as const
 
 async function answering(answer: Record<string, unknown>) {
@@ -566,11 +508,10 @@ async function answering(answer: Record<string, unknown>) {
 }
 
 describe('a public response', () => {
-  it.each(PUBLIC_ANSWERS)('%s: absent stays null and verdicts report nothing', async (_name, answer, score, level, suspicious, triggers) => {
+  it.each(PUBLIC_ANSWERS)('%s: absent stays null and no signal is surfaced', async (_name, answer, score, level, suspicious) => {
     await answering(answer)
     const plugin = createFingerly({ apiKey: 'fly_pk_development_test', consent: 'granted' })
     const identifier = withSetup(() => useIdentify(), plugin).result
-    const automation = withSetup(() => useVerdict('automation'), plugin).result
 
     await identifier.identify()
 
@@ -579,10 +520,8 @@ describe('a public response', () => {
     expect(identifier.suspectScore.value).toBe(score)
     expect(identifier.suspectLevel.value).toBe(level)
     expect(identifier.isSuspicious.value).toBe(suspicious)
-    expect(identifier.triggers.value).toHaveLength(triggers)
-    expect(automation.verdict.value?.value).toBeNull()
-    expect(automation.matched.value).toBeNull()
-    expect(automation.reasons.value).toEqual([])
+    expect(identifier).not.toHaveProperty('triggers')
+    expect(identifier).not.toHaveProperty('verdicts')
   })
 })
 
