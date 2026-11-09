@@ -105,12 +105,6 @@ export { SDK_VERSION } from './version.js'
 // The native vocabulary. Exported from the kernel rather than from each mobile
 // package so that the types a React Native app sees and the types a Flutter
 // binding names are the same ones, from the same place.
-export type {
-  AndroidVerdicts,
-  IosVerdicts,
-  MobileVerdicts,
-  NativeIdentifyResult,
-  NativeVerdicts,
-} from './types.js'
+export type { NativeIdentifyResult } from './types.js'
 
 export type * from './types.js'
