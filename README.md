@@ -89,18 +89,17 @@ repo relates to `server` and `panels`.
   One shared identification per app, readonly reactive state, SSR-safe.
 - `client/web/{react,svelte,angular,nuxt,next}`: implemented framework bindings,
   built on `web-js`/`vue`/`react`.
-- `client/mobile/ios`: the native iOS SDK (Swift). Implemented; see its
-  [README](client/mobile/ios/README.md). Ships an SPM package and a podspec: React
-  Native integrates through CocoaPods, while Flutter supports both CocoaPods
+- `client/mobile/ios`: the native iOS SDK (Swift), a private source repository.
+  Customers get the compiled framework as the Swift package
+  [sdk-ios](https://github.com/fingerly-io/sdk-ios); React Native and Lynx download the
+  same XCFramework during `pod install`, while Flutter supports both CocoaPods
   and Swift Package Manager.
-- `client/mobile/android`: the native Android SDK (Kotlin). Implemented; see its
-  [README](client/mobile/android/README.md). One dependency (coroutines), no JNI, and
-  two install-time permissions that prompt nobody. Publishes an AAR as
-  `io.fingerly:fingerly`, which is what the three bridges depend on. Both native
-  SDKs are closed binaries under the Fingerly SDK License, distributed from
-  `https://maven.fingerly.io` (the Android Maven repository, with the iOS artifact
-  under `/ios/`). That host is not live yet; contributors can use
-  `publishToMavenLocal` for Android.
+- `client/mobile/android`: the native Android SDK (Kotlin), a private source repository.
+  One dependency (coroutines), no JNI, and two install-time permissions that prompt
+  nobody. Publishes an AAR as `io.fingerly:fingerly`, which is what the three bridges
+  depend on. Both native SDKs are closed binaries under the Fingerly SDK License,
+  distributed from `https://maven.fingerly.io` (the Android Maven repository, with the
+  iOS artifact under `/ios/`).
 - `client/mobile/react-native`, `client/mobile/flutter`, `client/mobile/lynx`: standalone bridges to the native SDKs, not
   second implementations, and open source under Apache-2.0. All three are thin on purpose: almost every signal worth
   having on a phone is unreachable from JavaScript or Dart, so a cross-platform
@@ -113,11 +112,13 @@ repo relates to `server` and `panels`.
 
 ## Development
 
-Clone recursively so the native SDKs, bridges, and shared contracts are present:
+Clone and fetch the submodules the JavaScript workspace needs. The native SDK sources
+are private, so a full recursive clone only works with access to them:
 
 ```
-git clone --recurse-submodules git@github.com:fingerly-io/sdks.git
-git submodule update --init --recursive
+git clone https://github.com/fingerly-io/sdks.git
+cd sdks
+git submodule update --init -- client/web/types server/node client/mobile/react-native client/mobile/lynx
 ```
 
 ```

@@ -1,0 +1,90 @@
+# Publishes every npm package in this workspace whose version is not on the
+# registry yet, in dependency order. A push that changes no version does nothing.
+#
+# Only the four submodules that hold npm packages are initialised, over
+# anonymous HTTPS. The native SDK repositories stay private and are not needed.
+name: Release
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-npm
+  cancel-in-progress: false
+
+env:
+  GIT_TERMINAL_PROMPT: "0"
+
+jobs:
+  check:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      packages: ${{ steps.plan.outputs.packages }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Fetch the package submodules
+        run: git submodule update --init --depth 1 -- client/web/types server/node client/mobile/react-native client/mobile/lynx
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - id: plan
+        name: Find the versions not yet released
+        run: node scripts/release-npm.mjs plan
+
+  publish:
+    needs: check
+    if: needs.check.outputs.packages != '[]'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+    env:
+      PACKAGES: ${{ needs.check.outputs.packages }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Fetch the package submodules
+        run: git submodule update --init --depth 1 -- client/web/types server/node client/mobile/react-native client/mobile/lynx
+      - uses: pnpm/action-setup@41ff72655975bd51cab0327fa583b6e92b6d3061 # v4.2.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - run: pnpm install --frozen-lockfile
+      - name: Check duplicated version constants
+        run: node scripts/release-npm.mjs constants
+      # The root .npmrc sets ignore-scripts, so `prepack` never runs and every
+      # package has to be built before it is packed.
+      - run: pnpm build
+      - run: pnpm lint
+      - run: pnpm test
+      - name: Node SDK package checks
+        run: |
+          pnpm --filter @fingerly/node format:check
+          pnpm --filter @fingerly/node contract:check
+          pnpm --filter @fingerly/node test:package
+      - run: pnpm check:packs
+      - name: Pack and inspect the tarballs
+        run: node scripts/release-npm.mjs pack release-artifacts
+      - name: Install npm with trusted publishing support
+        run: npm install --global npm@11.19.0
+      - id: publish
+        name: Publish to npm
+        run: node scripts/release-npm.mjs publish release-artifacts
+      # Separate from the publish step so the token never reaches npm, and runs
+      # after a partial failure so what did publish is still tagged.
+      - name: Tag and create GitHub Releases
+        if: ${{ !cancelled() && hashFiles('release-artifacts/published.txt') != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release-npm.mjs tag release-artifacts

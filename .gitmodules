@@ -1,45 +1,45 @@
 [submodule "mobile/ios"]
 	path = client/mobile/ios
-	url = git@github.com:fingerly-io/sdk-ios.git
+	url = https://github.com/fingerly-io/sdk-ios-binary.git
 [submodule "mobile/android"]
 	path = client/mobile/android
-	url = git@github.com:fingerly-io/sdk-android.git
+	url = https://github.com/fingerly-io/sdk-android-binary.git
 [submodule "mobile/flutter"]
 	path = client/mobile/flutter
-	url = git@github.com:fingerly-io/sdk-flutter.git
+	url = https://github.com/fingerly-io/sdk-flutter.git
 [submodule "packages/types"]
 	path = client/web/types
-	url = git@github.com:fingerly-io/sdk-types.git
+	url = https://github.com/fingerly-io/sdk-types.git
 [submodule "mobile/react-native"]
 	path = client/mobile/react-native
-	url = git@github.com:fingerly-io/sdk-react-native.git
+	url = https://github.com/fingerly-io/sdk-react-native.git
 [submodule "mobile/lynx"]
 	path = client/mobile/lynx
-	url = git@github.com:fingerly-io/sdk-lynx.git
+	url = https://github.com/fingerly-io/sdk-lynx.git
 [submodule "proxies/cloudflare"]
 	path = proxies/cloudflare
-	url = git@github.com:fingerly-io/cloudflare-worker-proxy.git
+	url = https://github.com/fingerly-io/cloudflare-worker-proxy.git
 [submodule "server/node"]
 	path = server/node
-	url = git@github.com:fingerly-io/sdk-node.git
+	url = https://github.com/fingerly-io/sdk-node.git
 [submodule "server/python"]
 	path = server/python
-	url = git@github.com:fingerly-io/sdk-python.git
+	url = https://github.com/fingerly-io/sdk-python.git
 [submodule "server/go"]
 	path = server/go
-	url = git@github.com:fingerly-io/fingerly-go.git
+	url = https://github.com/fingerly-io/fingerly-go.git
 [submodule "server/java"]
 	path = server/java
-	url = git@github.com:fingerly-io/sdk-java.git
+	url = https://github.com/fingerly-io/sdk-java.git
 [submodule "server/dotnet"]
 	path = server/dotnet
-	url = git@github.com:fingerly-io/sdk-dotnet.git
+	url = https://github.com/fingerly-io/sdk-dotnet.git
 [submodule "server/ruby"]
 	path = server/ruby
-	url = git@github.com:fingerly-io/sdk-ruby.git
+	url = https://github.com/fingerly-io/sdk-ruby.git
 [submodule "server/rust"]
 	path = server/rust
-	url = git@github.com:fingerly-io/sdk-rust.git
+	url = https://github.com/fingerly-io/sdk-rust.git
 [submodule "server/php"]
 	path = server/php
-	url = git@github.com:fingerly-io/sdk-php.git
+	url = https://github.com/fingerly-io/sdk-php.git

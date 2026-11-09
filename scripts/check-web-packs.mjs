@@ -4,9 +4,9 @@
 // for a customer: a `workspace:` range left in its dependencies, a source map,
 // TypeScript source, tests, or a missing LICENSE or README.
 //
-// `npm pack` and `npm publish` do not rewrite `workspace:` ranges. Publish
-// these packages with `pnpm publish` only; this check is what proves the
-// result.
+// `npm pack` does not rewrite `workspace:` ranges, so a tarball for npm has to
+// come from `pnpm pack` (see scripts/release-npm.mjs); this check is what proves
+// the result.
 //
 //   node scripts/check-web-packs.mjs
 import { execFileSync } from 'node:child_process'
