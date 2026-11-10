@@ -32,10 +32,9 @@ import {
 export interface FingerlyVueOptions {
   /** The SDK key from the dashboard. A public key is safe in a page. */
   apiKey: string
-  /** Origin of the API. Defaults to production. */
   /** API route version. Defaults to v1. */
   apiVersion?: string
-  endpoint?: string
+  /** Ordered first-party ingestion endpoints. */
   endpoints?: string | readonly string[]
   fallbackToDefaultEndpoint?: boolean
   /**
@@ -68,12 +67,6 @@ export interface FingerlyState {
   identifiable: ShallowRef<boolean>
   duplicate: ShallowRef<boolean>
   state: ShallowRef<string | null>
-  /**
-   * @deprecated Always `null`. A browser is no longer told why a check went
-   * unscored; your backend reads `reason` on the server-side event read, by
-   * `requestId`. Kept so code written against 0.1.0 still compiles.
-   */
-  reason: ShallowRef<string | null>
   suspectScore: ShallowRef<number | null>
   suspectLevel: ShallowRef<string | null>
   report: ShallowRef<SignalReport | null>
@@ -158,7 +151,6 @@ function createState(consent: ConsentState): FingerlyState {
     identifiable: shallowRef(false),
     duplicate: shallowRef(false),
     state: shallowRef<string | null>(null),
-    reason: shallowRef<string | null>(null),
     suspectScore: shallowRef<number | null>(null),
     suspectLevel: shallowRef<string | null>(null),
     report: shallowRef<SignalReport | null>(null),
@@ -202,7 +194,6 @@ export function createFingerly(options: FingerlyVueOptions): Plugin {
     // here would escape every caller's .catch and fail the app's mount.
     clientPromise ??= Promise.resolve().then(() => load({
       apiKey: options.apiKey,
-      ...(options.endpoint === undefined ? {} : { endpoint: options.endpoint }),
       ...(options.apiVersion === undefined ? {} : { apiVersion: options.apiVersion }),
       ...(options.endpoints === undefined ? {} : { endpoints: options.endpoints }),
       ...(options.fallbackToDefaultEndpoint === undefined ? {} : { fallbackToDefaultEndpoint: options.fallbackToDefaultEndpoint }),
@@ -321,8 +312,6 @@ export type ReadonlyState = {
   identifiable: Readonly<ShallowRef<boolean>>
   duplicate: Readonly<ShallowRef<boolean>>
   state: Readonly<ShallowRef<string | null>>
-  /** @deprecated Always `null`; see [[FingerlyState.reason]]. */
-  reason: Readonly<ShallowRef<string | null>>
   suspectScore: Readonly<ShallowRef<number | null>>
   suspectLevel: Readonly<ShallowRef<string | null>>
   report: Readonly<ShallowRef<DeepReadonly<SignalReport> | null>>
@@ -340,7 +329,6 @@ export function toReadonly(state: FingerlyState): ReadonlyState {
     identifiable: readonly(state.identifiable),
     duplicate: readonly(state.duplicate),
     state: readonly(state.state),
-    reason: readonly(state.reason),
     suspectScore: readonly(state.suspectScore),
     suspectLevel: readonly(state.suspectLevel),
     report: readonly(state.report) as ReadonlyState['report'],

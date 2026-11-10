@@ -105,12 +105,12 @@ describe('provideFingerly', () => {
   })
 
   it('passes the endpoint through, and omits it when unset', async () => {
-    application({ apiKey: 'fly_pk_development_test', consent: 'granted', endpoint: 'http://localhost:8099' })
+    application({ apiKey: 'fly_pk_development_test', consent: 'granted', endpoints: 'http://localhost:8099' })
     const fingerly = TestBed.runInInjectionContext(() => injectFingerly())
 
     await fingerly.identify()
 
-    expect(loadMock).toHaveBeenCalledWith({ apiKey: 'fly_pk_development_test', endpoint: 'http://localhost:8099', consent: 'granted' })
+    expect(loadMock).toHaveBeenCalledWith({ apiKey: 'fly_pk_development_test', endpoints: 'http://localhost:8099', consent: 'granted' })
   })
 
   it('builds the state once for the whole application', async () => {
@@ -176,16 +176,14 @@ describe('injectIdentify', () => {
     expect(fingerly.suspectLevel()).toBe('medium')
     expect(fingerly).not.toHaveProperty('triggers')
     expect(fingerly).not.toHaveProperty('verdicts')
-    // A 0.1.1 result has no reason at all. The deprecated field is null, not
-    // undefined, so it still matches its type.
-    expect(fingerly.reason()).toBeNull()
+    expect(fingerly).not.toHaveProperty('reason')
   })
 
   it('never surfaces why a check went unscored, which only a backend is told', async () => {
     identifyMock.mockResolvedValueOnce({
       ...RESULT,
       state: 'unavailable',
-      // As an older core passed it on. The binding does not.
+      // As a custom transport might pass it on. The binding does not.
       reason: 'ip-database-not-loaded',
       suspectScore: null,
       suspectLevel: null,
@@ -196,7 +194,7 @@ describe('injectIdentify', () => {
     await render()
 
     expect(fingerly.state()).toBe('unavailable')
-    expect(fingerly.reason()).toBeNull()
+    expect(fingerly).not.toHaveProperty('reason')
   })
 
   it('reads isSuspicious from the server level', async () => {

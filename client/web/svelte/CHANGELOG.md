@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2
+
+- The `endpoint` option and the `reason` field are gone; use `endpoints`.
+- Uses @fingerly/web-js 0.1.2.
+
 ## 0.1.1
 
 - `isSuspicious` comes from the server's `suspectLevel`: `true` for `medium` or `high`, `false` for `low`, `null` when the level is absent (before identification, `submit: false`, unscored, or hidden by the SDK key), never `false`. It is typed `boolean | null`.

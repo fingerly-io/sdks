@@ -232,7 +232,6 @@ const {
   identifiable,      // boolean:              false when the signals were too thin
   duplicate,         // boolean:              answered before; this is the first answer
   state,             // string | null:        the server's disposition
-  reason,            // string | null:        always null (deprecated); your backend reads it on the event
   suspectScore,      // number | null:        null when nothing scored it
   suspectLevel,      // string | null:        low, medium, high
   report,            // SignalReport | null:  every source, with status and timing

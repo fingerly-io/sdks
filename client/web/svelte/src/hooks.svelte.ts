@@ -114,9 +114,6 @@ export function useIdentify(options: UseIdentifyOptions = {}): Fingerly {
     get state() {
       return fingerly.state
     },
-    get reason() {
-      return fingerly.reason
-    },
     get suspectScore() {
       return fingerly.suspectScore
     },

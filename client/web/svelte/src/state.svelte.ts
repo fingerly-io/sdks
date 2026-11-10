@@ -28,10 +28,9 @@ import {
 export interface FingerlyOptions {
   /** The SDK key from the dashboard. A public key is safe in a page. */
   apiKey: string
-  /** Origin of the API. Defaults to production. */
   /** API route version. Defaults to v1. */
   apiVersion?: string
-  endpoint?: string
+  /** Ordered first-party ingestion endpoints. */
   endpoints?: string | readonly string[]
   fallbackToDefaultEndpoint?: boolean
   /**
@@ -74,12 +73,6 @@ export interface Fingerly {
   readonly duplicate: boolean
   /** The server's disposition of the check. */
   readonly state: string | null
-  /**
-   * @deprecated Always `null`. A browser is no longer told why a check went
-   * unscored; your backend reads `reason` on the server-side event read, by
-   * `requestId`. Kept so code written against 0.1.0 still compiles.
-   */
-  readonly reason: string | null
   /**
    * The server's score, 0-100, or null when it did not score.
    *
@@ -198,7 +191,6 @@ export function createFingerly(options: FingerlyOptions): Fingerly {
     // here would escape every caller's .catch and leave isLoading stuck.
     clientPromise ??= Promise.resolve().then(() => load({
       apiKey: options.apiKey,
-      ...(options.endpoint === undefined ? {} : { endpoint: options.endpoint }),
       ...(options.apiVersion === undefined ? {} : { apiVersion: options.apiVersion }),
       ...(options.endpoints === undefined ? {} : { endpoints: options.endpoints }),
       ...(options.fallbackToDefaultEndpoint === undefined ? {} : { fallbackToDefaultEndpoint: options.fallbackToDefaultEndpoint }),
@@ -315,10 +307,6 @@ export function createFingerly(options: FingerlyOptions): Fingerly {
     },
     get state() {
       return checkState
-    },
-    get reason() {
-      // Deprecated: the server no longer tells a browser. See the interface.
-      return null
     },
     get suspectScore() {
       return suspectScore

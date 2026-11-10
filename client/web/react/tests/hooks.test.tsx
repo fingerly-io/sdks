@@ -167,14 +167,14 @@ describe('FingerlyProvider', () => {
   it('passes the endpoint through, and omits it when unset', async () => {
     const { latest, element } = probe(() => useIdentify())
     render(
-      <FingerlyProvider apiKey="fly_pk_development_test" consent="granted" endpoint="http://localhost:8099">
+      <FingerlyProvider apiKey="fly_pk_development_test" consent="granted" endpoints="http://localhost:8099">
         {element}
       </FingerlyProvider>,
     )
 
     await act(() => latest().identify())
 
-    expect(loadMock).toHaveBeenCalledWith({ apiKey: 'fly_pk_development_test', endpoint: 'http://localhost:8099', consent: 'granted' })
+    expect(loadMock).toHaveBeenCalledWith({ apiKey: 'fly_pk_development_test', endpoints: 'http://localhost:8099', consent: 'granted' })
   })
 
   it('survives a parent re-render without rebuilding the store', async () => {
@@ -267,16 +267,14 @@ describe('useIdentify', () => {
     expect(latest().suspectLevel).toBe('medium')
     expect(latest()).not.toHaveProperty('triggers')
     expect(latest()).not.toHaveProperty('verdicts')
-    // A 0.1.1 result has no reason at all. The deprecated field is null, not
-    // undefined, so it still matches its type.
-    expect(latest().reason).toBeNull()
+    expect(latest()).not.toHaveProperty('reason')
   })
 
   it('never surfaces why a check went unscored, which only a backend is told', async () => {
     identifyMock.mockResolvedValueOnce({
       ...RESULT,
       state: 'unavailable',
-      // As an older core passed it on. The binding does not.
+      // As a custom transport might pass it on. The binding does not.
       reason: 'ip-database-not-loaded',
       suspectScore: null,
       suspectLevel: null,
@@ -288,7 +286,7 @@ describe('useIdentify', () => {
     })
 
     expect(latest().state).toBe('unavailable')
-    expect(latest().reason).toBeNull()
+    expect(latest()).not.toHaveProperty('reason')
   })
 
   it('reports an unscored check as null, not zero', async () => {
