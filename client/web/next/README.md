@@ -28,7 +28,7 @@ the browser through the RSC payload, which is where a public SDK key was
 always going to end up.
 
 The provider will also read `NEXT_PUBLIC_FINGERLY_API_KEY` and
-`NEXT_PUBLIC_FINGERLY_ENDPOINT` itself, but that path has a condition on it:
+`NEXT_PUBLIC_FINGERLY_ENDPOINTS` itself, but that path has a condition on it:
 Next inlines `NEXT_PUBLIC_` variables **while compiling**, and it does not
 compile your dependencies. In a published build the read survives as a
 `process.env` lookup, and in a browser there is no `process`. The server

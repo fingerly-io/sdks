@@ -19,10 +19,8 @@ declare const process: { env: Record<string, string | undefined> } | undefined
 export interface FingerlyNextProviderProps {
   /** Overrides `NEXT_PUBLIC_FINGERLY_API_KEY`. */
   apiKey?: string
-  /** Overrides `NEXT_PUBLIC_FINGERLY_ENDPOINT`. Defaults to production. */
   /** API route version. Defaults to v1. */
   apiVersion?: string
-  endpoint?: string
   /** Ordered first-party endpoints; overrides NEXT_PUBLIC_FINGERLY_ENDPOINTS. */
   endpoints?: string | readonly string[]
   /** Opt into the Fingerly API after custom endpoints fail. */
@@ -50,7 +48,7 @@ export interface FingerlyNextProviderProps {
  * that works locally, where the server render finds a real `process`, and is
  * empty in production the moment hydration takes over.
  */
-function fromEnvironment(): { apiKey?: string; endpoint?: string; endpoints?: string[] } {
+function fromEnvironment(): { apiKey?: string; endpoints?: string[] } {
   // Written out in full, twice, and not hoisted into a variable. Next replaces
   // the *exact* member expression `process.env.NEXT_PUBLIC_…` while bundling;
   // `const env = process.env` followed by `env.NEXT_PUBLIC_…` is a dynamic
@@ -62,15 +60,12 @@ function fromEnvironment(): { apiKey?: string; endpoint?: string; endpoints?: st
   // hydration threw "No Fingerly key", so the page rendered and then died.
   const apiKey =
     typeof process === 'undefined' ? undefined : process.env.NEXT_PUBLIC_FINGERLY_API_KEY
-  const endpoint =
-    typeof process === 'undefined' ? undefined : process.env.NEXT_PUBLIC_FINGERLY_ENDPOINT
   const endpointsRaw =
     typeof process === 'undefined' ? undefined : process.env.NEXT_PUBLIC_FINGERLY_ENDPOINTS
   const endpoints = endpointsRaw ? parsedEndpoints(endpointsRaw) : undefined
 
   return {
     ...(apiKey === undefined || apiKey === '' ? {} : { apiKey }),
-    ...(endpoint === undefined || endpoint === '' ? {} : { endpoint }),
     ...(endpoints === undefined ? {} : { endpoints }),
   }
 }
@@ -132,7 +127,6 @@ export function FingerlyProvider(props: FingerlyNextProviderProps): ReactNode {
   const environment = fromEnvironment()
   const apiKey = props.apiKey ?? environment.apiKey
   const endpoints = props.endpoints ?? environment.endpoints
-  const endpoint = endpoints === undefined ? (props.endpoint ?? environment.endpoint) : undefined
 
   if (!apiKey && !reportedMissingKey) {
     // Reported, not thrown: a missing fraud-signal key must not take the
@@ -153,7 +147,6 @@ export function FingerlyProvider(props: FingerlyNextProviderProps): ReactNode {
   return (
     <ReactFingerlyProvider
       apiKey={apiKey ?? ''}
-      {...(endpoint === undefined ? {} : { endpoint })}
       {...(props.apiVersion === undefined ? {} : { apiVersion: props.apiVersion })}
       {...(endpoints === undefined ? {} : { endpoints })}
       {...(props.fallbackToDefaultEndpoint === undefined ? {} : { fallbackToDefaultEndpoint: props.fallbackToDefaultEndpoint })}

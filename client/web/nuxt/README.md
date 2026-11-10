@@ -43,9 +43,7 @@ whenever a request carries an `Origin`.
 The module also publishes `fingerly.endpoints`, `fingerly.submit` and
 `fingerly.consent`, overridable the same way with
 `NUXT_PUBLIC_FINGERLY_ENDPOINTS` (a JSON array, such as `'["/k7x2qm4a"]'`),
-`NUXT_PUBLIC_FINGERLY_SUBMIT` and `NUXT_PUBLIC_FINGERLY_CONSENT`. The older
-single `endpoint` and `NUXT_PUBLIC_FINGERLY_ENDPOINT` still work, and are
-ignored whenever `endpoints` is set.
+`NUXT_PUBLIC_FINGERLY_SUBMIT` and `NUXT_PUBLIC_FINGERLY_CONSENT`.
 
 ### Serve it from your own site
 

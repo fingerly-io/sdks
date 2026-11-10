@@ -36,7 +36,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           apiKey={process.env.FINGERLY_API_KEY ?? process.env.NEXT_PUBLIC_FINGERLY_API_KEY}
           {...(process.env.FINGERLY_ENDPOINT === undefined
             ? {}
-            : { endpoint: process.env.FINGERLY_ENDPOINT })}
+            : { endpoints: process.env.FINGERLY_ENDPOINT })}
           submit={process.env.FINGERLY_SUBMIT === 'true'}
         >
           {children}

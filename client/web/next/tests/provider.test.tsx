@@ -101,25 +101,6 @@ describe('FingerlyProvider', () => {
     expect(loadMock).toHaveBeenCalledWith({ apiKey: 'pk_from_env', consent: 'granted' })
   })
 
-  it('takes the endpoint from the environment too', async () => {
-    environment.NEXT_PUBLIC_FINGERLY_API_KEY = 'pk_from_env'
-    environment.NEXT_PUBLIC_FINGERLY_ENDPOINT = 'https://fingerly.internal'
-
-    await act(async () => {
-      render(
-        <FingerlyProvider consent="granted">
-          <FingerlyRequestId />
-        </FingerlyProvider>,
-      )
-    })
-
-    expect(loadMock).toHaveBeenCalledWith({
-      apiKey: 'pk_from_env',
-      endpoint: 'https://fingerly.internal',
-      consent: 'granted',
-    })
-  })
-
   it('lets a prop override the environment', async () => {
     environment.NEXT_PUBLIC_FINGERLY_API_KEY = 'pk_from_env'
 
@@ -222,7 +203,7 @@ describe('the environment read', () => {
     const source = await readFile('src/provider.tsx', 'utf8')
 
     expect(source).toContain('process.env.NEXT_PUBLIC_FINGERLY_API_KEY')
-    expect(source).toContain('process.env.NEXT_PUBLIC_FINGERLY_ENDPOINT')
+    expect(source).toContain('process.env.NEXT_PUBLIC_FINGERLY_ENDPOINTS')
     // No hoisting: `= process.env` followed by a property read is the shape
     // that survives the build and breaks in the browser.
     expect(source).not.toMatch(/=\s*process\.env\s*[;\n]/)

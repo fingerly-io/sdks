@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2
+
+- The `fingerly.endpoint` option and `NUXT_PUBLIC_FINGERLY_ENDPOINT` are gone; use `fingerly.endpoints` or `NUXT_PUBLIC_FINGERLY_ENDPOINTS`. There is no `reason` ref.
+- Uses @fingerly/vue 0.1.2.
+
 ## 0.1.1
 
 - From `@fingerly/vue` 0.1.1: `isSuspicious` comes from the server's `suspectLevel` and is `null` when the level is absent; `useVerdict()`, `verdicts` and `triggers` are removed, and `useVerdict` is no longer auto-imported. Read signals on your backend.

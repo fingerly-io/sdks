@@ -37,12 +37,6 @@ export function toVueOptions(config: Partial<FingerlyPublicConfig> | undefined):
   return {
     apiKey,
     ...(config?.apiVersion === undefined || config.apiVersion === '' ? {} : { apiVersion: config.apiVersion }),
-    // `endpoints` wins over the deprecated `endpoint`: the SDK refuses both at
-    // once, and NUXT_PUBLIC_FINGERLY_ENDPOINT beside `fingerly.endpoints` in
-    // nuxt.config.ts is an ordinary way to end up with both.
-    ...(config?.endpoint === undefined || config.endpoint === '' || (config.endpoints?.length ?? 0) > 0
-      ? {}
-      : { endpoint: config.endpoint }),
     ...(config?.endpoints === undefined || config.endpoints.length === 0
       ? {}
       : { endpoints: config.endpoints }),

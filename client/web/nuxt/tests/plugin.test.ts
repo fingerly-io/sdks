@@ -90,7 +90,7 @@ describe('the runtime plugin', () => {
 
   it('builds the client from the runtime config', async () => {
     __setRuntimeConfig({
-      fingerly: { apiKey: 'pk_runtime', endpoint: 'https://fingerly.internal', consent: 'granted' },
+      fingerly: { apiKey: 'pk_runtime', endpoints: ['/k7x2qm4a'], consent: 'granted' },
     })
 
     const { identify } = mountWithPlugin(() => useIdentify())
@@ -98,7 +98,7 @@ describe('the runtime plugin', () => {
 
     expect(loadMock).toHaveBeenCalledWith({
       apiKey: 'pk_runtime',
-      endpoint: 'https://fingerly.internal',
+      endpoints: ['/k7x2qm4a'],
       consent: 'granted',
     })
   })
@@ -183,19 +183,6 @@ describe('the runtime plugin', () => {
     // And the failure lands where somebody is looking for it.
     loadMock.mockRejectedValue(new Error('An SDK key is required to submit a fingerprint'))
     await expect(identify()).rejects.toThrow(/SDK key is required/)
-  })
-
-  it('prefers endpoints when the environment also sets the deprecated endpoint', async () => {
-    // fingerly.endpoints in nuxt.config.ts plus NUXT_PUBLIC_FINGERLY_ENDPOINT
-    // used to reach the SDK as both, which it refuses.
-    __setRuntimeConfig({
-      fingerly: { apiKey: 'pk_runtime', endpoint: '/from-env', endpoints: ['/k7x2qm4a'], consent: 'granted' },
-    })
-
-    const { identify } = mountWithPlugin(() => useIdentify())
-    await identify()
-
-    expect(loadMock).toHaveBeenCalledWith({ apiKey: 'pk_runtime', endpoints: ['/k7x2qm4a'], consent: 'granted' })
   })
 
   it('warns about a missing key once per process, not once per render', () => {

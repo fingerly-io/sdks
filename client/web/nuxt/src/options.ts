@@ -12,9 +12,9 @@ import type { ConsentState } from '@fingerly/vue'
 export interface ModuleOptions {
   /** The SDK key from the dashboard. A public key is safe in a page. */
   apiKey?: string
-  /** Origin of the API. Defaults to production. */
+  /** API route version. Defaults to v1. */
   apiVersion?: string
-  endpoint?: string
+  /** Ordered first-party ingestion endpoints, such as `['/k7x2qm4a']`. */
   endpoints?: string[]
   fallbackToDefaultEndpoint?: boolean
   /**
@@ -50,7 +50,6 @@ export interface ModuleOptions {
 export interface FingerlyPublicConfig {
   apiKey: string
   apiVersion: string
-  endpoint: string
   endpoints: string[]
   fallbackToDefaultEndpoint: boolean
   submit: boolean
@@ -81,7 +80,6 @@ export function resolvePublicConfig(
   return {
     apiKey: pick(existing?.apiKey, options.apiKey) ?? '',
     apiVersion: pick(existing?.apiVersion, options.apiVersion) ?? 'v1',
-    endpoint: pick(existing?.endpoint, options.endpoint) ?? '',
     endpoints: existing?.endpoints ?? options.endpoints ?? [],
     fallbackToDefaultEndpoint: existing?.fallbackToDefaultEndpoint ?? options.fallbackToDefaultEndpoint ?? false,
     submit: existing?.submit ?? options.submit ?? true,
