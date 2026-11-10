@@ -222,8 +222,6 @@ export interface HttpTransportOptions {
   apiVersion?: string
   /** The SDK key. A public key in a page, a secret key on a backend. */
   apiKey: string
-  /** @deprecated One custom endpoint. Use `endpoints`, which means the same. */
-  endpoint?: string
   /**
    * Ordered custom ingestion URLs, each posted to exactly as given: a
    * root-relative path such as `/k7x2qm4a` for a first-party proxy on the
@@ -351,13 +349,9 @@ export class HttpTransport implements Transport {
       throw new TransportError('An SDK key is required to submit a fingerprint')
     }
 
-    if (options.endpoint !== undefined && options.endpoints !== undefined) {
-      throw new TypeError('Pass endpoints or the deprecated endpoint option, not both')
-    }
-
     this.#apiKey = options.apiKey
     const apiVersion = validateApiVersion(options.apiVersion)
-    const configured = options.endpoints ?? options.endpoint
+    const configured = options.endpoints
     const listed = configured === undefined
       ? [defaultUrl(apiVersion)]
       : (Array.isArray(configured) ? [...configured] : [configured as string])

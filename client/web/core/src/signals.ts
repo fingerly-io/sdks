@@ -158,8 +158,6 @@ export interface EngineSignal {
   observed?: string
   /** What the user-agent says. Compared against `observed`, never trusted. */
   claimed?: string
-  /** @deprecated Not sent since 0.1.1. The server compares the two itself. */
-  agrees?: boolean
 }
 
 /**
@@ -658,8 +656,6 @@ export interface PermissionsSignal {
   /** `Notification.permission`. The server compares it with `notification` above. */
   notification_legacy?: string
   geolocation?: string
-  /** @deprecated Not sent since 0.1.1. The server compares the two readings itself. */
-  inconsistent?: boolean
 }
 
 /**

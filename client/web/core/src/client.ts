@@ -38,8 +38,6 @@ export interface FingerlyClientOptions {
   apiVersion?: string
   /** The SDK key, from the dashboard. A public key is safe in a page. */
   apiKey: string
-  /** @deprecated One custom endpoint. Use `endpoints`, which means the same. */
-  endpoint?: string
   /**
    * Ordered first-party ingestion URLs, posted to exactly as given, such as
    * `/k7x2qm4a` for the proxy path the dashboard issued. See
@@ -128,7 +126,6 @@ export class FingerlyClient {
       new HttpTransport({
         ...(options.apiVersion === undefined ? {} : { apiVersion: options.apiVersion }),
         apiKey: options.apiKey,
-        ...(options.endpoint === undefined ? {} : { endpoint: options.endpoint }),
         ...(options.endpoints === undefined ? {} : { endpoints: options.endpoints }),
         ...(options.fallbackToDefaultEndpoint === undefined ? {} : { fallbackToDefaultEndpoint: options.fallbackToDefaultEndpoint }),
       })
@@ -308,8 +305,7 @@ export class FingerlyClient {
       duplicate: answer.duplicate ?? false,
       state: answer.state ?? '',
       // No `reason`. The server tells only a secret key why a submission went
-      // unscored; a browser's backend reads it on the event. The field stays,
-      // deprecated and undefined, so code written against 0.1.0 compiles.
+      // unscored; a browser's backend reads it on the event.
       // Null rather than zero when the server omitted it, unscored or hidden
       // alike. The server sends a real zero as zero, so the two survive the
       // wire; collapsing them here would undo that. The two are read apart so

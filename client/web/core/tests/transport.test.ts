@@ -42,7 +42,7 @@ describe('HttpTransport retry idempotency', () => {
     }) as typeof fetch
 
     const answer = await new HttpTransport({
-      apiKey: 'public-test-key', endpoint: 'https://example.test', maxAttempts: 2, fetchImpl,
+      apiKey: 'public-test-key', endpoints: 'https://example.test', maxAttempts: 2, fetchImpl,
     }).submit(value)
 
     expect(answer.request_id).toBe('request-retry')
@@ -63,7 +63,7 @@ describe('HttpTransport retry idempotency', () => {
       })
     }) as typeof fetch
     const transport = new HttpTransport({
-      apiKey: 'public-test-key', endpoint: 'https://example.test', fetchImpl,
+      apiKey: 'public-test-key', endpoints: 'https://example.test', fetchImpl,
     })
 
     await transport.submit(submission())
@@ -76,7 +76,7 @@ describe('HttpTransport retry idempotency', () => {
   it('does not retry a non-retryable response', async () => {
     const fetchImpl = vi.fn(async () => new Response('', { status: 422 })) as typeof fetch
     const transport = new HttpTransport({
-      apiKey: 'public-test-key', endpoint: 'https://example.test', maxAttempts: 3, fetchImpl,
+      apiKey: 'public-test-key', endpoints: 'https://example.test', maxAttempts: 3, fetchImpl,
     })
 
     await expect(transport.submit(submission())).rejects.toEqual(
@@ -91,7 +91,7 @@ describe('HttpTransport retry idempotency', () => {
       { status: 422, headers: { 'content-type': 'application/json' } },
     )
     const fetchImpl = vi.fn(async () => refused()) as typeof fetch
-    const transport = new HttpTransport({ apiKey: 'public-test-key', endpoint: 'https://example.test', fetchImpl })
+    const transport = new HttpTransport({ apiKey: 'public-test-key', endpoints: 'https://example.test', fetchImpl })
 
     await expect(transport.submit(submission())).rejects.toMatchObject({ status: 422, code: 'consent_required' })
     await expect(transport.submitSupplement('request-1', { ...submission(), token: 'continuation' }))
@@ -197,9 +197,8 @@ describe('HttpTransport retry idempotency', () => {
     expect(() => new HttpTransport({ apiKey: 'key', endpoints })).toThrow(TypeError)
   })
 
-  it('rejects an empty endpoint list and conflicting option spellings', () => {
+  it('rejects an empty endpoint list', () => {
     expect(() => new HttpTransport({ apiKey: 'key', endpoints: [] })).toThrow('must not be empty')
-    expect(() => new HttpTransport({ apiKey: 'key', endpoint: '/old', endpoints: '/new' })).toThrow('not both')
   })
 
   it('sends no supplement once its signal has been aborted', async () => {
@@ -209,7 +208,7 @@ describe('HttpTransport retry idempotency', () => {
     const controller = new AbortController()
     controller.abort()
 
-    await expect(new HttpTransport({ apiKey: 'key', endpoint: 'https://example.test', fetchImpl })
+    await expect(new HttpTransport({ apiKey: 'key', endpoints: 'https://example.test', fetchImpl })
       .submitSupplement('request-1', { ...submission(), token: 'continuation' }, controller.signal))
       .rejects.toBeInstanceOf(TransportError)
     expect(fetchImpl).not.toHaveBeenCalled()
@@ -247,7 +246,7 @@ describe('HttpTransport under rate limiting and bad answers', () => {
 
   it('returns a long Retry-After to the caller after one request instead of retrying', async () => {
     const fetchImpl = vi.fn(async () => limited('7')) as typeof fetch
-    const transport = new HttpTransport({ apiKey: 'public-test-key', endpoint: 'https://example.test', fetchImpl })
+    const transport = new HttpTransport({ apiKey: 'public-test-key', endpoints: 'https://example.test', fetchImpl })
 
     await expect(transport.submit(submission())).rejects.toMatchObject({ status: 429, retryable: true, retryAfterMs: 7000 })
     expect(fetchImpl).toHaveBeenCalledTimes(1)
@@ -261,7 +260,7 @@ describe('HttpTransport under rate limiting and bad answers', () => {
       sent.push(init ?? {})
       return sent.length === 1 ? limited('1') : ok()
     }) as typeof fetch
-    const transport = new HttpTransport({ apiKey: 'public-test-key', endpoint: 'https://example.test', fetchImpl })
+    const transport = new HttpTransport({ apiKey: 'public-test-key', endpoints: 'https://example.test', fetchImpl })
 
     const pending = transport.submit(submission())
     await vi.advanceTimersByTimeAsync(999)
@@ -276,7 +275,7 @@ describe('HttpTransport under rate limiting and bad answers', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.5)
     vi.useFakeTimers()
     const fetchImpl = vi.fn(async () => (fetchImpl.mock.calls.length === 1 ? limited('1') : ok())) as unknown as typeof fetch & { mock: { calls: unknown[] } }
-    const transport = new HttpTransport({ apiKey: 'public-test-key', endpoint: 'https://example.test', fetchImpl })
+    const transport = new HttpTransport({ apiKey: 'public-test-key', endpoints: 'https://example.test', fetchImpl })
 
     const pending = transport.submit(submission())
     await vi.advanceTimersByTimeAsync(1000)
@@ -289,7 +288,7 @@ describe('HttpTransport under rate limiting and bad answers', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0)
     vi.useFakeTimers()
     const fetchImpl = vi.fn(async () => limited('2')) as typeof fetch
-    const transport = new HttpTransport({ apiKey: 'public-test-key', endpoint: 'https://example.test', fetchImpl })
+    const transport = new HttpTransport({ apiKey: 'public-test-key', endpoints: 'https://example.test', fetchImpl })
     const controller = new AbortController()
 
     const pending = transport.submit(submission(), controller.signal).catch((e: unknown) => e)
@@ -304,7 +303,7 @@ describe('HttpTransport under rate limiting and bad answers', () => {
   it('reads Retry-After given as an HTTP date', async () => {
     const at = new Date(Date.now() + 60_000).toUTCString()
     const fetchImpl = vi.fn(async () => limited(at)) as typeof fetch
-    const transport = new HttpTransport({ apiKey: 'public-test-key', endpoint: 'https://example.test', fetchImpl })
+    const transport = new HttpTransport({ apiKey: 'public-test-key', endpoints: 'https://example.test', fetchImpl })
 
     const error = (await transport.submit(submission()).catch((e: unknown) => e)) as TransportError
     expect(error.retryAfterMs).toBeGreaterThan(50_000)
@@ -333,7 +332,7 @@ describe('HttpTransport under rate limiting and bad answers', () => {
 
   it('never retries a 2xx that is not JSON, and never quotes it', async () => {
     const fetchImpl = vi.fn(async () => new Response('<html>portal secret-token</html>', { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch
-    const transport = new HttpTransport({ apiKey: 'public-test-key', endpoint: 'https://example.test', fetchImpl })
+    const transport = new HttpTransport({ apiKey: 'public-test-key', endpoints: 'https://example.test', fetchImpl })
 
     const error = (await transport.submit(submission()).catch((e: unknown) => e)) as TransportError
     expect(error).toBeInstanceOf(TransportError)
@@ -344,7 +343,7 @@ describe('HttpTransport under rate limiting and bad answers', () => {
 
   it('refuses an answer over 4 MiB without reading it', async () => {
     const fetchImpl = vi.fn(async () => new Response('{}', { status: 200, headers: { 'content-length': String(5 * 1024 * 1024) } })) as typeof fetch
-    const transport = new HttpTransport({ apiKey: 'public-test-key', endpoint: 'https://example.test', fetchImpl })
+    const transport = new HttpTransport({ apiKey: 'public-test-key', endpoints: 'https://example.test', fetchImpl })
 
     await expect(transport.submit(submission())).rejects.toMatchObject({ retryable: false })
     expect(fetchImpl).toHaveBeenCalledTimes(1)
@@ -362,7 +361,7 @@ describe('HttpTransport under rate limiting and bad answers', () => {
       })
       return new Response(body, { status: 202 })
     }) as typeof fetch
-    const transport = new HttpTransport({ apiKey: 'public-test-key', endpoint: 'https://example.test', fetchImpl })
+    const transport = new HttpTransport({ apiKey: 'public-test-key', endpoints: 'https://example.test', fetchImpl })
 
     await transport.submitSupplement('request-1', { ...submission(), token: 'continuation' })
     expect(read).toBe(true)

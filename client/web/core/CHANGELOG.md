@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2
+
+- Custom ingestion URLs are configured with `endpoints` only; there is no `endpoint` option. The result has no `reason`, and the report types have no `engine.agrees` or `permissions.inconsistent`.
+- Uses @fingerly/types 0.1.2.
+
 ## 0.1.1
 
 Every decision moved to the server. This package collects and transports; it no longer scores, thresholds or concludes anything.

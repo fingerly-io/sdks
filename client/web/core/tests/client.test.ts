@@ -50,8 +50,8 @@ describe('FingerlyClient deferred collection', () => {
     expect(result.report.tiers).toEqual(['fast', 'deferred'])
     expect(await result.deferred).toEqual({ status: 'skipped', reason: 'not-submitted' })
     expect(transport.submit).not.toHaveBeenCalled()
-    // Nothing was submitted; the deferred status above says so, not `reason`.
-    expect(result.reason).toBeUndefined()
+    // Nothing was submitted; the deferred status above says so.
+    expect('reason' in result).toBe(false)
   })
 })
 
@@ -60,7 +60,8 @@ describe('FingerlyClient unscored answers', () => {
     const transport: Transport = {
       submit: vi.fn(async () => ({
         request_id: 'request-1', visitor_id: 'visitor-1', state: 'unavailable',
-        // An older server still sent it. It is not passed on.
+        // What a secret key is told. A transport that passes it on does not
+        // put it on the result.
         reason: 'ip-database-not-loaded',
       })),
     }
@@ -70,7 +71,6 @@ describe('FingerlyClient unscored answers', () => {
     }).identify({ tiers: ['fast'] })
     expect(result.state).toBe('unavailable')
     expect(result.suspectScore).toBeNull()
-    expect(result.reason).toBeUndefined()
     expect('reason' in result).toBe(false)
   })
 })
