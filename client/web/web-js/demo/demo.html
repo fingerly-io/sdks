@@ -606,7 +606,7 @@
             apiKey: settings.apiKey || 'unset',
             // Pressing run on this page is the visitor asking to be identified.
             consent: 'granted',
-            ...(settings.endpoint ? { endpoint: settings.endpoint } : {}),
+            ...(settings.endpoint ? { endpoints: settings.endpoint } : {}),
           })
 
           // One call, one answer. There is no second phase to wait for: the

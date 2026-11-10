@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2
+
+- `load()` takes custom ingestion URLs as `endpoints` only, and the result has no `reason`. See `@fingerly/core` 0.1.2.
+- Uses @fingerly/core 0.1.2.
+
 ## 0.1.1
 
 The SDK collects and sends; every decision moved to the server.

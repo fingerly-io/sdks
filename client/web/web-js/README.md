@@ -41,8 +41,8 @@ server, under the weights you set: `suspectLevel` is the band, and it is `null`
 when absent (unscored, or hidden by the SDK key), which is not a clean result.
 Send `requestId` to your server and read the signals and the full result there
 with a secret key (see the server SDKs), rather than trusting what the page
-reports: the page runs code the visitor controls and is no longer told which
-signals fired.
+reports: the page runs code the visitor controls and is not told which signals
+fired.
 
 ## Serve it from your own site
 

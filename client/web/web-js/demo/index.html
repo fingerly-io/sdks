@@ -128,10 +128,6 @@
           <div class="verdict">
             <span>engine observed</span><span>${esc(engine.observed ?? '—')}</span>
           </div>
-          <div class="verdict">
-            <span>agrees</span>
-            <span class="${engine.agrees === false}">${esc(engine.agrees ?? '—')}</span>
-          </div>
           <div class="verdict"><span>patched natives</span>
             <span class="${integrity.patched_natives.length > 0}">${integrity.patched_natives.length}</span>
           </div>
@@ -184,7 +180,7 @@
         try {
           // Pressing run on this page is the visitor asking to be identified.
           const options = { apiKey: $('apikey').value || 'demo', consent: 'granted' }
-          if ($('endpoint').value) options.endpoint = $('endpoint').value
+          if ($('endpoint').value) options.endpoints = $('endpoint').value
 
           // Xcode's simulator can be heavily throttled while the local Docker
           // stack is running. `?slow=1` is a probe-bench mode: give collection

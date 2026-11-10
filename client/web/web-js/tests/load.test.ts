@@ -13,10 +13,10 @@ describe('load()', () => {
     await expect(result).rejects.toBeInstanceOf(TransportError)
   })
 
-  it('rejects conflicting endpoint options the same way', async () => {
+  it('rejects a malformed endpoint the same way', async () => {
     let result: Promise<unknown> | undefined
     expect(() => {
-      result = load({ apiKey: 'fly_pk_development_test', endpoint: '/a', endpoints: '/b' })
+      result = load({ apiKey: 'fly_pk_development_test', endpoints: 'k7x2qm4a' })
     }).not.toThrow()
     await expect(result).rejects.toBeInstanceOf(TypeError)
   })
