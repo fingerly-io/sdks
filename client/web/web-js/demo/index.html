@@ -100,6 +100,13 @@
     <script src="../dist/browser.global.js"></script>
     <script>
       const $ = (id) => document.getElementById(id)
+      // Everything rendered below comes from the visitor's browser or a server
+      // response, so none of it may reach innerHTML unescaped.
+      const esc = (value) =>
+        String(value ?? '').replace(
+          /[&<>"']/g,
+          (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
+        )
 
       function renderAnswer(result) {
         const rows = [
@@ -108,7 +115,7 @@
           ['signals', 'read on your backend'],
         ]
         $('answer').innerHTML = rows
-          .map(([name, value]) => `<div class="verdict"><span>${name}</span><span>${value}</span></div>`)
+          .map(([name, value]) => `<div class="verdict"><span>${esc(name)}</span><span>${esc(value)}</span></div>`)
           .join('')
       }
 
@@ -116,25 +123,25 @@
         const engine = integrity.engine
         $('integrity').innerHTML = `
           <div class="verdict">
-            <span>engine claimed</span><span>${engine.claimed ?? '—'}</span>
+            <span>engine claimed</span><span>${esc(engine.claimed ?? '—')}</span>
           </div>
           <div class="verdict">
-            <span>engine observed</span><span>${engine.observed ?? '—'}</span>
+            <span>engine observed</span><span>${esc(engine.observed ?? '—')}</span>
           </div>
           <div class="verdict">
             <span>agrees</span>
-            <span class="${engine.agrees === false}">${engine.agrees ?? '—'}</span>
+            <span class="${engine.agrees === false}">${esc(engine.agrees ?? '—')}</span>
           </div>
           <div class="verdict"><span>patched natives</span>
             <span class="${integrity.patched_natives.length > 0}">${integrity.patched_natives.length}</span>
           </div>
-          ${integrity.patched_natives.length ? `<div class="reasons">${integrity.patched_natives.join('<br>')}</div>` : ''}
+          ${integrity.patched_natives.length ? `<div class="reasons">${integrity.patched_natives.map(esc).join('<br>')}</div>` : ''}
           <div class="verdict"><span>lies</span>
             <span class="${integrity.lies.length > 0}">${integrity.lies.length}</span></div>
           ${
             integrity.lies.length
               ? `<div class="reasons">${integrity.lies
-                  .map((l) => `${l.kind}: ${l.id}${l.detail ? ` (${l.detail})` : ''}`)
+                  .map((l) => esc(`${l.kind}: ${l.id}${l.detail ? ` (${l.detail})` : ''}`))
                   .join('<br>')}</div>`
               : ''
           }`
@@ -151,10 +158,10 @@
                   : String(o.value)
                 : (o.reason ?? '')
             return `<tr>
-              <td class="k">${id}</td>
-              <td class="st"><span class="tag ${o.status}">${o.status}</span></td>
-              <td class="ms">${o.ms}ms</td>
-              <td>${value.length > 200 ? value.slice(0, 200) + '…' : value}</td>
+              <td class="k">${esc(id)}</td>
+              <td class="st"><span class="tag ${esc(o.status)}">${esc(o.status)}</span></td>
+              <td class="ms">${esc(o.ms)}ms</td>
+              <td>${esc(value.length > 200 ? value.slice(0, 200) + '…' : value)}</td>
             </tr>`
           })
           .join('')
@@ -169,7 +176,7 @@
           Object.entries(counts)
             .map(([k, n]) => `<span class="stat ${k}">${k} <b>${n}</b></span>`)
             .join('') +
-          (requestId ? `<span class="stat">request_id <b>${requestId}</b></span>` : '')
+          (requestId ? `<span class="stat">request_id <b>${esc(requestId)}</b></span>` : '')
       }
 
       async function run(submit) {

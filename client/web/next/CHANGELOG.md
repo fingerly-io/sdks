@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.2
+
+- Depends on `@fingerly/node` 0.1.2, which stops Next.js freezing event reads at build time.
+
 ## 0.1.1
 
 - From `@fingerly/react` 0.1.1: `isSuspicious` comes from the server's `suspectLevel` and is `null` when the level is absent; `useVerdict()`, `verdicts` and `triggers` are removed. Read signals on your backend.
