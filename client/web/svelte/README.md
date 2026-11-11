@@ -11,6 +11,11 @@ and no `$` prefix at the call site.
 pnpm add @fingerly/svelte
 ```
 
+**Not for apps.** This binding runs the browser SDK, which collects nothing
+inside an app's web view (Capacitor, Cordova, Ionic, React Native WebView,
+`WKWebView`, Android `WebView`, Electron). Use the Fingerly iOS or Android SDK
+in an app; see [docs/privacy.md §3.3](../../../docs/privacy.md).
+
 ## Set it up
 
 ```svelte
@@ -20,7 +25,7 @@ pnpm add @fingerly/svelte
 
   let { children } = $props()
 
-  // consent: 'granted' only once you have consent (or another lawful basis)
+  // consent: 'granted' only once you have consent (or know none is required here; see docs/privacy.md §4)
   setupFingerly({ apiKey: 'fly_pk_production_…', endpoints: '/k7x2qm4a', consent: 'granted' })
 </script>
 

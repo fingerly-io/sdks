@@ -51,7 +51,7 @@ export interface FingerlyVueOptions {
    *
    * Leave it `pending` while identification waits on a consent banner, then
    * call [[FingerlyContext.setConsent]] when it is answered, or pass `granted`
-   * once you have consent (or another lawful basis). Until then nothing is
+   * once you have consent (or know none is required here; see docs/privacy.md §4). Until then nothing is
    * collected or sent: `useIdentify({ immediate: true })` waits, and a manual
    * `identify()` fails with a `ConsentError` in `error`.
    */

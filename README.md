@@ -207,8 +207,9 @@ an event records `attested`, `not_attested` or `failed`.
 import { load } from '@fingerly/web-js'
 
 // Consent defaults to 'pending', which collects and sends nothing. Pass
-// 'granted' only once you have consent (or another lawful basis), or load
-// with the default and call fingerly.setConsent('granted') from your consent tool.
+// 'granted' only once you have consent (or know none is required for this
+// visitor; see docs/privacy.md §4), or load with the default and call
+// fingerly.setConsent('granted') from your consent tool.
 const fingerly = await load({ apiKey: 'fly_pk_production_…', consent: 'granted' })
 const result = await fingerly.identify({ tag: 'checkout' })
 const { requestId, visitorId, suspectScore, suspectLevel } = result
@@ -254,10 +255,18 @@ and what an integrator has to do about consent.
 
 The part to know: **every SDK's `consent` defaults to `pending`**, which
 collects and sends nothing until the integrator calls `setConsent('granted')`
-(or loads with `granted` once they have consent or another lawful basis). Every
-submission carries `"consent": "granted"`, and the API refuses anything else
-with `422 consent_required`. Background in
+(or loads with `granted` once they have consent, or know none is required for
+that visitor; see docs/privacy.md §4). Every submission carries
+`"consent": "granted"`, and the API refuses anything else with
+`422 consent_required`. Background in
 [`server/docs/compliance/`](../server/docs/compliance/README.md).
+
+**The browser SDK is not for apps.** Do not embed `@fingerly/web-js` or a
+framework binding in an app's web view (iOS or macOS `WKWebView`, Android
+`WebView`, Capacitor, Cordova, Ionic, React Native WebView, Flutter, Electron);
+use the iOS or Android SDK, or the React Native, Flutter or Lynx bridge. Inside
+an app the browser SDK collects nothing and the server matches nothing
+([`docs/privacy.md`](docs/privacy.md) §3.3).
 
 ## The SDK never asks the visitor for anything
 
