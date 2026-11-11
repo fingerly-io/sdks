@@ -273,8 +273,8 @@ Neither changes what is collected or what we keep about visitors.
 
 | Added | Source | Note |
 |---|---|---|
-| IP address | The request, or a proxy that forwards it (§5) | Stored at full precision |
-| Continent, country, region, city, postal code, time zone, coordinates | Fingerly's own IP database, held on our own servers | Coordinates are stored rounded to one decimal place (about 11 km), a city's reference point rather than the device's position, so this is approximate (coarse) location for the store forms |
+| IP address | The request, or a proxy that forwards it (§5) | Used for the lookup and the request's checks, then not stored. What is kept is its network (an IPv4 /24 or IPv6 /40, returned as `ip_network`) and a keyed per-organisation digest that cannot be reversed without our key |
+| Continent, country, region, city, time zone, coordinates | Fingerly's own IP database, held on our own servers | City level at most: no postal code is kept, and the event keeps the city's reference point rounded to one decimal place (about 11 km), never the device's position, so this is approximate (coarse) location for the store forms. Event reads return the place without coordinates |
 | VPN, proxy, Tor, datacenter, relay and mobile classification; abuse and attack-source flags; ASN, network and organisation names | The same IP database | **Your visitors' IP addresses are not sent to any third party for this lookup.** The database is first-party, read from our own servers' disk, and refreshed daily |
 | Page origin, user agent, and your `tag` | The request | The user agent is also parsed into browser, OS and device type |
 | `visitor_id` | Minted by us | Never derived from a hash of the signals, never chosen by the client, and scoped to one organisation |
@@ -285,26 +285,29 @@ people, such as refusing a signup or blocking a transaction. Under GDPR Art. 22
 you may owe the person an explanation, and the per-event signal breakdown is
 what makes one possible.
 
-Every submission, with its signals exactly as sent, the IP lookup and the
-scoring report, is also kept in an archive for 90 days (§7).
+Every submission, with its signals (from the mobile SDKs, only the fields a
+scoring rule reads), a city-level IP answer and the scoring report, is also
+kept in an archive for 30 days (§7). The IP address is not archived.
 
 ## 7. Retention
 
 | Data | Kept |
 |---|---|
-| Events, including IP address and location | 30 days |
+| Events, including the IP network and location | 30 days |
 | Deferred report index | 30 days |
-| IP address per day, aggregated | 90 days |
-| Per-visitor daily aggregates, keyed by `visitor_id` | 400 days |
+| IP network per day, aggregated | 30 days |
+| Per-visitor daily aggregates, keyed by `visitor_id` | 180 days |
 | Aggregate analytics | 45 to 100 days in detail, 800 days as daily totals |
 | Short-term velocity state (hashed) | 8 days |
 | Device identity index | Until 180 days after the device was last seen, swept hourly |
 | Usage and billing records | About 3 years |
-| Full submission archive, including deferred reports | 90 days, deleted by the storage's own expiry rule |
+| Full submission archive, including deferred reports | 30 days, deleted by the storage's own expiry rule |
 
-The archive keeps each submission as it arrived, with the IP lookup and the
+The archive keeps each submission with its city-level IP answer and the
 scoring report, so the event store can be rebuilt; it is not readable through
-the dashboard or the API.
+the dashboard, and the server API returns only an allow-listed summary of it
+(score, triggers, network, place, attestation), never the signals or the
+deferred report.
 
 ## 8. What we do not do
 
