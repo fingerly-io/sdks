@@ -6,7 +6,9 @@ contract the Android, iOS and server work builds against in parallel.
 Rule: a client collects and sends. No client holds a weight, a threshold, a verdict, a confidence or a
 fraud conclusion. Everything in section 8 runs on the server and only there.
 
-Native SDKs and bridges are unpublished, so nothing here needs backward compatibility.
+Android 0.1.0 is published. A change keeps the schema number when it only removes a field, lets a field be absent,
+or adds a field: the server reads every source as an object and looks fields up by name, so an unknown field is
+ignored and an absent one reads as not known. Anything else needs a new schema number. (Android ADR 0001.)
 
 ## 1. Conventions
 
@@ -146,9 +148,9 @@ read move to the server.
 
 | Field | Type | Bounds | Status |
 |---|---|---|---|
-| `total_gb`, `available_gb` | int | | unchanged |
+| `total_gb`, `available_gb` | int | | removed (no rule reads them; Android ADR 0001) |
 | `free_ratio` | double | 0 to 1, 2 decimals | unchanged |
-| `app_dir_entries` | int | | unchanged |
+| `app_dir_entries` | int | | removed (no rule reads it; Android ADR 0001, Appendix A row 11) |
 | `external_emulated` | bool | | unchanged |
 
 ### intl (fast)
@@ -159,7 +161,7 @@ read move to the server.
 | `utc_offset_min` | int | | unchanged |
 | `dst` | bool | | unchanged |
 | `locale` | string | BCP 47 | unchanged |
-| `locales` | string[] | at most 8 | unchanged |
+| `locales` | string[] | | removed (no rule reads it; `locale` is the first locale) |
 | `uses_24h` | bool | | unchanged |
 
 ### accessibility (fast)
@@ -196,15 +198,17 @@ read move to the server.
 | Field | Type | Bounds | Status |
 |---|---|---|---|
 | `count` | int | | unchanged |
-| `vendors` | string[] | at most 6, each at most 64 | unchanged |
+| `vendors` | string[] | | removed (Android ADR 0001) |
+| `only_platform_vendors` | bool | absent when no sensor names a vendor; see section 5 | new |
 | `accelerometer`, `gyroscope`, `magnetometer`, `proximity`, `light`, `pressure`, `step_counter`, `heart_rate` | bool | | unchanged |
 
 ### audio (fast)
 
 | Field | Type | Status |
 |---|---|---|
-| `output_sample_rate`, `output_frames_per_buffer`, `max_music_volume` | int | unchanged |
-| `supports_low_latency`, `supports_pro`, `music_active` | bool | unchanged |
+| `max_music_volume` | int | unchanged |
+| `supports_low_latency`, `supports_pro` | bool | unchanged |
+| `output_sample_rate`, `output_frames_per_buffer`, `music_active` | | removed (no rule reads them) |
 
 ### network (fast)
 
@@ -242,16 +246,17 @@ read move to the server.
 | `su_on_path` | bool | | unchanged |
 | `busybox_paths` | string[] | at most 10, probe paths only | unchanged |
 | `framework_paths` | string[] | at most 13, probe paths only | unchanged |
-| `root_manager_installed`, `hook_manager_installed` | bool | aggregate, see section 5 | unchanged |
+| `root_manager_installed`, `hook_manager_installed` | bool | aggregate, see section 5; absent unless the app includes `fingerly-app-checks` | changed |
 | `writable_system` | string[] | at most 7, probe paths only | unchanged |
 | `selinux_enforcing` | bool | | unchanged |
 | `selinux_context` | string | at most 64, category suffix removed | unchanged |
 | `verified_boot_state` | string | at most 16, lowercased | unchanged |
 | `boot_locked` | bool | | unchanged |
 | `verity_mode` | string | at most 32 | unchanged |
-| `boot_properties` | string[] | at most 4 | unchanged |
+| `boot_properties` | string[] | at most 4; absent when the property store refused a read | changed |
 | `ro_debuggable` | string | raw value, at most 8 | new |
 | `ro_secure` | string | raw value, at most 8 | new |
+| `property_store_refused` | bool | only ever `true`; present only when the property store refused a read | new |
 | `system_mounts` | object[] | at most 8; see below | new |
 | `mount_framework_lines` | int | 0 to 1024; see below | new |
 | `mount_anomalies` | string[] | | removed |
@@ -269,7 +274,7 @@ starting with `/data/adb`. A count because the rest of the table can name other 
 
 | Field | Type | Bounds | Status |
 |---|---|---|---|
-| `qemu_props` | string[] | at most 6, probe names | unchanged |
+| `qemu_props` | string[] | at most 6, probe names; absent when the property store refused a read | changed |
 | `qemu_devices` | string[] | at most 9, probe paths | unchanged |
 | `emulator_files` | string[] | at most 17, probe paths | unchanged |
 | `telephony` | bool | | unchanged |
@@ -346,7 +351,8 @@ server. Each region goes in exactly one bucket, first match wins:
 
 | Field | Type | Bounds | Status |
 |---|---|---|---|
-| `data_dir_expected`, `data_dir_in_other_app`, `stub_process_name`, `cloner_installed` | bool | see section 5 | unchanged |
+| `data_dir_expected`, `data_dir_in_other_app`, `stub_process_name` | bool | see section 5 | unchanged |
+| `cloner_installed` | bool | see section 5; absent unless the app includes `fingerly-app-checks` | changed |
 | `foreign_sandbox_maps` | int | count, never names | unchanged |
 | `user_id` | int | | unchanged |
 | `oem_clone` | bool | | removed (`user_id == 999`) |
@@ -698,12 +704,15 @@ Removed entirely. See section 6.
 
 ## 5. Fields that stay as a client-side boolean or count
 
-Each is a measurement of a raw value the store rules forbid sending. None says what the device is.
+Each is a measurement of a raw value the store rules forbid sending, or that carries more than its rule reads.
+None says what the device is.
 
 | Field | Platform | What it measures | Why the raw value cannot leave |
 |---|---|---|---|
 | `root_manager_installed`, `hook_manager_installed` | Android | a lookup on a fixed package list answered yes | other apps appear only as yes or no (Play User Data) |
 | `cloner_installed` | Android | the same | the same |
+| | | The three package booleans are present only when the app includes `fingerly-app-checks`, and `false` means "not seen", not "not on the device": no rule may read them with `isFalse` | |
+| `only_platform_vendors` | Android | every distinct sensor vendor is an OS placeholder (`isPlatformSensorVendor`, section 8.2) | vendor names are free text that only this predicate reads |
 | `data_dir_expected` | Android | own data directory has one of four platform shapes | no raw data directory; it holds the cloner's package |
 | `data_dir_in_other_app` | Android | own data directory sits in a package other than ours | the same |
 | `stub_process_name` | Android | own process name does not start with our package | the name holds the cloner's package |
@@ -810,7 +819,7 @@ Source `emulator`.
 | `describes` contains a `buildTokens` entry | 1.2 | `build-identity-<token>` |
 | `hardware.cpu_hardware`, lowercased, contains a `virtualCpus` entry | 1.3 | `cpuinfo-hardware-<cpu>` |
 | `handset`, `sensors.accelerometer == false`, `sensors.gyroscope == false` | 0.8 | `no-motion-sensors` |
-| `sensors.vendors` non-empty, all platform vendors | 1.1 | `all-sensors-vendored-by-the-os` |
+| `sensors.only_platform_vendors == true` [proposed, Android ADR 0001]; for 0.1.0 reports, `sensors.vendors` non-empty and all platform vendors | 1.1 | `all-sensors-vendored-by-the-os` |
 | `attest.secure_hardware == false` | 0.9 | `no-hardware-backed-keystore` |
 | `handset`, any `hardware.abis` starts with `x86` | 0.5 | `x86-abi-on-handset` |
 | `handset`, `emulator.telephony == false` | 0.05 | `no-telephony-hardware` |
