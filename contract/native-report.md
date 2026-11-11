@@ -421,24 +421,26 @@ Removed entirely. See section 6.
 | `simulator_model`, `simulator_runtime` | string | | unchanged |
 | `simulator_environment` | string[] | at most 5, key names only | unchanged |
 | `simulator_build` | bool | | unchanged |
-| `active_processors` | int | | unchanged |
-| `low_power_mode` | bool | | unchanged |
+| `active_processors` | int | sent only on a simulator (iOS ADR 0001) | unchanged |
+| `low_power_mode` | bool | | removed (iOS ADR 0001) |
 
 ### hardware (fast; in the velocity cohort)
 
 | Field | Type | Status |
 |---|---|---|
 | `machine`, `uname_machine`, `model`, `target`, `product` | string | unchanged |
-| `memory_bytes` | int64 | unchanged |
-| `physical_cpu`, `logical_cpu`, `cpu_family`, `cpu_subfamily`, `cacheline`, `l1d_cache`, `l1i_cache`, `l2_cache`, `page_size`, `byte_order` | int | unchanged |
+| `memory_bytes` | int64 | removed (iOS ADR 0001) |
+| `physical_cpu`, `logical_cpu`, `cpu_family`, `cpu_subfamily`, `cacheline`, `l1d_cache`, `l1i_cache`, `l2_cache`, `page_size`, `byte_order` | int | removed (iOS ADR 0001) |
 
 ### display (fast; in the velocity cohort)
 
 | Field | Type | Status |
 |---|---|---|
-| `width`, `height`, `native_width`, `native_height`, `max_fps` | int | unchanged |
-| `scale`, `native_scale`, `brightness` | double | unchanged |
-| `gamut`, `interface_style` | string | unchanged |
+| `width`, `height`, `native_width`, `native_height` | int | unchanged |
+| `scale`, `native_scale` | double | unchanged |
+| `max_fps` | int | removed (iOS ADR 0001) |
+| `brightness` | double | removed (iOS ADR 0001) |
+| `gamut`, `interface_style` | string | removed (iOS ADR 0001) |
 
 ### storage (fast)
 
@@ -452,61 +454,74 @@ No capacity, free space or boot time: required-reason APIs whose approved reason
 
 | Field | Type | Bounds | Status |
 |---|---|---|---|
-| `timezone`, `locale`, `apple_locale`, `region`, `calendar`, `currency`, `decimal_separator` | string | | unchanged |
-| `utc_offset_s`, `first_weekday` | int | | unchanged |
-| `is_dst`, `uses_24_hour`, `uses_metric` | bool | | unchanged |
-| `languages` | string[] | at most 6 | unchanged |
+| `timezone` | string | | unchanged |
+| `locale` | string | `language[-Script][-REGION]` only, no `-u-` extensions | unchanged; reduced (iOS ADR 0001) |
+| `apple_locale`, `region`, `calendar`, `currency`, `decimal_separator` | string | | removed (iOS ADR 0001) |
+| `utc_offset_s`, `first_weekday` | int | | removed (iOS ADR 0001) |
+| `is_dst`, `uses_24_hour`, `uses_metric` | bool | | removed (iOS ADR 0001) |
+| `languages` | string[] | at most 6 | removed (iOS ADR 0001) |
 
 ### accessibility (fast)
 
+Retired (iOS ADR 0001). The id is still sent, as `{ status: "unsupported", reason: "retired" }` with no value, so that
+section 8.11 does not read it as omitted. No API is called.
+
 | Field | Type | Status |
 |---|---|---|
-| `settings_changed` | int | unchanged (stays a count, see section 5) |
-| `default_text_size` | bool | unchanged |
+| `settings_changed` | int | removed (iOS ADR 0001) |
+| `default_text_size` | bool | removed (iOS ADR 0001) |
 
 ### battery (fast)
 
+Retired (iOS ADR 0001), sent as `unsupported` with reason `retired` and no value.
+
 | Field | Type | Bounds | Status |
 |---|---|---|---|
-| `level` | int | 0 to 100, step 5 | unchanged |
-| `state` | string | charging, full, unplugged, unknown | unchanged |
-| `low_power_mode` | bool | | unchanged |
-| `thermal_state` | string | | unchanged |
+| `level` | int | 0 to 100, step 5 | removed (iOS ADR 0001) |
+| `state` | string | charging, full, unplugged, unknown | removed (iOS ADR 0001) |
+| `low_power_mode` | bool | | removed (iOS ADR 0001) |
+| `thermal_state` | string | | removed (iOS ADR 0001) |
 
 ### security (fast)
 
 | Field | Type | Status |
 |---|---|---|
-| `passcode_set`, `biometry_enrolled` | bool | unchanged |
-| `biometry_type`, `biometry_reason` | string | unchanged |
+| `passcode_set` | bool | unchanged |
+| `biometry_reason` | string | unchanged |
+| `biometry_enrolled` | bool | removed (iOS ADR 0001; an absent `biometry_reason` says it) |
+| `biometry_type` | string | removed (iOS ADR 0001) |
 
 ### sensors (fast)
 
 | Field | Type | Status |
 |---|---|---|
-| `accelerometer`, `gyroscope`, `magnetometer`, `device_motion` | bool | unchanged |
+| `accelerometer`, `gyroscope` | bool | unchanged |
+| `magnetometer`, `device_motion` | bool | removed (iOS ADR 0001) |
 
 ### audio (fast)
 
+Retired (iOS ADR 0001), sent as `unsupported` with reason `retired` and no value.
+
 | Field | Type | Bounds | Status |
 |---|---|---|---|
-| `outputs`, `inputs` | string[] | at most 8 | unchanged |
-| `output_channels` | int | | unchanged |
-| `other_audio_playing` | bool | | unchanged |
+| `outputs`, `inputs` | string[] | at most 8 | removed (iOS ADR 0001) |
+| `output_channels` | int | | removed (iOS ADR 0001) |
+| `other_audio_playing` | bool | | removed (iOS ADR 0001) |
 
 ### network (fast)
 
 | Field | Type | Bounds | Status |
 |---|---|---|---|
-| `interfaces` | string[] | at most 32, each at most 16 | unchanged |
-| `tunnels`, `scoped_tunnels` | string[] | at most 16 | unchanged |
-| `tunnel_count`, `radio_services` | int | | unchanged |
+| `radio_services` | int | | unchanged |
 | `proxy_configured`, `proxy_auto_config` | bool | | unchanged |
 | `transport` | string | wifi, cellular, wired | unchanged |
 | `interface_types` | string[] | at most 5 | unchanged |
-| `path_status` | string | | unchanged |
-| `expensive`, `constrained`, `supports_ipv4`, `supports_ipv6` | bool | | unchanged |
-| `radio` | string[] | at most 4 | unchanged |
+| `interfaces` | string[] | at most 32, each at most 16 | removed (iOS ADR 0001) |
+| `tunnels`, `scoped_tunnels` | string[] | at most 16 | removed (iOS ADR 0001) |
+| `tunnel_count` | int | | removed (iOS ADR 0001) |
+| `path_status` | string | | removed (iOS ADR 0001) |
+| `expensive`, `constrained`, `supports_ipv4`, `supports_ipv6` | bool | | removed (iOS ADR 0001) |
+| `radio` | string[] | at most 4 | removed (iOS ADR 0001) |
 | `tunnelled` | bool | | removed (`interface_types` contains `other`) |
 
 ### app (fast; scalars are in the velocity cohort)
@@ -522,10 +537,10 @@ No capacity, free space or boot time: required-reason APIs whose approved reason
 | Field | Type | Bounds | Status |
 |---|---|---|---|
 | `install_id` | string | UUID | unchanged |
-| `first_seen_at` | int | epoch seconds | unchanged |
+| `first_seen_at` | int | epoch seconds | removed (iOS ADR 0001) |
 | `launches` | int | >= 1 | unchanged; meaning changes to once per process (P3) |
 | `install_age_h` | int | may be negative after P4 | unchanged; stop clamping to 0 (P4) |
-| `reinstalled` | bool | see section 5 | unchanged |
+| `reinstalled` | bool | see section 5 | removed (iOS ADR 0001: the install record lives in the app container by default, and the vendor identifier is no longer read) |
 
 ### jailbreak (fast)
 
@@ -533,7 +548,7 @@ No capacity, free space or boot time: required-reason APIs whose approved reason
 |---|---|---|---|
 | `injectors` | string[] | at most 10, probe paths | unchanged |
 | `userland` | string[] | at most 10, probe paths | unchanged |
-| `symlinked_directories` | string[] | at most 8, probe paths | unchanged |
+| `symlinked_directories` | string[] | at most 8, probe paths | removed (iOS ADR 0001: `readlink` reads outside the container, Guideline 2.5.2) |
 | `rootless_prefix_present`, `rootless` | bool | | unchanged |
 | `schemes_queryable` | bool | | unchanged |
 | `managers_found` | int | 0 to 10 | renamed (from `managers`, string[]) |
@@ -588,9 +603,11 @@ Sort the final list.
 
 ### fonts (deferred)
 
+Retired (iOS ADR 0001), sent as `unsupported` with reason `retired` and no value.
+
 | Field | Type | Status |
 |---|---|---|
-| `count` | int | unchanged |
+| `count` | int | removed (iOS ADR 0001) |
 
 ### attest (deferred)
 
@@ -671,7 +688,7 @@ Removed entirely. See section 6.
 | `software_rooted` | Android | `attest.chain_length` | `<= 1` |
 | `debug_signed` | Android | `app.signer_subject_tokens` | tokens `android` and `debug` in one set |
 | `settings_changed` | Android | four scales, timeout, `any_service_enabled` | section 8.7 |
-| `settings_changed` | iOS | stays a count | section 5 |
+| `settings_changed` | iOS | stays a count; no longer sent since iOS ADR 0001 (source retired) | section 5 |
 | `biometry_unusable` | Android | `biometry_hardware`, `lockscreen_set` | non-empty and false |
 | `integrity.lies` swizzled | both | Android `native_methods`, iOS `objc_methods` | count hooked |
 | `integrity.lies` contradiction, injected, missing | both | nothing new | section 8.12, from sources and statuses |
@@ -695,10 +712,10 @@ Each is a measurement of a raw value the store rules forbid sending. None says w
 | `sideloaded` | Android | installer is not on the store list | no raw installer package |
 | `signature_changed` | Android | signing certificate differs from this install's stored one | a comparison against local history; the current digest is sent |
 | `any_service_enabled` | Android | at least one accessibility service is on | no service names, and only ever lowers farm evidence |
-| `reinstalled` | iOS | stored vendor ID differs from the live one | no OS device identifier may leave |
+| `reinstalled` | iOS (no longer sent since iOS ADR 0001) | stored vendor ID differs from the live one | no OS device identifier may leave |
 | `managers_found`, `artefacts_found`, `schemes_found` | iOS | how many probe paths or schemes answered | other apps only as counts (matches Android); these lists name apps |
 | `dyld_insert_libraries_set` | iOS | the variable is set | its value is a list of file paths |
-| `settings_changed` | iOS | how many of 19 toggles plus text size are off default | which toggle is on can reveal a disability (VoiceOver, Switch Control) |
+| `settings_changed` | iOS (no longer sent since iOS ADR 0001) | how many of 19 toggles plus text size are off default | which toggle is on can reveal a disability (VoiceOver, Switch Control) |
 | `debug_build`, `development_profile` | iOS | embedded profile says `get-task-allow` | the profile is the customer's signed file |
 | `foreign_stack_frames` | Android | a probe-listed package appears on our own stack | a tool-name test (probe list), and a stack is free text |
 
@@ -915,7 +932,7 @@ Source `jailbreak`. If `status == "blocked"`: single tell `jailbreak-probe-block
 | `rootless_prefix_present` | 1.4 | `rootless-prefix-present` |
 | `userland` non-empty | 1.1 when 3 or more paths, else 0.7 | `unix-userland-<n>-paths` |
 | `artefacts_found > 0` | 0.8 | `jailbreak-artefacts-<n>` |
-| `symlinked_directories` non-empty | 1.1 | `system-directory-symlinked-<n>` |
+| `symlinked_directories` non-empty (no longer sent since iOS ADR 0001; the rule never fires on a current report) | 1.1 | `system-directory-symlinked-<n>` |
 | `schemes_queryable` and `schemes_found > 0` | 1.2 | `jailbreak-app-schemes-<n>` |
 | `dyld_insert_libraries_set` | 1.2 | `dyld-insert-libraries-set` |
 
@@ -979,6 +996,11 @@ the disk or the boot, so facts are fewer by the store rules.
 | circumstantial | `fonts.count > 0` and `<= 60` | 0.4 | `stock-font-set-only` |
 
 Today iOS sums all of these freely. The font rule is inert in practice, because a stock iPhone reports about 80 families.
+
+Since iOS ADR 0001 the iOS SDK no longer sends `accessibility.settings_changed`, `battery.*` or `fonts.count`: those
+sources are retired stubs (`unsupported`, reason `retired`), so the three tells above never fire on a current iOS report.
+The remaining circumstantial tells still reach the cap. `unsupported` with reason `retired` means "removed by design", not
+"missing on this device"; no rule may read a retired source's status as evidence.
 
 **vpn_mobile.** `network` ok, `interface_types` contains `other` and `cellular`. High confidence, reason `device-vpn-over-cellular`.
 
