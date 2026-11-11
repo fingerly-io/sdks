@@ -1086,7 +1086,7 @@ evidence. The threshold is tuned from the real schedulers and fixtures so a slow
 tail. Which hashes survive the cap is the SDK's decision (tree order, then ascending hash) and the server cannot see one it dropped; a
 modified client can omit any hash without padding anything. The honest achievable claim is that an exactly-full list is weak evidence: at 0.15 it
 cannot fire alone or with an ordinary debug build (0.8 total), and can only tip a finding already close, such as `injected-libraries-1` at 0.9.
-The 487-hash real fixture and any list under the cap are untouched.
+The real Android fixture (521 hashes; the 0.1.0 capture had 487) and any list under the cap are untouched.
 
 Android `hooked` = sum of `native_methods[].native`. iOS `hooked` = entries of `objc_methods` whose `tree` is not `usr_lib`, `system_library`, `library_apple` or `sim_root`.
 
