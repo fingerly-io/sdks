@@ -278,9 +278,8 @@ So, for visitors in the EU or UK:
    the service requested", but the ICO says advertising uses such as click
    fraud are never exempt, cross-site tracking always needs consent, and the
    exemption is lost if the data serves any other purpose. If you rely on it
-   across several sites, set your organisation's identity scope to `project`
-   and put each site in its own project; the switch is one-way and starts new
-   visitor IDs.
+   across several sites, put each site in its own project: visitors are
+   recognised within a project and never linked across projects.
 3. **Load the script after consent, or bundle it.** Fetching the script-tag
    build from a public CDN sends the visitor's address and user agent to that
    CDN before your banner is answered. Install the npm package, or serve the
