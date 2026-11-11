@@ -20,7 +20,8 @@ whether it is being misrepresented. How the same device is recognised across
 visits differs by platform:
 
 - **Browsers** are recognised by their device and browser characteristics
-  (§2).
+  (§2). A page running inside an app is never fingerprinted, by the SDK or
+  the server (§3.3); the browser SDK is not for apps.
 - **Native apps** (iOS, Android, and the React Native, Flutter and Lynx
   bridges) are recognised **only** by the random install ID the SDK stores on
   the device (§3.1). Hardware and operating system signals are never used to
@@ -202,9 +203,30 @@ that request to us as well (§4).
 
 - **Do not ship the SDK in Kids Category apps** (App Store Review Guideline
   1.3) or in Google Play apps directed at children.
-- **Do not use the browser SDK inside a `WKWebView` in an iOS app.** Apple
-  treats reading browser properties there as fingerprinting. Use the native
-  SDK instead.
+- **Do not embed the browser SDK in an app.** Not in a `WKWebView` on iOS
+  or macOS, an Android `WebView`, Capacitor, Cordova or Ionic, React Native
+  WebView, a Flutter web view, or Electron. A page inside your app is your
+  app reading the device, and Apple's agreement forbids an app to "derive
+  any data from a device for the purpose of uniquely identifying it",
+  naming the properties of a web browser among that data. Use the iOS or
+  Android SDK (or the React Native, Flutter or Lynx bridge) in an app.
+- **If it is embedded anyway, nothing is fingerprinted.** Once consent is
+  granted, the browser SDK checks where it runs; inside an app it runs no
+  source, sends only a marker naming the kind of web view, logs one console
+  warning, and sends no deferred report. The server applies the same rules
+  to every report, whatever sent it: it drops anything such a report carries,
+  never matches it to a visitor, answers `identifiable: false`, charges
+  nothing, and records the `embedded_web_view` signal at weight zero. Only
+  the checks that need nothing from the device are scored: the IP address
+  checks and the user agent's bot check.
+- **Other companies' in-app browsers are browsers.** A visitor who opens
+  your site from Instagram, Facebook or TikTok is browsing the web inside
+  somebody else's app, not yours, and is treated like any browser visitor,
+  consent included.
+- **Keys refuse app origins.** An SDK key will not take
+  `capacitor://localhost`, `ionic://localhost` or `app://localhost`, and a
+  production key will not take `localhost`; use a development key to try
+  the SDK on a local server.
 - **Consent defaults to pending** (§4), which is what App Store Review
   Guideline 5.1.1(ii) and Google Play's guidance on using SDKs safely ask for.
 
@@ -238,18 +260,34 @@ Every SDK and binding takes a `consent` option: `'granted'`, `'pending'` or
 So, for visitors in the EU or UK:
 
 1. **Keep the default, `consent: 'pending'`,** and call `setConsent('granted')`
-   only once you have the lawful basis you have decided on. Pass
-   `consent: 'granted'` at initialisation only if you already have it. Anything
+   once the visitor has consented. `granted` means "collection is permitted
+   for this visitor": either they consented, or you have established that the
+   law that applies to them does not require consent for this access. A GDPR
+   lawful basis such as legitimate interest is not enough on its own, because
+   ePrivacy Art. 5(3) governs reading the device separately. Anything
    collected before that cannot be retracted.
 2. **Treat fingerprinting as in scope for ePrivacy Art. 5(3).** Reading device
    characteristics is "gaining access to information stored in terminal
    equipment", and the EDPB's Guidelines 2/2023 confirm fingerprinting is
-   covered. Whether fraud prevention qualifies for the strictly-necessary
-   exemption is contested; take your own advice, and be aware that the
-   conservative reading requires consent.
-3. **Disclose it.** Your notice needs to name device fingerprinting for fraud
+   covered. In the EU and EEA, get consent: the Article 29 Working Party
+   (Opinion 9/2014, §7.5) and the CNIL (cookie FAQ, question 16) accept a
+   consent-free fingerprint only for securing the login mechanism the visitor
+   is using, not for fraud scoring in general. In the UK, PECR Schedule A1
+   paragraph 4(2)(c), in force since 5 February 2026, exempts access strictly
+   necessary "to prevent or detect fraud in connection with the provision of
+   the service requested", but the ICO says advertising uses such as click
+   fraud are never exempt, cross-site tracking always needs consent, and the
+   exemption is lost if the data serves any other purpose. If you rely on it
+   across several sites, set your organisation's identity scope to `project`
+   and put each site in its own project; the switch is one-way and starts new
+   visitor IDs.
+3. **Load the script after consent, or bundle it.** Fetching the script-tag
+   build from a public CDN sends the visitor's address and user agent to that
+   CDN before your banner is answered. Install the npm package, or serve the
+   script yourself.
+4. **Disclose it.** Your notice needs to name device fingerprinting for fraud
    prevention, name us as a processor, and say how long the data is kept (§7).
-4. **Send erasure requests to us.** There is no self-service or API route to
+5. **Send erasure requests to us.** There is no self-service or API route to
    delete a visitor's data yet; contact us and we handle it manually. In an
    app, also call `deleteStoredIdentity()` on the device (§3.2).
 
@@ -313,6 +351,8 @@ deferred report.
 
 - No cookies, and no identifier stored by the browser SDK; the mobile SDKs keep
   one install identifier (§3.1), which the app can delete (§3.2)
+- No fingerprinting inside an app's web view: the browser SDK collects
+  nothing there and the server matches nothing (§3.3)
 - No recognition of an app's device from its hardware: on iOS and Android the
   server recognises a device by the stored install ID only, and hardware
   signals serve integrity checks and scoring

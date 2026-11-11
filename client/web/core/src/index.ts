@@ -47,6 +47,7 @@ export {
   type CanvasSignal,
   type ColorGamutSignal,
   type DomBlockersSignal,
+  type EmbeddingSignal,
   type EngineSignal,
   type ErrorsSignal,
   type FontsSignal,

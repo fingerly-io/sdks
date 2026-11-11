@@ -28,7 +28,7 @@ upstream is a constant in the code, and every other path and method is refused.
    await load({
      apiKey: 'fly_pk_production_...',
      endpoints: '/k7x2qm4a',
-     consent: 'granted', // only once the visitor has agreed, or you have another lawful basis
+     consent: 'granted', // only once the visitor has agreed, or you know none is needed (docs/privacy.md §4)
    })
    ```
 

@@ -23,6 +23,7 @@ import type {
   SourceTier,
 } from './types.js'
 import { SDK_VERSION } from './version.js'
+import { SOURCE } from './signals.js'
 
 /**
  * The report schema version.
@@ -57,13 +58,23 @@ export interface FingerlyClientOptions {
   /** Replaced in tests, and by any SDK that has its own network stack. */
   transport?: Transport
   /**
+   * Says whether the page is running inside an app, and as what. Supplied by
+   * the platform SDK, which can see the page; `@fingerly/web-js` sets it and a
+   * caller of `load()` cannot replace it.
+   *
+   * When it names a kind, no source runs: the report carries only the
+   * `embedding` source, and no deferred report follows. Called only once
+   * consent is granted, because looking is itself a read of the device.
+   */
+  embedding?: () => string | undefined
+  /**
    * Whether the visitor has agreed to be identified. Defaults to `pending`.
    *
    * Leave it `pending` when identification waits on a consent banner, and call
    * [[FingerlyClient.setConsent]] once it is answered. Until then `identify()`
    * and `collect()` run no source and send nothing, and fail with a
    * [[ConsentError]]. Pass `granted` only once the visitor has agreed, or
-   * where another lawful basis applies.
+   * where you have established that this visitor needs none (a GDPR lawful basis does not replace it; see docs/privacy.md §4).
    */
   consent?: ConsentState
 }
@@ -98,6 +109,23 @@ export interface IdentifyOptions {
  */
 function consentRefusal(error: unknown): unknown {
   return error instanceof TransportError && error.code === 'consent_required' ? new ConsentError('pending') : error
+}
+
+/** Once per page is enough to tell an integrator; every call would be noise. */
+let embeddingWarned = false
+
+/** Only for tests, which need to see the warning more than once. */
+export function resetEmbeddingWarning(): void {
+  embeddingWarned = false
+}
+
+function warnEmbedded(kind: string): void {
+  if (embeddingWarned) return
+  embeddingWarned = true
+  console.warn(
+    `Fingerly: this page is running inside an app (${kind}), so the browser SDK collected nothing. ` +
+      'Use the Fingerly iOS or Android SDK in apps.',
+  )
 }
 
 /** No sources ran, so nothing was found. Distinct from "found nothing". */
@@ -244,8 +272,9 @@ export class FingerlyClient {
   }
 
   private async identifyWithConsent(options: IdentifyOptions, signal: AbortSignal): Promise<IdentifyResult> {
-    const automaticDeferred = options.submit !== false && options.tiers === undefined
-    const report = await this.collectReport(
+    const embedded = this.embeddedReport()
+    const automaticDeferred = !embedded && options.submit !== false && options.tiers === undefined
+    const report = embedded ?? await this.collectReport(
       automaticDeferred ? ['fast'] : (options.tiers ?? ['fast', 'deferred']),
       signal,
       automaticDeferred ? 300 : undefined,
@@ -316,6 +345,14 @@ export class FingerlyClient {
       deferred: Promise.resolve({ status: 'skipped', reason: 'explicit-tiers' }),
     }
 
+    if (embedded) {
+      // Nothing may follow a report from inside an app, least of all the
+      // expensive sources the deferred report carries. `not-submitted` is the
+      // literal truth and an existing reason in the shared contract, which
+      // this change leaves alone.
+      result.deferred = Promise.resolve({ status: 'skipped', reason: 'not-submitted' })
+      return result
+    }
     if (!automaticDeferred) return result
     if (answer.duplicate || !answer.deferred_token) {
       result.deferred = Promise.resolve({
@@ -401,6 +438,9 @@ export class FingerlyClient {
     this.requireConsent()
     const tiers: SourceTier[] = options.tiers ?? ['fast', 'deferred']
 
+    const embedded = this.embeddedReport()
+    if (embedded) return embedded
+
     const scope = this.consentScope(options.signal)
     try {
       const report = await this.collectReport(tiers, scope.signal)
@@ -408,6 +448,26 @@ export class FingerlyClient {
       return report
     } finally {
       scope.close()
+    }
+  }
+
+  /**
+   * The whole report for a page inside an app, or undefined in a browser.
+   *
+   * Asked only after the consent check: the detector reads the page, which is
+   * a read of the device like any source.
+   */
+  private embeddedReport(): SignalReport | undefined {
+    const kind = this.#options.embedding?.()
+    if (!kind) return undefined
+    warnEmbedded(kind)
+    return {
+      schema: SCHEMA_VERSION,
+      budget_ms: 0,
+      elapsed_ms: 0,
+      tiers: ['fast'],
+      sources: { [SOURCE.embedding]: { status: 'ok', ms: 0, value: { kind } } },
+      integrity: EMPTY_INTEGRITY,
     }
   }
 
