@@ -540,7 +540,7 @@ Retired (iOS ADR 0001), sent as `unsupported` with reason `retired` and no value
 | `first_seen_at` | int | epoch seconds | removed (iOS ADR 0001) |
 | `launches` | int | >= 1 | unchanged; meaning changes to once per process (P3) |
 | `install_age_h` | int | may be negative after P4 | unchanged; stop clamping to 0 (P4) |
-| `reinstalled` | bool | see section 5 | unchanged |
+| `reinstalled` | bool | see section 5 | removed (iOS ADR 0001: the install record lives in the app container by default, and the vendor identifier is no longer read) |
 
 ### jailbreak (fast)
 
@@ -712,7 +712,7 @@ Each is a measurement of a raw value the store rules forbid sending. None says w
 | `sideloaded` | Android | installer is not on the store list | no raw installer package |
 | `signature_changed` | Android | signing certificate differs from this install's stored one | a comparison against local history; the current digest is sent |
 | `any_service_enabled` | Android | at least one accessibility service is on | no service names, and only ever lowers farm evidence |
-| `reinstalled` | iOS | stored vendor ID differs from the live one | no OS device identifier may leave |
+| `reinstalled` | iOS (no longer sent since iOS ADR 0001) | stored vendor ID differs from the live one | no OS device identifier may leave |
 | `managers_found`, `artefacts_found`, `schemes_found` | iOS | how many probe paths or schemes answered | other apps only as counts (matches Android); these lists name apps |
 | `dyld_insert_libraries_set` | iOS | the variable is set | its value is a list of file paths |
 | `settings_changed` | iOS (no longer sent since iOS ADR 0001) | how many of 19 toggles plus text size are off default | which toggle is on can reveal a disability (VoiceOver, Switch Control) |
