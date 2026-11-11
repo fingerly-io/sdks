@@ -548,7 +548,7 @@ Retired (iOS ADR 0001), sent as `unsupported` with reason `retired` and no value
 |---|---|---|---|
 | `injectors` | string[] | at most 10, probe paths | unchanged |
 | `userland` | string[] | at most 10, probe paths | unchanged |
-| `symlinked_directories` | string[] | at most 8, probe paths | unchanged |
+| `symlinked_directories` | string[] | at most 8, probe paths | removed (iOS ADR 0001: `readlink` reads outside the container, Guideline 2.5.2) |
 | `rootless_prefix_present`, `rootless` | bool | | unchanged |
 | `schemes_queryable` | bool | | unchanged |
 | `managers_found` | int | 0 to 10 | renamed (from `managers`, string[]) |
@@ -932,7 +932,7 @@ Source `jailbreak`. If `status == "blocked"`: single tell `jailbreak-probe-block
 | `rootless_prefix_present` | 1.4 | `rootless-prefix-present` |
 | `userland` non-empty | 1.1 when 3 or more paths, else 0.7 | `unix-userland-<n>-paths` |
 | `artefacts_found > 0` | 0.8 | `jailbreak-artefacts-<n>` |
-| `symlinked_directories` non-empty | 1.1 | `system-directory-symlinked-<n>` |
+| `symlinked_directories` non-empty (no longer sent since iOS ADR 0001; the rule never fires on a current report) | 1.1 | `system-directory-symlinked-<n>` |
 | `schemes_queryable` and `schemes_found > 0` | 1.2 | `jailbreak-app-schemes-<n>` |
 | `dyld_insert_libraries_set` | 1.2 | `dyld-insert-libraries-set` |
 
