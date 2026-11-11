@@ -379,6 +379,20 @@ single use, bound to the SDK key), has the hardware keystore attest a fresh key 
 server reads what is inside it: the server checks it against the published roots, the application ID in the extension
 against the report and the key's `allowed_android_packages` and `allowed_android_signers`, and spends the challenge.
 
+### play_integrity (deferred, optional)
+
+| Field | Type | Bounds | Status |
+|---|---|---|---|
+| `token` | string | at most 16 KiB; removed from the report before it is stored | new |
+| `request_hash` | string | 64, lowercase hex SHA-256 of the server's challenge | new |
+| `challenge` | string | base64, the same server nonce as `attest.challenge` | new |
+
+Present only in reports of apps that add the optional `io.fingerly:fingerly-play-integrity` artifact (server ADR
+0026). `unsupported` when the challenge did not set `play_integrity`, which the server sets only for a project with its
+own Google service account and within its daily decode budget; `blocked` when the token could not be made. The server
+decodes the token at most once with the customer's service account, checks the package, the request hash and the
+timestamp, and reports Google's verdicts. Its absence is never evidence.
+
 ### tls (deferred)
 
 | Field | Type | Bounds | Status |
@@ -597,7 +611,8 @@ Sort the final list.
 | Field | Type | Status |
 |---|---|---|
 | `devicecheck_supported`, `app_attest_supported` | bool | unchanged |
-| `device_token` | string | unchanged; still switched off |
+| `device_token` | string | changed: base64, at most 4 KiB decoded; sent only when the challenge sets `device_check`, beside the `app_attest` evidence that covers it; removed from the report before it is stored (server ADR 0026) |
+| `device_check_error` | string | new: at most 24, a status token such as `devicecheck-<code>` when the token could not be made; App Attest carries on |
 | `app_attest` | object | App Attest evidence, or absent; removed from the report before it is stored |
 | `app_attest.mode` | string | `attestation` for a new key, `assertion` for every later report |
 | `app_attest.key_id` | string | base64, 32 bytes decoded; stored only as a SHA-256 and never in identity or the velocity cohort |
@@ -613,6 +628,11 @@ The key identifier is kept in the app's own container, not the keychain, so it i
 verifies the object against Apple's root and the key's `allowed_apple_app_ids`, and records the event as `attested`,
 `not_attested` or `failed`. A report without proof fires `attestation_missing` only on a production or staging key
 with an Apple app ID configured, on iOS 14 or newer.
+
+DeviceCheck (server ADR 0026): when the project has its own Apple key with DeviceCheck switched on, the challenge also
+sets `device_check`. The SDK then generates a DeviceCheck token and binds it into the App Attest evidence:
+`clientDataHash = SHA-256(challenge || SHA-256(token bytes))`. The server holds the token sealed for one hour only
+when that evidence verifies, and the customer's backend spends it once to read or write the device's two bits.
 
 ### tls (deferred)
 
