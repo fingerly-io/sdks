@@ -1829,7 +1829,7 @@
                 }
               }
             },
-            "description": "Challenges are being requested faster than the rate limit allows"
+            "description": "Challenges are being requested faster than the key's, the address's or the organization's rate limit allows; retry after Retry-After"
           },
           "503": {
             "content": {
@@ -2520,7 +2520,7 @@
                 }
               }
             },
-            "description": "The SDK key is over its rate limit"
+            "description": "The SDK key or the organization is over its rate limit; retry after Retry-After. A secret key called from a backend is also told which limit in Fingerly-RateLimit-Scope"
           },
           "503": {
             "content": {
@@ -2642,7 +2642,7 @@
                 }
               }
             },
-            "description": "The SDK key is over its rate limit"
+            "description": "The SDK key or the organization is over its rate limit; retry after Retry-After. A secret key called from a backend is also told which limit in Fingerly-RateLimit-Scope"
           },
           "503": {
             "content": {
