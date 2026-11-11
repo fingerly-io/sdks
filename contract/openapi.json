@@ -320,6 +320,10 @@
       },
       "IdentifyOut": {
         "properties": {
+          "app_attest_key": {
+            "description": "unknown when the report asserted with an App Attest key the server does not hold; the iOS SDK then attests a new key on its next collection. Absent otherwise",
+            "type": "string"
+          },
           "deferred_token": {
             "description": "Short-lived capability for the deferred signal report",
             "type": "string"

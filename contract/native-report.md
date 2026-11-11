@@ -629,6 +629,14 @@ verifies the object against Apple's root and the key's `allowed_apple_app_ids`, 
 `not_attested` or `failed`. A report without proof fires `attestation_missing` only on a production or staging key
 with an Apple app ID configured, on iOS 14 or newer.
 
+A forgotten key (server ADR 0026, amended 2026-11-11): the server deletes a key after 180 days without an assertion and
+with a purged project. An assertion under a key it does not hold is `not_attested` with reason `attestation-key-unknown`,
+and the identify answer carries `app_attest_key: "unknown"`; where the SDK key requires attestation the report is refused
+with `403 attestation_key_unknown` instead of `attestation_required`. On either, the SDK marks the key it asserted with for
+replacement (only while that key is still the one it stores) and attests a new key on its next collection. Replacements
+are rate limited on the device, because Apple's risk metric counts the keys a device attests in 30 days: the first is
+immediate, the next waits 7 days, then 14, then 30 days for good, and the count restarts after 90 days without one.
+
 DeviceCheck (server ADR 0026): when the project has its own Apple key with DeviceCheck switched on, the challenge also
 sets `device_check`. The SDK then generates a DeviceCheck token and binds it into the App Attest evidence:
 `clientDataHash = SHA-256(challenge || SHA-256(token bytes))`. The server holds the token sealed for one hour only
