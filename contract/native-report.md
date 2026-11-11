@@ -150,7 +150,7 @@ read move to the server.
 |---|---|---|---|
 | `total_gb`, `available_gb` | int | | removed (no rule reads them; Android ADR 0001) |
 | `free_ratio` | double | 0 to 1, 2 decimals | unchanged |
-| `app_dir_entries` | int | | unchanged |
+| `app_dir_entries` | int | | removed (no rule reads it; Android ADR 0001, Appendix A row 11) |
 | `external_emulated` | bool | | unchanged |
 
 ### intl (fast)
