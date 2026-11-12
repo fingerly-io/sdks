@@ -1,11 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
 
 - The browser SDK collects nothing inside an app's web view: iOS and macOS `WKWebView`, Android `WebView`, Capacitor, Cordova and Ionic, React Native WebView, Flutter web views and Electron. `identify()` sends only a marker naming the kind, after consent as always; use the iOS or Android SDK in apps. Other companies' in-app browsers (Instagram, Facebook, TikTok) are treated as browsers.
 - `load()` always installs the detector; it cannot be turned off. `browserSources` used directly read nothing in a web view either (`unsupported`, reason `embedded`).
 - New export: `detectEmbedding()`.
-- Publish only after the server that recognises the `embedding` marker is deployed (server ADR 0024).
 
 ## 0.1.2
 

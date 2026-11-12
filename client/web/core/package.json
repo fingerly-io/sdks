@@ -1,6 +1,6 @@
 {
   "name": "@fingerly/core",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "publishConfig": { "access": "public" },
   "description": "Framework-agnostic device/event core shared by every Fingerly SDK",
   "license": "Apache-2.0",
