@@ -1,6 +1,6 @@
 {
   "name": "@fingerly/next",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publishConfig": { "access": "public" },
   "description": "Next.js integration wrapping @fingerly/react",
   "license": "Apache-2.0",

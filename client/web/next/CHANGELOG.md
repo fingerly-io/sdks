@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1
+
+- Uses @fingerly/node 0.2.0. 0.2.0 was packed against @fingerly/node 0.1.4, because the node release had not been added to the workspace yet; use 0.2.1.
+
 ## 0.2.0
 
 - Uses @fingerly/react 0.2.0 and @fingerly/node 0.2.0, which keeps the browser SDK from collecting inside an app's web view.
