@@ -148,7 +148,7 @@ The templates are not published to a registry: copy the files for your platform 
      // an interface hint only: your backend reads the event and decides
    }
 
-   // The authoritative score above never changes. Expensive collectors continue
+   // The authoritative score above never changes. Slower checks continue
    // as an immutable sidecar that applications may observe when useful.
    const deferred = await result.deferred
    ```
@@ -162,11 +162,11 @@ decisions belong on your backend, reading the event by request ID, or from webho
 server's fields are empty, and `suspectScore` is `null` rather than `0`, because nobody scored
 it.
 
-The default browser run spends 300ms on the initial tier, then continues the deferred tier under a
-separate 1200ms budget. Deferred data is archived against the request but never changes identity,
-score, billing, or webhooks.
+The default browser run answers within a 300ms initial budget, then continues the slower checks
+under a separate 1200ms budget. Their result is archived against the request but never changes
+identity, score, billing, or webhooks.
 
-The SDK decides nothing. Every detector runs server-side over the stored report, where the rules
+The SDK decides nothing. Every check runs server-side over the stored report, where the rules
 can improve without every customer redeploying an SDK. The answer in the page can be edited by
 whoever controls it, so decide on your backend from the stored event.
 
@@ -185,9 +185,8 @@ flowchart LR
 <details>
 <summary>One envelope, three platforms</summary>
 
-A browser, an iPhone and an Android phone submit the same `SignalReport`: a schema version, a
-budget, the tiers that ran, a map of sources each carrying a status and a duration, and the tamper
-layer's findings. What differs is which sources are in the map.
+A browser, an iPhone and an Android phone submit the same report envelope, with the same shape on
+every platform. What differs is what each platform can report.
 
 That is what lets the Fingerly API have one reader and one set of rules. The canonical TypeScript
 shape lives in `client/web/types/src/index.ts`; `client/web/core` re-exports it, while
@@ -196,7 +195,7 @@ are literal ports of it, field for field, because both ends were already written
 
 A native report carries raw measurements only, on the contract in
 [`contract/native-report.md`](contract/native-report.md). No client holds a weight, a threshold or
-a verdict: the server derives every signal from what it received, under the customer's weights,
+a verdict: the server derives every result from what it received, under the customer's weights,
 so a rule can change without an app update. A report claiming a verdict is ignored.
 
 A modified app can still forge raw input, and the server can only score what it receives.
@@ -244,10 +243,9 @@ SDKs are not driven by Turborepo.
 <details>
 <summary>What each package is built on</summary>
 
-- `client/web/core`: the budgeted scheduler, the signal vocabulary and the transport. It contains
-  no DOM code and is compiled against the worker lib so that it cannot acquire any.
-- `client/web/web-js`: the browser sources and the tamper layer that checks whether the browser is
-  lying about them.
+- `client/web/core`: the framework-agnostic core shared by the browser SDKs. It contains no DOM
+  code and is compiled against the worker lib so that it cannot acquire any.
+- `client/web/web-js`: the vanilla browser SDK.
 - `client/web/vue`: Vue 3 plugin and composables ([README](client/web/vue/README.md)). One shared
   identification per app, readonly reactive state, SSR-safe.
 - `client/web/{react,svelte,angular,nuxt,next}`: implemented framework bindings, built on
@@ -263,10 +261,9 @@ SDKs are not driven by Turborepo.
   iOS artifact under `/ios/`).
 - `client/mobile/react-native`, `client/mobile/flutter`, `client/mobile/lynx`: standalone bridges
   to the native SDKs, not second implementations, and open source under Apache-2.0. All three
-  are thin on purpose: almost every signal worth having on a phone is unreachable from JavaScript
-  or Dart, so a cross-platform SDK that collected only what it could reach would report a
-  jailbroken, instrumented device as clean. React Native and Lynx are in the pnpm workspace;
-  Flutter is a Dart/pub package and is not. Lynx supports Android and iOS hosts.
+  are thin on purpose: most of what matters on a phone is only reachable from native code, so the
+  bridges call the native SDKs rather than reimplement them. React Native and Lynx are in the pnpm
+  workspace; Flutter is a Dart/pub package and is not. Lynx supports Android and iOS hosts.
 
 </details>
 
@@ -367,19 +364,37 @@ pnpm --dir client/mobile/lynx/example build
 ```
 
 The demo page runs the browser SDK against whatever browser opens it and renders the whole
-report: every source with its status and duration, and the tamper measurements. It submits
-nothing unless an endpoint and SDK key are filled in. Serve it over `localhost` rather than
-opening the file directly: several sources need a secure context, and `file://` is not one.
+report. It submits nothing unless an endpoint and SDK key are filled in. Serve it over
+`localhost` rather than opening the file directly: the SDK needs a secure context, and `file://`
+is not one.
 
 Install scripts are disabled for every dependency (`.npmrc`); the reason is written out there.
 
-### Publishing the browser packages
+### Releasing the npm packages
 
-Publish the browser packages with `pnpm publish`, never `npm publish`: only pnpm rewrites the
-`workspace:` ranges between them, and a tarball that still says `workspace:*` cannot be
-installed. After `pnpm build`, `pnpm check:packs` packs every browser package the way it is
-published and fails on a leftover `workspace:` range, a source map, shipped sources or tests, or
-a missing LICENSE or README.
+Bump the package's `version` and merge to `main`. The Release workflow
+([`.github/workflows/release.yml`](.github/workflows/release.yml), steps in
+[`scripts/release-npm.mjs`](scripts/release-npm.mjs)) then publishes every npm package whose
+version is not on the registry yet, in dependency order, and tags each one with a GitHub Release
+named like `@fingerly/core@0.2.0`. A push that changes no version does nothing. Before publishing
+it installs from the lockfile, builds, lints, runs the tests and `pnpm check:packs`, then packs
+every tarball and inspects it. A manual run can leave packages out with its `exclude` input.
+
+- **Packages from separate repositories.** `@fingerly/node`, `@fingerly/react-native`,
+  `@fingerly/lynx` and `@fingerly/types` are published from this repository, from the commit each
+  submodule pointer names. Release the commit in the package repository first, then move the
+  pointer here in the same change as the version bump.
+- **Why the pointer moves with the version.** pnpm packs `workspace:*` dependencies to the exact
+  versions of the sibling packages, and the workflow fails if a package needs a sibling version that
+  is neither on npm nor in the same release. Pack with pnpm, never plain `npm`: a tarball that still
+  says `workspace:*` cannot be installed.
+- **React Native and Lynx.** The workflow downloads the iOS zip for the version in
+  `ios/fingerly-binary.json` from `maven.fingerly.io` and writes its SHA-256 into the package, so
+  `pod install` can refuse any other binary. Upload the iOS binary before releasing them.
+- **Locally.** After `pnpm build`, `pnpm check:packs` packs every browser package the way it is
+  published and fails on a leftover `workspace:` range, a source map, shipped sources or tests,
+  or a missing LICENSE or README. `node scripts/release-npm.mjs constants` checks that the version
+  constants in `@fingerly/core` and `@fingerly/node` match their manifests.
 
 ## Privacy and consent
 
@@ -405,26 +420,8 @@ No permission prompt, no picker, no dialog: not on any browser, not for any sign
 that interrupts a checkout with a permission dialog has destroyed the thing it was protecting,
 and a visitor who is asked has been told they are being measured.
 
-<details>
-<summary>What is and is not allowed</summary>
-
-Reading a permission's *state* is fine and prompts nobody: `permissions.query()` is specified
-never to prompt, and `enumerateDevices()` returns unlabelled devices rather than asking.
-Requesting is what is banned: `getUserMedia`, `Notification.requestPermission`,
-`getCurrentPosition`, `DeviceMotionEvent.requestPermission`, `storage.persist`,
-`requestStorageAccess`, file and device pickers, `credentials.get`, fullscreen and pointer-lock
-grabs.
-
-`client/web/web-js/tests/no-permission-prompts.test.ts` enforces that list against the source
-tree, so it cannot regress quietly.
-
-The one API that prompts on some browsers and not others is canvas readback: Tor Browser raises a
-doorhanger on `toDataURL()`. The canvas source checks whether the fast tier measured a clamped
-clock (resistFingerprinting's signature) and declines to touch the API at all if so, reporting
-`blocked / rfp-canvas-prompt-avoided`. Nothing is lost: a canvas hash from an RFP browser was
-never going to identify anyone, and the refusal is better evidence than the hash would have been.
-
-</details>
+A test in the repository (`client/web/web-js/tests/no-permission-prompts.test.ts`) enforces this
+against the source tree, so it cannot regress quietly.
 
 ## Documentation
 
