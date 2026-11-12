@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.0
+
+- Uses @fingerly/react 0.2.0 and @fingerly/node 0.2.0, which keeps the browser SDK from collecting inside an app's web view.
+
 ## 0.1.3
 
 - The `endpoint` prop and `NEXT_PUBLIC_FINGERLY_ENDPOINT` are gone; use `endpoints` or `NEXT_PUBLIC_FINGERLY_ENDPOINTS`. There is no `reason` state.

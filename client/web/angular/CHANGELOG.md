@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.0
+
+- Uses @fingerly/web-js 0.2.0, which keeps the browser SDK from collecting inside an app's web view.
+
 ## 0.1.2
 
 - The `endpoint` option and the `reason()` signal are gone; use `endpoints`.

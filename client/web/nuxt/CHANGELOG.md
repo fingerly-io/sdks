@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.0
+
+- Uses @fingerly/vue 0.2.0, which keeps the browser SDK from collecting inside an app's web view.
+
 ## 0.1.2
 
 - The `fingerly.endpoint` option and `NUXT_PUBLIC_FINGERLY_ENDPOINT` are gone; use `fingerly.endpoints` or `NUXT_PUBLIC_FINGERLY_ENDPOINTS`. There is no `reason` ref.
