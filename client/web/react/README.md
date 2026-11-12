@@ -1,34 +1,90 @@
-# @fingerly/react
+<p align="center">
+  <a href="https://fingerly.io">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/fingerly-io/.github/main/assets/logo-dark.svg">
+      <img src="https://raw.githubusercontent.com/fingerly-io/.github/main/assets/logo-light.svg" alt="Fingerly" height="44">
+    </picture>
+  </a>
+</p>
 
-React bindings for the Fingerly SDK. A provider, three hooks, and one shared
-identification per page.
+<p align="center"><b>Fingerly for React</b><br>A provider, three hooks, and one shared identification per page.</p>
 
-Requires React **19 or newer** (it uses `use()` and renders a context
-directly). Tested against 19.2.
+<p align="center">
+  <a href="https://www.npmjs.com/package/@fingerly/react"><img src="https://img.shields.io/npm/v/@fingerly/react?style=flat-square" alt="npm version"></a>
+  <a href="https://www.npmjs.com/package/@fingerly/react"><img src="https://img.shields.io/npm/dm/@fingerly/react?style=flat-square" alt="npm downloads"></a>
+  <a href="https://github.com/fingerly-io/sdks/blob/main/client/web/react/LICENSE"><img src="https://img.shields.io/npm/l/@fingerly/react?style=flat-square" alt="Apache-2.0 licence"></a>
+  <img src="https://img.shields.io/badge/react-19%2B-blue?style=flat-square" alt="React 19 or newer">
+</p>
 
-```
-pnpm add @fingerly/react
-```
+<p align="center"><img src="https://raw.githubusercontent.com/fingerly-io/.github/main/assets/banner.webp" alt="Fingerly" width="100%"></p>
 
-**Not for apps.** This binding runs the browser SDK, which collects nothing
-inside an app's web view (Capacitor, Cordova, Ionic, React Native WebView,
-`WKWebView`, Android `WebView`, Electron). Use the Fingerly iOS or Android SDK
-in an app; see [docs/privacy.md §3.3](../../../docs/privacy.md).
+## What is this
 
-## Add the provider
+`@fingerly/react` is the React binding for the Fingerly browser SDK. A
+`<FingerlyProvider>` holds one client and one shared identification, and the
+`useIdentify()` hook reads it, so a checkout, a login form and a risk banner can
+all ask the same question and pay for one answer. [Fingerly](https://fingerly.io)
+helps you protect signups, logins and payments from fraud and abuse. Using
+Next.js? See [`@fingerly/next`](https://www.npmjs.com/package/@fingerly/next),
+which wraps this package.
 
-```tsx
-// main.tsx
-import { createRoot } from 'react-dom/client'
-import { FingerlyProvider } from '@fingerly/react'
+> **Not for apps.** This binding runs the browser SDK, which collects nothing
+> inside an app's web view (Capacitor, Cordova, Ionic, React Native WebView,
+> `WKWebView`, Android `WebView`, Electron). Use the Fingerly iOS or Android SDK
+> in an app; see section 3.3 of the
+> [privacy notes](https://github.com/fingerly-io/sdks/blob/main/docs/privacy.md).
 
-createRoot(document.getElementById('root')!).render(
-  // consent="granted" only once you have consent (or know none is required here; see docs/privacy.md §4)
-  <FingerlyProvider apiKey="fly_pk_production_…" consent="granted">
-    <App />
-  </FingerlyProvider>,
-)
-```
+## Getting started
+
+1. **Get a key.** Create a public SDK key in the dashboard
+   ([how keys work](https://docs.fingerly.io/docs/api-keys)).
+2. **Install.**
+
+   ```sh
+   npm install @fingerly/react
+   # or: pnpm add @fingerly/react
+   # or: yarn add @fingerly/react
+   ```
+
+3. **Add the provider, then identify.**
+
+   ```tsx
+   // main.tsx
+   import { createRoot } from 'react-dom/client'
+   import { FingerlyProvider } from '@fingerly/react'
+
+   createRoot(document.getElementById('root')!).render(
+     // consent="granted" only once you have consent (or know none is required here; see Consent below)
+     <FingerlyProvider apiKey="fly_pk_production_…" consent="granted">
+       <App />
+     </FingerlyProvider>,
+   )
+   ```
+
+   ```tsx
+   import { useIdentify } from '@fingerly/react'
+
+   function Checkout() {
+     const { identify, isSuspicious, isLoading, error } = useIdentify()
+
+     async function onSubmit() {
+       await identify()
+
+       if (isSuspicious) {
+         // step up to MFA, hold for review, add friction
+       }
+     }
+
+     return (
+       <>
+         <button onClick={onSubmit} disabled={isLoading}>
+           {isLoading ? 'Checking…' : 'Continue'}
+         </button>
+         {error && <p>{error.message}</p>}
+       </>
+     )
+   }
+   ```
 
 The key is a **public** SDK key from the dashboard, and it belongs in the page:
 it is scoped to the origins you list, which is what makes it safe there. A
@@ -38,54 +94,32 @@ does not work by design.
 Mounting the provider collects nothing. It makes the client available and
 nothing more; when to identify is the page's decision, not the provider's.
 
-Consent defaults to `pending`, and nothing is collected or sent until it is
-`granted`. A page with a consent banner passes the banner's answer instead of
-`"granted"`; see [Waiting for consent](#waiting-for-consent).
-
-## Serve it from your own site
-
-Content blockers refuse requests to third-party hosts. Mount a first-party
-proxy at the path the dashboard issued (see `@fingerly/node` or the proxy
-templates) and pass that path as `endpoints`, a string or an array compared by
-its contents:
-
-```tsx
-<FingerlyProvider apiKey="fly_pk_production_…" endpoints="/k7x2qm4a" consent="granted">
-```
-
-## Identify
-
-```tsx
-import { useIdentify } from '@fingerly/react'
-
-function Checkout() {
-  const { identify, isSuspicious, isLoading, error } = useIdentify()
-
-  async function onSubmit() {
-    await identify()
-
-    if (isSuspicious) {
-      // step up to MFA, hold for review, add friction
-    }
-  }
-
-  return (
-    <>
-      <button onClick={onSubmit} disabled={isLoading}>
-        {isLoading ? 'Checking…' : 'Continue'}
-      </button>
-      {error && <p>{error.message}</p>}
-    </>
-  )
-}
-```
-
 `identify()` collects and submits, and resolves with the server's answer in the
 same round trip: the `requestId`, who the visitor is (`visitorId`), and the
 `suspectScore` and `suspectLevel`, unless the key hides them. Nothing is decided
 in the page: scoring lives on the server, under the weights you set.
 
-### On mount instead
+## Contents
+
+- [Identify on mount or with Suspense](#identify-on-mount-or-with-suspense)
+- [One identification per page](#one-identification-per-page)
+- [Reading the answer](#reading-the-answer)
+- [Consent](#consent)
+- [First-party endpoints](#first-party-endpoints)
+- [Options](#options)
+- [What you get back](#what-you-get-back)
+- [Errors](#errors)
+- [Server rendering](#server-rendering)
+- [More](#more)
+- [TypeScript](#typescript)
+- [Requirements](#requirements)
+- [Documentation](#documentation)
+- [Help](#help)
+- [Licence](#licence)
+
+## Identify on mount or with Suspense
+
+### On mount
 
 ```tsx
 const { suspectLevel, isReady } = useIdentify({ immediate: true })
@@ -97,7 +131,7 @@ server-side and collects on the client with no guard of its own. It is also
 safe under **StrictMode**: React's deliberate double mount costs one
 identification, not two.
 
-### Or suspend until the answer arrives
+### Suspend until the answer arrives
 
 ```tsx
 function Risk() {
@@ -150,9 +184,11 @@ unscored, or the SDK key hides the score from the page, which cannot tell those
 apart. Null is not a clean result.
 
 Signals are read on your backend, by `requestId`, never in the page: which check
-tripped is what a fraudster wants to learn.
+tripped is what a fraudster wants to learn. See
+[server-side verification](https://docs.fingerly.io/docs/server-side-verification)
+and the [server SDKs](https://docs.fingerly.io/docs/sdks).
 
-## A correlation tag
+### A correlation tag
 
 Echoed back on the finished event so you can match a submission to whatever the
 page was doing. It accepts a getter, and is read at submission time rather than
@@ -162,26 +198,12 @@ at render time:
 const { identify } = useIdentify({ tag: () => `checkout:${params.orderId}` })
 ```
 
-## Collect without submitting
+## Consent
 
-For a debug page that wants the raw report and nothing else:
-
-```tsx
-<FingerlyProvider apiKey="fly_pk_production_…" submit={false}>
-```
-
-Everything the server decides comes back empty: no `requestId`, no `visitorId`,
-`suspectScore` is `null` rather than `0`, and `isSuspicious` is
-`null` rather than `false`. That is the honest answer rather than a gap: nothing
-was sent, so nobody scored it, and this SDK decides nothing on its own.
-
-## Waiting for consent
-
-Consent defaults to `pending`. If identifying a visitor needs their consent
-first, pass what your consent tool says now. Until it is `granted` nothing is
-collected and nothing is sent:
-`useIdentify({ immediate: true })` and `suspend` wait, and the client is not
-even built.
+Consent defaults to `pending`, and nothing is collected or sent until it is
+`granted`. If identifying a visitor needs their consent first, pass what your
+consent tool says now: `useIdentify({ immediate: true })` and `suspend` wait,
+and the client is not even built.
 
 ```tsx
 <FingerlyProvider apiKey="fly_pk_production_…" consent={accepted ? 'granted' : 'pending'}>
@@ -209,22 +231,57 @@ client.setConsent('denied')                // the same, on the client itself
 identification is running stops it before it submits, and it fails with a
 `ConsentError`.
 
-## Server rendering, and one store per request
+Pass `granted` only once you have consent, or know none is required here. See
+section 4 of the
+[privacy notes](https://github.com/fingerly-io/sdks/blob/main/docs/privacy.md),
+[privacy and consent](https://docs.fingerly.io/docs/privacy-and-consent) and
+[consent tools](https://docs.fingerly.io/docs/consent-tools).
 
-The provider builds its own store, which is what a browser app wants. A
-server-rendered app that wants to be sure two visitors can never share one is
-better served by building the store per request and handing it in:
+## First-party endpoints
+
+Content blockers refuse requests to third-party hosts. Mount a first-party
+proxy at the path the dashboard issued (see `@fingerly/node` or the proxy
+templates) and pass that path as `endpoints`, a string or an array compared by
+its contents:
 
 ```tsx
-import { FingerlyProvider, createFingerlyStore } from '@fingerly/react'
-
-const store = createFingerlyStore({ apiKey: 'fly_pk_production_…' })   // once per request
-<FingerlyProvider store={store}><App /></FingerlyProvider>
+<FingerlyProvider apiKey="fly_pk_production_…" endpoints="/k7x2qm4a" consent="granted">
 ```
 
-The package is marked `'use client'`, so importing it from a React Server
-Component is a build error rather than a runtime one: every export here
-reaches a hook.
+The proxy is mounted by a server SDK: see
+[proxy integrations](https://docs.fingerly.io/docs/proxy-integrations) and the
+[Node SDK](https://docs.fingerly.io/docs/sdks/node), or pick another language on
+the [server SDK pages](https://docs.fingerly.io/docs/sdks).
+
+## Options
+
+`<FingerlyProvider>` props, and the options to `createFingerlyStore()`:
+
+| Option | Type | Notes |
+| --- | --- | --- |
+| `apiKey` | `string` | Required. A public SDK key. |
+| `endpoints` | `string \| string[]` | Ordered first-party ingestion paths or URLs, compared by contents. |
+| `fallbackToDefaultEndpoint` | `boolean` | Try the Fingerly API only after the custom endpoints fail. |
+| `consent` | `'pending' \| 'granted' \| 'denied'` | Defaults to `pending`. Read as the current answer. |
+| `submit` | `boolean` | `false` collects without submitting (see below). |
+| `apiVersion` | `string` | API route version. Defaults to `v1`. |
+| `store` | `FingerlyStore` | A store built elsewhere; the other options are not allowed with it. |
+
+`useIdentify()` options: `immediate`, `suspend` and `tag`. `identify()` takes
+`{ tag, force }` and `refresh()` takes `{ tag }`.
+
+### Collect without submitting
+
+For a debug page that wants the raw report and nothing else:
+
+```tsx
+<FingerlyProvider apiKey="fly_pk_production_…" submit={false}>
+```
+
+Everything the server decides comes back empty: no `requestId`, no `visitorId`,
+`suspectScore` is `null` rather than `0`, and `isSuspicious` is
+`null` rather than `false`. That is the honest answer rather than a gap: nothing
+was sent, so nobody scored it, and this SDK decides nothing on its own.
 
 ## What you get back
 
@@ -264,16 +321,6 @@ The detectors run on the server, over the report this package sends, so rules
 improve without every integration redeploying. Everything here that says
 anything about a visitor came from the server.
 
-## The visitor is never asked for anything
-
-No permission prompt, no picker, no dialog, on any browser. Reading a
-permission's *state* prompts nobody and is used freely; requesting is banned
-outright and enforced by a test in `@fingerly/web-js`. The one API that prompts on
-some browsers (canvas readback, which raises a doorhanger in Tor Browser) is
-skipped when the SDK measures a clamped clock.
-
-You can drop this into a checkout without it ever interrupting the checkout.
-
 ## Errors
 
 `identify()` both stores the error and rethrows it, so either style works:
@@ -311,20 +358,87 @@ it only sees this error when consent is withdrawn while it runs.
 
 Calling `identify()` during SSR rejects with `FingerlyServerError` and a message
 saying what to do instead. Use `{ immediate: true }`, which already waits for
-the client.
+the client. The error reference is at
+[docs.fingerly.io](https://docs.fingerly.io/reference/errors).
 
-## Running the demo
+## Server rendering
 
-`demo/` is this package's hooks driving the real SDK (no mocks) under
-`StrictMode`, with `useIdentify({ suspend: true })` showing `suspectScore` and `suspectLevel` beside the raw report, all sharing one
-identification.
+The provider builds its own store, which is what a browser app wants. A
+server-rendered app that wants to be sure two visitors can never share one is
+better served by building the store per request and handing it in:
 
+```tsx
+import { FingerlyProvider, createFingerlyStore } from '@fingerly/react'
+
+const store = createFingerlyStore({ apiKey: 'fly_pk_production_…' })   // once per request
+<FingerlyProvider store={store}><App /></FingerlyProvider>
 ```
+
+The package is marked `'use client'`, so importing it from a React Server
+Component is a build error rather than a runtime one: every export here
+reaches a hook.
+
+## More
+
+### The visitor is never asked for anything
+
+No permission prompt, no picker, no dialog, on any browser. Reading a
+permission's *state* prompts nobody and is used freely; requesting is banned
+outright and enforced by a test in `@fingerly/web-js`. The one browser API that
+can prompt (Tor Browser answers it with a doorhanger) is skipped whenever the
+SDK detects that browser would prompt.
+
+You can drop this into a checkout without it ever interrupting the checkout.
+
+<details>
+<summary>Running the demo</summary>
+
+`demo/` (in the
+[repository](https://github.com/fingerly-io/sdks/tree/main/client/web/react)) is
+this package's hooks driving the real SDK (no mocks) under `StrictMode`, with
+`useIdentify({ suspend: true })` showing `suspectScore` and `suspectLevel`
+beside the raw report, all sharing one identification.
+
+```sh
 pnpm --filter @fingerly/react demo   # http://localhost:4175
 ```
 
-It is served rather than opened from disk because several sources need a secure
-context and `file://` is not one; the storage probes are the clearest case,
-since they are not exposed outside one. It uses `submit: false`, so it sends
+It is served rather than opened from disk because some collection needs a
+secure context and `file://` is not one. It uses `submit: false`, so it sends
 nothing and no server answers: the raw report fills in, and the score and level
 read hidden.
+
+</details>
+
+## TypeScript
+
+Types ship with the package. `FingerlyProviderProps`, `FingerlyReactOptions`,
+`FingerlyState`, `FingerlyStore`, `UseIdentifyOptions` and `UseIdentifyReturn`
+are exported, together with the types you receive (`IdentifyResult`,
+`ConsentState`, `SignalReport`, `SignalOutcome`, `SignalStatus`,
+`IntegrityReport`, `Lie`, `Confidence` and `FingerlyWebEvent`). The values
+`ConsentError`, `TransportError`, `FingerlyServerError`, `createFingerlyStore`
+and `FingerlyContext` are exported for `instanceof` checks and tests. The
+package is side-effect free.
+
+## Requirements
+
+React **19 or newer** (it uses `use()` and renders a context directly). Tested
+against 19.2. The browser SDK it wraps needs ES2020 with `fetch` and
+`AbortController`: every current version of Chrome, Edge, Firefox and Safari.
+
+## Documentation
+
+The React guide is at
+[docs.fingerly.io](https://docs.fingerly.io/docs/sdks/react). The browser SDK
+underneath is [`@fingerly/web-js`](https://www.npmjs.com/package/@fingerly/web-js).
+
+## Help
+
+Open an issue on [fingerly-io/sdks](https://github.com/fingerly-io/sdks/issues),
+or write to [support@fingerly.io](mailto:support@fingerly.io). Security issues:
+[security@fingerly.io](mailto:security@fingerly.io).
+
+## Licence
+
+[Apache-2.0](https://github.com/fingerly-io/sdks/blob/main/client/web/react/LICENSE). Fingerly is a product of Badele LLC.

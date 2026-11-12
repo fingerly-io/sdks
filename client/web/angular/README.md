@@ -1,31 +1,83 @@
-# @fingerly/angular
+<p align="center">
+  <a href="https://fingerly.io">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/fingerly-io/.github/main/assets/logo-dark.svg">
+      <img src="https://raw.githubusercontent.com/fingerly-io/.github/main/assets/logo-light.svg" alt="Fingerly" height="44">
+    </picture>
+  </a>
+</p>
 
-Angular bindings for the Fingerly SDK. One identification per application
-injector, exposed as signals.
+<p align="center"><b>Fingerly for Angular</b><br>One identification per application injector, exposed as signals.</p>
 
-Requires Angular **19 or newer** (signals, `afterNextRender`, standalone
-bootstrap). Tested against Angular 22.
+<p align="center">
+  <a href="https://www.npmjs.com/package/@fingerly/angular"><img src="https://img.shields.io/npm/v/@fingerly/angular?style=flat-square" alt="npm version"></a>
+  <a href="https://www.npmjs.com/package/@fingerly/angular"><img src="https://img.shields.io/npm/dm/@fingerly/angular?style=flat-square" alt="npm downloads"></a>
+  <a href="https://github.com/fingerly-io/sdks/blob/main/client/web/angular/LICENSE"><img src="https://img.shields.io/npm/l/@fingerly/angular?style=flat-square" alt="Apache-2.0 licence"></a>
+  <img src="https://img.shields.io/badge/angular-19%2B-blue?style=flat-square" alt="Angular 19 or newer">
+</p>
 
-```
-pnpm add @fingerly/angular
-```
+<p align="center"><img src="https://raw.githubusercontent.com/fingerly-io/.github/main/assets/banner.webp" alt="Fingerly" width="100%"></p>
 
-**Not for apps.** This binding runs the browser SDK, which collects nothing
-inside an app's web view (Capacitor, Cordova, Ionic, React Native WebView,
-`WKWebView`, Android `WebView`, Electron). Use the Fingerly iOS or Android SDK
-in an app; see [docs/privacy.md §3.3](../../../docs/privacy.md).
+## What is this
 
-## Provide it
+`@fingerly/angular` is the Angular binding for the Fingerly browser SDK.
+`provideFingerly()` puts one client and one shared identification in the
+application injector, and `injectIdentify()` reads it as signals, so a checkout,
+a login form and a risk banner can all ask the same question and pay for one
+answer. [Fingerly](https://fingerly.io) helps you protect signups, logins and
+payments from fraud and abuse.
 
-```ts
-// app.config.ts
-import { provideFingerly } from '@fingerly/angular'
+> **Not for apps.** This binding runs the browser SDK, which collects nothing
+> inside an app's web view (Capacitor, Cordova, Ionic, React Native WebView,
+> `WKWebView`, Android `WebView`, Electron). Use the Fingerly iOS or Android SDK
+> in an app; see section 3.3 of the
+> [privacy notes](https://github.com/fingerly-io/sdks/blob/main/docs/privacy.md).
 
-export const appConfig: ApplicationConfig = {
-  // consent: 'granted' only once you have consent (or know none is required here; see docs/privacy.md §4)
-  providers: [provideFingerly({ apiKey: 'fly_pk_production_…', consent: 'granted' })],
-}
-```
+## Getting started
+
+1. **Get a key.** Create a public SDK key in the dashboard
+   ([how keys work](https://docs.fingerly.io/docs/api-keys)).
+2. **Install.**
+
+   ```sh
+   npm install @fingerly/angular
+   # or: pnpm add @fingerly/angular
+   # or: yarn add @fingerly/angular
+   ```
+
+3. **Provide it, then identify.**
+
+   ```ts
+   // app.config.ts
+   import { provideFingerly } from '@fingerly/angular'
+
+   export const appConfig: ApplicationConfig = {
+     // consent: 'granted' only once you have consent (or know none is required here; see Consent below)
+     providers: [provideFingerly({ apiKey: 'fly_pk_production_…', consent: 'granted' })],
+   }
+   ```
+
+   ```ts
+   @Component({
+     template: `
+       <button (click)="submit()" [disabled]="fingerly.isLoading()">
+         {{ fingerly.isLoading() ? 'Checking…' : 'Continue' }}
+       </button>
+       @if (fingerly.error(); as failure) { <p>{{ failure.message }}</p> }
+     `,
+   })
+   export class Checkout {
+     readonly fingerly = injectIdentify()
+
+     async submit() {
+       await this.fingerly.identify()
+
+       if (this.fingerly.isSuspicious()) {
+         // step up to MFA, hold for review, add friction
+       }
+     }
+   }
+   ```
 
 The key is a **public** SDK key from the dashboard, and it belongs in the page:
 it is scoped to the origins you list, which is what makes it safe there. A
@@ -40,52 +92,30 @@ and the one-submission-per-page rule would quietly stop holding.
 Providing it collects nothing. The state is built the first time something
 injects it, and it collects only when asked.
 
-Consent defaults to `pending`, and nothing is collected or sent until it is
-`granted`. A page with a consent banner leaves it `pending` and calls
-`setConsent('granted')` once the banner is accepted; see
-[Waiting for consent](#waiting-for-consent).
-
-## Serve it from your own site
-
-Content blockers refuse requests to third-party hosts. Mount a first-party
-proxy at the path the dashboard issued (see `@fingerly/node` or the proxy
-templates) and pass that path as `endpoints`, a string or an array compared by
-its contents:
-
-```ts
-provideFingerly({ apiKey: 'fly_pk_production_…', endpoints: '/k7x2qm4a', consent: 'granted' })
-```
-
-## Identify
-
-```ts
-@Component({
-  template: `
-    <button (click)="submit()" [disabled]="fingerly.isLoading()">
-      {{ fingerly.isLoading() ? 'Checking…' : 'Continue' }}
-    </button>
-    @if (fingerly.error(); as failure) { <p>{{ failure.message }}</p> }
-  `,
-})
-export class Checkout {
-  readonly fingerly = injectIdentify()
-
-  async submit() {
-    await this.fingerly.identify()
-
-    if (this.fingerly.isSuspicious()) {
-      // step up to MFA, hold for review, add friction
-    }
-  }
-}
-```
-
 `identify()` collects and submits, and resolves with the server's answer in the
 same round trip: the `requestId`, who the visitor is (`visitorId`), and the
 `suspectScore` and `suspectLevel`, unless the key hides them. Nothing is decided
 in the page: scoring lives on the server, under the weights you set.
 
-### On render instead
+## Contents
+
+- [Identify on render](#identify-on-render)
+- [One identification per page](#one-identification-per-page)
+- [Reading the answer](#reading-the-answer)
+- [Consent](#consent)
+- [First-party endpoints](#first-party-endpoints)
+- [Options](#options)
+- [What you get back](#what-you-get-back)
+- [Errors](#errors)
+- [Server rendering](#server-rendering)
+- [More](#more)
+- [TypeScript](#typescript)
+- [Requirements](#requirements)
+- [Documentation](#documentation)
+- [Help](#help)
+- [Licence](#licence)
+
+## Identify on render
 
 ```ts
 readonly fingerly = injectIdentify({ immediate: true })
@@ -99,6 +129,14 @@ own.
 Pass it in as many components as want it. The state is shared, so the second
 and third callers get the first one's answer rather than starting their own
 submission.
+
+### Where these can be called
+
+`injectFingerly` and `injectIdentify` use Angular's `inject()`,
+so like everything that does, they run in an **injection context**: a field
+initialiser, a constructor, or inside `runInInjectionContext`. That is why they
+are named `inject…` rather than the `use…` the Vue, React and Svelte bindings
+use: the name is the rule.
 
 ## One identification per page
 
@@ -127,9 +165,11 @@ unscored, or the SDK key hides the score from the page, which cannot tell those
 apart. Null is not a clean result.
 
 Signals are read on your backend, by `requestId`, never in the page: which check
-tripped is what a fraudster wants to learn.
+tripped is what a fraudster wants to learn. See
+[server-side verification](https://docs.fingerly.io/docs/server-side-verification)
+and the [server SDKs](https://docs.fingerly.io/docs/sdks).
 
-## A correlation tag
+### A correlation tag
 
 Echoed back on the finished event so you can match a submission to whatever the
 page was doing. It takes a signal, and is read at submission time rather than
@@ -140,23 +180,12 @@ readonly orderId = input.required<string>()
 readonly fingerly = injectIdentify({ tag: () => `checkout:${this.orderId()}` })
 ```
 
-## Collect without submitting
+## Consent
 
-For a debug page that wants the raw report and nothing else:
-
-```ts
-provideFingerly({ apiKey: 'fly_pk_production_…', submit: false })
-```
-
-Everything the server decides comes back empty: no `requestId`, no `visitorId`,
-`suspectScore` is `null` rather than `0`, and `isSuspicious()`
-is `null` rather than `false`. That is the honest answer rather than a gap:
-nothing was sent, so nobody scored it, and this SDK decides nothing on its own.
-
-## Waiting for consent
-
-If identifying a visitor needs their consent first, provide it with `consent:
-'pending'`, the default. Until it is `granted` nothing is collected and nothing is sent:
+Consent defaults to `pending`, and nothing is collected or sent until it is
+`granted`. A page with a consent banner leaves it `pending` and calls
+`setConsent('granted')` once the banner is accepted. If identifying a visitor
+needs their consent first, provide it with `consent: 'pending'`, the default:
 `injectIdentify({ immediate: true })` waits, and the client is not even built.
 
 ```ts
@@ -184,13 +213,60 @@ Setting `granted` starts the identification that was waiting, once. `pending`
 and `denied` behave the same. Withdrawing consent while an identification is
 running stops it before it submits, and it fails with a `ConsentError`.
 
-## Where these can be called
+Pass `granted` only once you have consent, or know none is required here. See
+section 4 of the
+[privacy notes](https://github.com/fingerly-io/sdks/blob/main/docs/privacy.md),
+[privacy and consent](https://docs.fingerly.io/docs/privacy-and-consent) and
+[consent tools](https://docs.fingerly.io/docs/consent-tools).
 
-`injectFingerly` and `injectIdentify` use Angular's `inject()`,
-so like everything that does, they run in an **injection context**: a field
-initialiser, a constructor, or inside `runInInjectionContext`. That is why they
-are named `inject…` rather than the `use…` the Vue, React and Svelte bindings
-use: the name is the rule.
+## First-party endpoints
+
+Content blockers refuse requests to third-party hosts. Mount a first-party
+proxy at the path the dashboard issued (see `@fingerly/node` or the proxy
+templates) and pass that path as `endpoints`, a string or an array compared by
+its contents:
+
+```ts
+provideFingerly({ apiKey: 'fly_pk_production_…', endpoints: '/k7x2qm4a', consent: 'granted' })
+```
+
+The proxy is mounted by a server SDK: see
+[proxy integrations](https://docs.fingerly.io/docs/proxy-integrations) and the
+[Node SDK](https://docs.fingerly.io/docs/sdks/node), or pick another language on
+the [server SDK pages](https://docs.fingerly.io/docs/sdks).
+
+## Options
+
+`provideFingerly(options)`:
+
+| Option | Type | Notes |
+| --- | --- | --- |
+| `apiKey` | `string` | Required. A public SDK key. |
+| `endpoints` | `string \| string[]` | Ordered first-party ingestion paths or URLs, compared by contents. |
+| `fallbackToDefaultEndpoint` | `boolean` | Try the Fingerly API only after the custom endpoints fail. |
+| `consent` | `'pending' \| 'granted' \| 'denied'` | Defaults to `pending`. |
+| `submit` | `boolean` | `false` collects without submitting (see below). |
+| `apiVersion` | `string` | API route version. Defaults to `v1`. |
+
+`injectIdentify()` options: `immediate` and `tag` (a string, a signal or a
+getter). `identify()` takes `{ tag, force }` and `refresh()` takes `{ tag }`.
+
+The configuration is its own token, `FINGERLY_OPTIONS`, separate from the state
+(`FINGERLY`), so a test can keep the real state with a different key, or an app
+can resolve its key from its own config service.
+
+### Collect without submitting
+
+For a debug page that wants the raw report and nothing else:
+
+```ts
+provideFingerly({ apiKey: 'fly_pk_production_…', submit: false })
+```
+
+Everything the server decides comes back empty: no `requestId`, no `visitorId`,
+`suspectScore` is `null` rather than `0`, and `isSuspicious()`
+is `null` rather than `false`. That is the honest answer rather than a gap:
+nothing was sent, so nobody scored it, and this SDK decides nothing on its own.
 
 ## What you get back
 
@@ -230,16 +306,6 @@ The detectors run on the server, over the report this package sends, so rules
 improve without every integration redeploying. Everything here that says
 anything about a visitor came from the server.
 
-## The visitor is never asked for anything
-
-No permission prompt, no picker, no dialog, on any browser. Reading a
-permission's *state* prompts nobody and is used freely; requesting is banned
-outright and enforced by a test in `@fingerly/web-js`. The one API that prompts on
-some browsers (canvas readback, which raises a doorhanger in Tor Browser) is
-skipped when the SDK measures a clamped clock.
-
-You can drop this into a checkout without it ever interrupting the checkout.
-
 ## Errors
 
 `identify()` both stores the error and rethrows it, so either style works:
@@ -277,24 +343,85 @@ it only sees this error when consent is withdrawn while it runs.
 
 Calling `identify()` during a server render rejects with `FingerlyServerError`
 and a message saying what to do instead. Use `{ immediate: true }`, which
-already waits for the browser.
+already waits for the browser. The error reference is at
+[docs.fingerly.io](https://docs.fingerly.io/reference/errors).
 
-## No decorators, and why
+## Server rendering
+
+`{ immediate: true }` runs in `afterNextRender`, which Angular does not run
+during a server render, so a page renders on the server and collects in the
+browser with no platform check of its own. Calling `identify()` directly during
+a server render rejects with `FingerlyServerError`, as above.
+
+## More
+
+### The visitor is never asked for anything
+
+No permission prompt, no picker, no dialog, on any browser. Reading a
+permission's *state* prompts nobody and is used freely; requesting is banned
+outright and enforced by a test in `@fingerly/web-js`. The one browser API that
+can prompt (Tor Browser answers it with a doorhanger) is skipped whenever the
+SDK detects that browser would prompt.
+
+You can drop this into a checkout without it ever interrupting the checkout.
+
+<details>
+<summary>No decorators, and why</summary>
 
 There is no `@Injectable` here: the state is an injection token with a factory.
 That is what lets the package build with `tsc` and be consumed without an
 Angular compilation step of its own: nothing in `dist` needs the Angular
 compiler to have seen it.
 
-## Running the playground
+</details>
 
-`playground/` is this package's own providers and injectors driving the real
-SDK (no mocks) in an application compiled just-in-time in the page, so it
-needs no second build system.
+<details>
+<summary>Running the playground</summary>
 
-```
+`playground/` (in the
+[repository](https://github.com/fingerly-io/sdks/tree/main/client/web/angular))
+is this package's own providers and injectors driving the real SDK (no mocks) in
+an application compiled just-in-time in the page, so it needs no second build
+system.
+
+```sh
 pnpm --filter @fingerly/angular playground   # http://localhost:4177
 ```
 
 It uses `submit: false`, so it sends nothing and no server answers: the raw
 report fills in, and the score and level read hidden.
+
+</details>
+
+## TypeScript
+
+Types ship with the package. `Fingerly`, `FingerlyOptions` and
+`InjectIdentifyOptions` are exported, together with the types you receive
+(`IdentifyResult`, `ConsentState`, `SignalReport`, `SignalOutcome`,
+`SignalStatus`, `IntegrityReport`, `Lie`, `Confidence` and `FingerlyWebEvent`).
+The values `ConsentError`, `TransportError`, `FingerlyServerError`,
+`createFingerly`, `FINGERLY` and `FINGERLY_OPTIONS` are exported too. The
+package is side-effect free.
+
+## Requirements
+
+Angular **19 or newer** (signals, `afterNextRender`, standalone bootstrap).
+Tested against Angular 22. The browser SDK it wraps needs ES2020 with `fetch`
+and `AbortController`: every current version of Chrome, Edge, Firefox and
+Safari.
+
+## Documentation
+
+The Angular guide is at
+[docs.fingerly.io](https://docs.fingerly.io/docs/sdks/angular). The browser SDK
+underneath is [`@fingerly/web-js`](https://www.npmjs.com/package/@fingerly/web-js).
+
+## Help
+
+Open an issue on [fingerly-io/sdks](https://github.com/fingerly-io/sdks/issues),
+or write to [support@fingerly.io](mailto:support@fingerly.io). Security issues:
+[security@fingerly.io](mailto:security@fingerly.io).
+
+## Licence
+
+[Apache-2.0](https://github.com/fingerly-io/sdks/blob/main/client/web/angular/LICENSE). Fingerly is a product of Badele LLC.
