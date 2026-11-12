@@ -6,7 +6,9 @@ contract the Android, iOS and server work builds against in parallel.
 Rule: a client collects and sends. No client holds a weight, a threshold, a verdict, a confidence or a
 fraud conclusion. Everything in section 8 runs on the server and only there.
 
-Native SDKs and bridges are unpublished, so nothing here needs backward compatibility.
+Android 0.1.0 is published. A change keeps the schema number when it only removes a field, lets a field be absent,
+or adds a field: the server reads every source as an object and looks fields up by name, so an unknown field is
+ignored and an absent one reads as not known. Anything else needs a new schema number. (Android ADR 0001.)
 
 ## 1. Conventions
 
@@ -146,9 +148,9 @@ read move to the server.
 
 | Field | Type | Bounds | Status |
 |---|---|---|---|
-| `total_gb`, `available_gb` | int | | unchanged |
+| `total_gb`, `available_gb` | int | | removed (no rule reads them; Android ADR 0001) |
 | `free_ratio` | double | 0 to 1, 2 decimals | unchanged |
-| `app_dir_entries` | int | | unchanged |
+| `app_dir_entries` | int | | removed (no rule reads it; Android ADR 0001, Appendix A row 11) |
 | `external_emulated` | bool | | unchanged |
 
 ### intl (fast)
@@ -159,7 +161,7 @@ read move to the server.
 | `utc_offset_min` | int | | unchanged |
 | `dst` | bool | | unchanged |
 | `locale` | string | BCP 47 | unchanged |
-| `locales` | string[] | at most 8 | unchanged |
+| `locales` | string[] | | removed (no rule reads it; `locale` is the first locale) |
 | `uses_24h` | bool | | unchanged |
 
 ### accessibility (fast)
@@ -196,15 +198,17 @@ read move to the server.
 | Field | Type | Bounds | Status |
 |---|---|---|---|
 | `count` | int | | unchanged |
-| `vendors` | string[] | at most 6, each at most 64 | unchanged |
+| `vendors` | string[] | | removed (Android ADR 0001) |
+| `only_platform_vendors` | bool | absent when no sensor names a vendor; see section 5 | new |
 | `accelerometer`, `gyroscope`, `magnetometer`, `proximity`, `light`, `pressure`, `step_counter`, `heart_rate` | bool | | unchanged |
 
 ### audio (fast)
 
 | Field | Type | Status |
 |---|---|---|
-| `output_sample_rate`, `output_frames_per_buffer`, `max_music_volume` | int | unchanged |
-| `supports_low_latency`, `supports_pro`, `music_active` | bool | unchanged |
+| `max_music_volume` | int | unchanged |
+| `supports_low_latency`, `supports_pro` | bool | unchanged |
+| `output_sample_rate`, `output_frames_per_buffer`, `music_active` | | removed (no rule reads them) |
 
 ### network (fast)
 
@@ -242,16 +246,17 @@ read move to the server.
 | `su_on_path` | bool | | unchanged |
 | `busybox_paths` | string[] | at most 10, probe paths only | unchanged |
 | `framework_paths` | string[] | at most 13, probe paths only | unchanged |
-| `root_manager_installed`, `hook_manager_installed` | bool | aggregate, see section 5 | unchanged |
+| `root_manager_installed`, `hook_manager_installed` | bool | aggregate, see section 5; absent unless the app includes `fingerly-app-checks` | changed |
 | `writable_system` | string[] | at most 7, probe paths only | unchanged |
 | `selinux_enforcing` | bool | | unchanged |
 | `selinux_context` | string | at most 64, category suffix removed | unchanged |
 | `verified_boot_state` | string | at most 16, lowercased | unchanged |
 | `boot_locked` | bool | | unchanged |
 | `verity_mode` | string | at most 32 | unchanged |
-| `boot_properties` | string[] | at most 4 | unchanged |
+| `boot_properties` | string[] | at most 4; absent when the property store refused a read | changed |
 | `ro_debuggable` | string | raw value, at most 8 | new |
 | `ro_secure` | string | raw value, at most 8 | new |
+| `property_store_refused` | bool | only ever `true`; present only when the property store refused a read | new |
 | `system_mounts` | object[] | at most 8; see below | new |
 | `mount_framework_lines` | int | 0 to 1024; see below | new |
 | `mount_anomalies` | string[] | | removed |
@@ -269,7 +274,7 @@ starting with `/data/adb`. A count because the rest of the table can name other 
 
 | Field | Type | Bounds | Status |
 |---|---|---|---|
-| `qemu_props` | string[] | at most 6, probe names | unchanged |
+| `qemu_props` | string[] | at most 6, probe names; absent when the property store refused a read | changed |
 | `qemu_devices` | string[] | at most 9, probe paths | unchanged |
 | `emulator_files` | string[] | at most 17, probe paths | unchanged |
 | `telephony` | bool | | unchanged |
@@ -346,7 +351,8 @@ server. Each region goes in exactly one bucket, first match wins:
 
 | Field | Type | Bounds | Status |
 |---|---|---|---|
-| `data_dir_expected`, `data_dir_in_other_app`, `stub_process_name`, `cloner_installed` | bool | see section 5 | unchanged |
+| `data_dir_expected`, `data_dir_in_other_app`, `stub_process_name` | bool | see section 5 | unchanged |
+| `cloner_installed` | bool | see section 5; absent unless the app includes `fingerly-app-checks` | changed |
 | `foreign_sandbox_maps` | int | count, never names | unchanged |
 | `user_id` | int | | unchanged |
 | `oem_clone` | bool | | removed (`user_id == 999`) |
@@ -378,6 +384,20 @@ single use, bound to the SDK key), has the hardware keystore attest a fresh key 
 `challenge_source: "device"`; such a chain is never treated as proven. The chain is forwarded verbatim and only the
 server reads what is inside it: the server checks it against the published roots, the application ID in the extension
 against the report and the key's `allowed_android_packages` and `allowed_android_signers`, and spends the challenge.
+
+### play_integrity (deferred, optional)
+
+| Field | Type | Bounds | Status |
+|---|---|---|---|
+| `token` | string | at most 16 KiB; removed from the report before it is stored | new |
+| `request_hash` | string | 64, lowercase hex SHA-256 of the server's challenge | new |
+| `challenge` | string | base64, the same server nonce as `attest.challenge` | new |
+
+Present only in reports of apps that add the optional `io.fingerly:fingerly-play-integrity` artifact (server ADR
+0026). `unsupported` when the challenge did not set `play_integrity`, which the server sets only for a project with its
+own Google service account and within its daily decode budget; `blocked` when the token could not be made. The server
+decodes the token at most once with the customer's service account, checks the package, the request hash and the
+timestamp, and reports Google's verdicts. Its absence is never evidence.
 
 ### tls (deferred)
 
@@ -421,24 +441,26 @@ Removed entirely. See section 6.
 | `simulator_model`, `simulator_runtime` | string | | unchanged |
 | `simulator_environment` | string[] | at most 5, key names only | unchanged |
 | `simulator_build` | bool | | unchanged |
-| `active_processors` | int | | unchanged |
-| `low_power_mode` | bool | | unchanged |
+| `active_processors` | int | sent only on a simulator (iOS ADR 0001) | unchanged |
+| `low_power_mode` | bool | | removed (iOS ADR 0001) |
 
 ### hardware (fast; in the velocity cohort)
 
 | Field | Type | Status |
 |---|---|---|
 | `machine`, `uname_machine`, `model`, `target`, `product` | string | unchanged |
-| `memory_bytes` | int64 | unchanged |
-| `physical_cpu`, `logical_cpu`, `cpu_family`, `cpu_subfamily`, `cacheline`, `l1d_cache`, `l1i_cache`, `l2_cache`, `page_size`, `byte_order` | int | unchanged |
+| `memory_bytes` | int64 | removed (iOS ADR 0001) |
+| `physical_cpu`, `logical_cpu`, `cpu_family`, `cpu_subfamily`, `cacheline`, `l1d_cache`, `l1i_cache`, `l2_cache`, `page_size`, `byte_order` | int | removed (iOS ADR 0001) |
 
 ### display (fast; in the velocity cohort)
 
 | Field | Type | Status |
 |---|---|---|
-| `width`, `height`, `native_width`, `native_height`, `max_fps` | int | unchanged |
-| `scale`, `native_scale`, `brightness` | double | unchanged |
-| `gamut`, `interface_style` | string | unchanged |
+| `width`, `height`, `native_width`, `native_height` | int | unchanged |
+| `scale`, `native_scale` | double | unchanged |
+| `max_fps` | int | removed (iOS ADR 0001) |
+| `brightness` | double | removed (iOS ADR 0001) |
+| `gamut`, `interface_style` | string | removed (iOS ADR 0001) |
 
 ### storage (fast)
 
@@ -452,61 +474,74 @@ No capacity, free space or boot time: required-reason APIs whose approved reason
 
 | Field | Type | Bounds | Status |
 |---|---|---|---|
-| `timezone`, `locale`, `apple_locale`, `region`, `calendar`, `currency`, `decimal_separator` | string | | unchanged |
-| `utc_offset_s`, `first_weekday` | int | | unchanged |
-| `is_dst`, `uses_24_hour`, `uses_metric` | bool | | unchanged |
-| `languages` | string[] | at most 6 | unchanged |
+| `timezone` | string | | unchanged |
+| `locale` | string | `language[-Script][-REGION]` only, no `-u-` extensions | unchanged; reduced (iOS ADR 0001) |
+| `apple_locale`, `region`, `calendar`, `currency`, `decimal_separator` | string | | removed (iOS ADR 0001) |
+| `utc_offset_s`, `first_weekday` | int | | removed (iOS ADR 0001) |
+| `is_dst`, `uses_24_hour`, `uses_metric` | bool | | removed (iOS ADR 0001) |
+| `languages` | string[] | at most 6 | removed (iOS ADR 0001) |
 
 ### accessibility (fast)
 
+Retired (iOS ADR 0001). The id is still sent, as `{ status: "unsupported", reason: "retired" }` with no value, so that
+section 8.11 does not read it as omitted. No API is called.
+
 | Field | Type | Status |
 |---|---|---|
-| `settings_changed` | int | unchanged (stays a count, see section 5) |
-| `default_text_size` | bool | unchanged |
+| `settings_changed` | int | removed (iOS ADR 0001) |
+| `default_text_size` | bool | removed (iOS ADR 0001) |
 
 ### battery (fast)
 
+Retired (iOS ADR 0001), sent as `unsupported` with reason `retired` and no value.
+
 | Field | Type | Bounds | Status |
 |---|---|---|---|
-| `level` | int | 0 to 100, step 5 | unchanged |
-| `state` | string | charging, full, unplugged, unknown | unchanged |
-| `low_power_mode` | bool | | unchanged |
-| `thermal_state` | string | | unchanged |
+| `level` | int | 0 to 100, step 5 | removed (iOS ADR 0001) |
+| `state` | string | charging, full, unplugged, unknown | removed (iOS ADR 0001) |
+| `low_power_mode` | bool | | removed (iOS ADR 0001) |
+| `thermal_state` | string | | removed (iOS ADR 0001) |
 
 ### security (fast)
 
 | Field | Type | Status |
 |---|---|---|
-| `passcode_set`, `biometry_enrolled` | bool | unchanged |
-| `biometry_type`, `biometry_reason` | string | unchanged |
+| `passcode_set` | bool | unchanged |
+| `biometry_reason` | string | unchanged |
+| `biometry_enrolled` | bool | removed (iOS ADR 0001; an absent `biometry_reason` says it) |
+| `biometry_type` | string | removed (iOS ADR 0001) |
 
 ### sensors (fast)
 
 | Field | Type | Status |
 |---|---|---|
-| `accelerometer`, `gyroscope`, `magnetometer`, `device_motion` | bool | unchanged |
+| `accelerometer`, `gyroscope` | bool | unchanged |
+| `magnetometer`, `device_motion` | bool | removed (iOS ADR 0001) |
 
 ### audio (fast)
 
+Retired (iOS ADR 0001), sent as `unsupported` with reason `retired` and no value.
+
 | Field | Type | Bounds | Status |
 |---|---|---|---|
-| `outputs`, `inputs` | string[] | at most 8 | unchanged |
-| `output_channels` | int | | unchanged |
-| `other_audio_playing` | bool | | unchanged |
+| `outputs`, `inputs` | string[] | at most 8 | removed (iOS ADR 0001) |
+| `output_channels` | int | | removed (iOS ADR 0001) |
+| `other_audio_playing` | bool | | removed (iOS ADR 0001) |
 
 ### network (fast)
 
 | Field | Type | Bounds | Status |
 |---|---|---|---|
-| `interfaces` | string[] | at most 32, each at most 16 | unchanged |
-| `tunnels`, `scoped_tunnels` | string[] | at most 16 | unchanged |
-| `tunnel_count`, `radio_services` | int | | unchanged |
+| `radio_services` | int | | unchanged |
 | `proxy_configured`, `proxy_auto_config` | bool | | unchanged |
 | `transport` | string | wifi, cellular, wired | unchanged |
 | `interface_types` | string[] | at most 5 | unchanged |
-| `path_status` | string | | unchanged |
-| `expensive`, `constrained`, `supports_ipv4`, `supports_ipv6` | bool | | unchanged |
-| `radio` | string[] | at most 4 | unchanged |
+| `interfaces` | string[] | at most 32, each at most 16 | removed (iOS ADR 0001) |
+| `tunnels`, `scoped_tunnels` | string[] | at most 16 | removed (iOS ADR 0001) |
+| `tunnel_count` | int | | removed (iOS ADR 0001) |
+| `path_status` | string | | removed (iOS ADR 0001) |
+| `expensive`, `constrained`, `supports_ipv4`, `supports_ipv6` | bool | | removed (iOS ADR 0001) |
+| `radio` | string[] | at most 4 | removed (iOS ADR 0001) |
 | `tunnelled` | bool | | removed (`interface_types` contains `other`) |
 
 ### app (fast; scalars are in the velocity cohort)
@@ -522,10 +557,10 @@ No capacity, free space or boot time: required-reason APIs whose approved reason
 | Field | Type | Bounds | Status |
 |---|---|---|---|
 | `install_id` | string | UUID | unchanged |
-| `first_seen_at` | int | epoch seconds | unchanged |
+| `first_seen_at` | int | epoch seconds | removed (iOS ADR 0001) |
 | `launches` | int | >= 1 | unchanged; meaning changes to once per process (P3) |
 | `install_age_h` | int | may be negative after P4 | unchanged; stop clamping to 0 (P4) |
-| `reinstalled` | bool | see section 5 | unchanged |
+| `reinstalled` | bool | see section 5 | removed (iOS ADR 0001: the install record lives in the app container by default, and the vendor identifier is no longer read) |
 
 ### jailbreak (fast)
 
@@ -533,7 +568,7 @@ No capacity, free space or boot time: required-reason APIs whose approved reason
 |---|---|---|---|
 | `injectors` | string[] | at most 10, probe paths | unchanged |
 | `userland` | string[] | at most 10, probe paths | unchanged |
-| `symlinked_directories` | string[] | at most 8, probe paths | unchanged |
+| `symlinked_directories` | string[] | at most 8, probe paths | removed (iOS ADR 0001: `readlink` reads outside the container, Guideline 2.5.2) |
 | `rootless_prefix_present`, `rootless` | bool | | unchanged |
 | `schemes_queryable` | bool | | unchanged |
 | `managers_found` | int | 0 to 10 | renamed (from `managers`, string[]) |
@@ -588,16 +623,19 @@ Sort the final list.
 
 ### fonts (deferred)
 
+Retired (iOS ADR 0001), sent as `unsupported` with reason `retired` and no value.
+
 | Field | Type | Status |
 |---|---|---|
-| `count` | int | unchanged |
+| `count` | int | removed (iOS ADR 0001) |
 
 ### attest (deferred)
 
 | Field | Type | Status |
 |---|---|---|
 | `devicecheck_supported`, `app_attest_supported` | bool | unchanged |
-| `device_token` | string | unchanged; still switched off |
+| `device_token` | string | changed: base64, at most 4 KiB decoded; sent only when the challenge sets `device_check`, beside the `app_attest` evidence that covers it; removed from the report before it is stored (server ADR 0026) |
+| `device_check_error` | string | new: at most 24, a status token such as `devicecheck-<code>` when the token could not be made; App Attest carries on |
 | `app_attest` | object | App Attest evidence, or absent; removed from the report before it is stored |
 | `app_attest.mode` | string | `attestation` for a new key, `assertion` for every later report |
 | `app_attest.key_id` | string | base64, 32 bytes decoded; stored only as a SHA-256 and never in identity or the velocity cohort |
@@ -613,6 +651,19 @@ The key identifier is kept in the app's own container, not the keychain, so it i
 verifies the object against Apple's root and the key's `allowed_apple_app_ids`, and records the event as `attested`,
 `not_attested` or `failed`. A report without proof fires `attestation_missing` only on a production or staging key
 with an Apple app ID configured, on iOS 14 or newer.
+
+A forgotten key (server ADR 0026, amended 2026-11-11): the server deletes a key after 180 days without an assertion and
+with a purged project. An assertion under a key it does not hold is `not_attested` with reason `attestation-key-unknown`,
+and the identify answer carries `app_attest_key: "unknown"`; where the SDK key requires attestation the report is refused
+with `403 attestation_key_unknown` instead of `attestation_required`. On either, the SDK marks the key it asserted with for
+replacement (only while that key is still the one it stores) and attests a new key on its next collection. Replacements
+are rate limited on the device, because Apple's risk metric counts the keys a device attests in 30 days: the first is
+immediate, the next waits 7 days, then 14, then 30 days for good, and the count restarts after 90 days without one.
+
+DeviceCheck (server ADR 0026): when the project has its own Apple key with DeviceCheck switched on, the challenge also
+sets `device_check`. The SDK then generates a DeviceCheck token and binds it into the App Attest evidence:
+`clientDataHash = SHA-256(challenge || SHA-256(token bytes))`. The server holds the token sealed for one hour only
+when that evidence verifies, and the customer's backend spends it once to read or write the device's two bits.
 
 ### tls (deferred)
 
@@ -671,7 +722,7 @@ Removed entirely. See section 6.
 | `software_rooted` | Android | `attest.chain_length` | `<= 1` |
 | `debug_signed` | Android | `app.signer_subject_tokens` | tokens `android` and `debug` in one set |
 | `settings_changed` | Android | four scales, timeout, `any_service_enabled` | section 8.7 |
-| `settings_changed` | iOS | stays a count | section 5 |
+| `settings_changed` | iOS | stays a count; no longer sent since iOS ADR 0001 (source retired) | section 5 |
 | `biometry_unusable` | Android | `biometry_hardware`, `lockscreen_set` | non-empty and false |
 | `integrity.lies` swizzled | both | Android `native_methods`, iOS `objc_methods` | count hooked |
 | `integrity.lies` contradiction, injected, missing | both | nothing new | section 8.12, from sources and statuses |
@@ -681,12 +732,15 @@ Removed entirely. See section 6.
 
 ## 5. Fields that stay as a client-side boolean or count
 
-Each is a measurement of a raw value the store rules forbid sending. None says what the device is.
+Each is a measurement of a raw value the store rules forbid sending, or that carries more than its rule reads.
+None says what the device is.
 
 | Field | Platform | What it measures | Why the raw value cannot leave |
 |---|---|---|---|
 | `root_manager_installed`, `hook_manager_installed` | Android | a lookup on a fixed package list answered yes | other apps appear only as yes or no (Play User Data) |
 | `cloner_installed` | Android | the same | the same |
+| | | The three package booleans are present only when the app includes `fingerly-app-checks`, and `false` means "not seen", not "not on the device": no rule may read them with `isFalse` | |
+| `only_platform_vendors` | Android | every distinct sensor vendor is an OS placeholder (`isPlatformSensorVendor`, section 8.2) | vendor names are free text that only this predicate reads |
 | `data_dir_expected` | Android | own data directory has one of four platform shapes | no raw data directory; it holds the cloner's package |
 | `data_dir_in_other_app` | Android | own data directory sits in a package other than ours | the same |
 | `stub_process_name` | Android | own process name does not start with our package | the name holds the cloner's package |
@@ -695,10 +749,10 @@ Each is a measurement of a raw value the store rules forbid sending. None says w
 | `sideloaded` | Android | installer is not on the store list | no raw installer package |
 | `signature_changed` | Android | signing certificate differs from this install's stored one | a comparison against local history; the current digest is sent |
 | `any_service_enabled` | Android | at least one accessibility service is on | no service names, and only ever lowers farm evidence |
-| `reinstalled` | iOS | stored vendor ID differs from the live one | no OS device identifier may leave |
+| `reinstalled` | iOS (no longer sent since iOS ADR 0001) | stored vendor ID differs from the live one | no OS device identifier may leave |
 | `managers_found`, `artefacts_found`, `schemes_found` | iOS | how many probe paths or schemes answered | other apps only as counts (matches Android); these lists name apps |
 | `dyld_insert_libraries_set` | iOS | the variable is set | its value is a list of file paths |
-| `settings_changed` | iOS | how many of 19 toggles plus text size are off default | which toggle is on can reveal a disability (VoiceOver, Switch Control) |
+| `settings_changed` | iOS (no longer sent since iOS ADR 0001) | how many of 19 toggles plus text size are off default | which toggle is on can reveal a disability (VoiceOver, Switch Control) |
 | `debug_build`, `development_profile` | iOS | embedded profile says `get-task-allow` | the profile is the customer's signed file |
 | `foreign_stack_frames` | Android | a probe-listed package appears on our own stack | a tool-name test (probe list), and a stack is free text |
 
@@ -793,7 +847,7 @@ Source `emulator`.
 | `describes` contains a `buildTokens` entry | 1.2 | `build-identity-<token>` |
 | `hardware.cpu_hardware`, lowercased, contains a `virtualCpus` entry | 1.3 | `cpuinfo-hardware-<cpu>` |
 | `handset`, `sensors.accelerometer == false`, `sensors.gyroscope == false` | 0.8 | `no-motion-sensors` |
-| `sensors.vendors` non-empty, all platform vendors | 1.1 | `all-sensors-vendored-by-the-os` |
+| `sensors.only_platform_vendors == true` [proposed, Android ADR 0001]; for 0.1.0 reports, `sensors.vendors` non-empty and all platform vendors | 1.1 | `all-sensors-vendored-by-the-os` |
 | `attest.secure_hardware == false` | 0.9 | `no-hardware-backed-keystore` |
 | `handset`, any `hardware.abis` starts with `x86` | 0.5 | `x86-abi-on-handset` |
 | `handset`, `emulator.telephony == false` | 0.05 | `no-telephony-hardware` |
@@ -915,7 +969,7 @@ Source `jailbreak`. If `status == "blocked"`: single tell `jailbreak-probe-block
 | `rootless_prefix_present` | 1.4 | `rootless-prefix-present` |
 | `userland` non-empty | 1.1 when 3 or more paths, else 0.7 | `unix-userland-<n>-paths` |
 | `artefacts_found > 0` | 0.8 | `jailbreak-artefacts-<n>` |
-| `symlinked_directories` non-empty | 1.1 | `system-directory-symlinked-<n>` |
+| `symlinked_directories` non-empty (no longer sent since iOS ADR 0001; the rule never fires on a current report) | 1.1 | `system-directory-symlinked-<n>` |
 | `schemes_queryable` and `schemes_found > 0` | 1.2 | `jailbreak-app-schemes-<n>` |
 | `dyld_insert_libraries_set` | 1.2 | `dyld-insert-libraries-set` |
 
@@ -980,6 +1034,11 @@ the disk or the boot, so facts are fewer by the store rules.
 
 Today iOS sums all of these freely. The font rule is inert in practice, because a stock iPhone reports about 80 families.
 
+Since iOS ADR 0001 the iOS SDK no longer sends `accessibility.settings_changed`, `battery.*` or `fonts.count`: those
+sources are retired stubs (`unsupported`, reason `retired`), so the three tells above never fire on a current iOS report.
+The remaining circumstantial tells still reach the cap. `unsupported` with reason `retired` means "removed by design", not
+"missing on this device"; no rule may read a retired source's status as evidence.
+
 **vpn_mobile.** `network` ok, `interface_types` contains `other` and `cellular`. High confidence, reason `device-vpn-over-cellular`.
 
 ### 8.11 Tampering
@@ -1027,7 +1086,7 @@ evidence. The threshold is tuned from the real schedulers and fixtures so a slow
 tail. Which hashes survive the cap is the SDK's decision (tree order, then ascending hash) and the server cannot see one it dropped; a
 modified client can omit any hash without padding anything. The honest achievable claim is that an exactly-full list is weak evidence: at 0.15 it
 cannot fire alone or with an ordinary debug build (0.8 total), and can only tip a finding already close, such as `injected-libraries-1` at 0.9.
-The 487-hash real fixture and any list under the cap are untouched.
+The real Android fixture (521 hashes; the 0.1.0 capture had 487) and any list under the cap are untouched.
 
 Android `hooked` = sum of `native_methods[].native`. iOS `hooked` = entries of `objc_methods` whose `tree` is not `usr_lib`, `system_library`, `library_apple` or `sim_root`.
 

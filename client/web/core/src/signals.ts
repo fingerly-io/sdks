@@ -76,9 +76,29 @@ export const SOURCE = {
 
   // Side effects of the visitor's extensions.
   domBlockers: 'dom_blockers',
+
+  // The page is running inside an app, so nothing above was collected. The
+  // only source such a report carries. See [[EmbeddingSignal]].
+  embedding: 'embedding',
 } as const
 
 export type SourceId = (typeof SOURCE)[keyof typeof SOURCE]
+
+/**
+ * What an in-app web view is reported as.
+ *
+ * A page inside an app is the app reading the device, which Apple forbids for
+ * identifying it and which the server never does. So the browser SDK runs no
+ * source there and says only this. The server applies the same rules to every
+ * report and drops anything else such a report carries.
+ */
+export interface EmbeddingSignal {
+  /**
+   * `app-scheme`, `android-webview`, `apple-webview`, `electron`, `capacitor`,
+   * `cordova`, `react-native-webview` or `flutter-webview`.
+   */
+  kind: string
+}
 
 // ---------------------------------------------------------------------------
 // Value shapes.

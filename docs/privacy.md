@@ -20,7 +20,8 @@ whether it is being misrepresented. How the same device is recognised across
 visits differs by platform:
 
 - **Browsers** are recognised by their device and browser characteristics
-  (§2).
+  (§2). A page running inside an app is never fingerprinted, by the SDK or
+  the server (§3.3); the browser SDK is not for apps.
 - **Native apps** (iOS, Android, and the React Native, Flutter and Lynx
   bridges) are recognised **only** by the random install ID the SDK stores on
   the device (§3.1). Hardware and operating system signals are never used to
@@ -202,9 +203,30 @@ that request to us as well (§4).
 
 - **Do not ship the SDK in Kids Category apps** (App Store Review Guideline
   1.3) or in Google Play apps directed at children.
-- **Do not use the browser SDK inside a `WKWebView` in an iOS app.** Apple
-  treats reading browser properties there as fingerprinting. Use the native
-  SDK instead.
+- **Do not embed the browser SDK in an app.** Not in a `WKWebView` on iOS
+  or macOS, an Android `WebView`, Capacitor, Cordova or Ionic, React Native
+  WebView, a Flutter web view, or Electron. A page inside your app is your
+  app reading the device, and Apple's agreement forbids an app to "derive
+  any data from a device for the purpose of uniquely identifying it",
+  naming the properties of a web browser among that data. Use the iOS or
+  Android SDK (or the React Native, Flutter or Lynx bridge) in an app.
+- **If it is embedded anyway, nothing is fingerprinted.** Once consent is
+  granted, the browser SDK checks where it runs; inside an app it runs no
+  source, sends only a marker naming the kind of web view, logs one console
+  warning, and sends no deferred report. The server applies the same rules
+  to every report, whatever sent it: it drops anything such a report carries,
+  never matches it to a visitor, answers `identifiable: false`, charges
+  nothing, and records the `embedded_web_view` signal at weight zero. Only
+  the checks that need nothing from the device are scored: the IP address
+  checks and the user agent's bot check.
+- **Other companies' in-app browsers are browsers.** A visitor who opens
+  your site from Instagram, Facebook or TikTok is browsing the web inside
+  somebody else's app, not yours, and is treated like any browser visitor,
+  consent included.
+- **Keys refuse app origins.** An SDK key will not take
+  `capacitor://localhost`, `ionic://localhost` or `app://localhost`, and a
+  production key will not take `localhost`; use a development key to try
+  the SDK on a local server.
 - **Consent defaults to pending** (§4), which is what App Store Review
   Guideline 5.1.1(ii) and Google Play's guidance on using SDKs safely ask for.
 
@@ -238,18 +260,33 @@ Every SDK and binding takes a `consent` option: `'granted'`, `'pending'` or
 So, for visitors in the EU or UK:
 
 1. **Keep the default, `consent: 'pending'`,** and call `setConsent('granted')`
-   only once you have the lawful basis you have decided on. Pass
-   `consent: 'granted'` at initialisation only if you already have it. Anything
+   once the visitor has consented. `granted` means "collection is permitted
+   for this visitor": either they consented, or you have established that the
+   law that applies to them does not require consent for this access. A GDPR
+   lawful basis such as legitimate interest is not enough on its own, because
+   ePrivacy Art. 5(3) governs reading the device separately. Anything
    collected before that cannot be retracted.
 2. **Treat fingerprinting as in scope for ePrivacy Art. 5(3).** Reading device
    characteristics is "gaining access to information stored in terminal
    equipment", and the EDPB's Guidelines 2/2023 confirm fingerprinting is
-   covered. Whether fraud prevention qualifies for the strictly-necessary
-   exemption is contested; take your own advice, and be aware that the
-   conservative reading requires consent.
-3. **Disclose it.** Your notice needs to name device fingerprinting for fraud
+   covered. In the EU and EEA, get consent: the Article 29 Working Party
+   (Opinion 9/2014, §7.5) and the CNIL (cookie FAQ, question 16) accept a
+   consent-free fingerprint only for securing the login mechanism the visitor
+   is using, not for fraud scoring in general. In the UK, PECR Schedule A1
+   paragraph 4(2)(c), in force since 5 February 2026, exempts access strictly
+   necessary "to prevent or detect fraud in connection with the provision of
+   the service requested", but the ICO says advertising uses such as click
+   fraud are never exempt, cross-site tracking always needs consent, and the
+   exemption is lost if the data serves any other purpose. If you rely on it
+   across several sites, put each site in its own project: visitors are
+   recognised within a project and never linked across projects.
+3. **Load the script after consent, or bundle it.** Fetching the script-tag
+   build from a public CDN sends the visitor's address and user agent to that
+   CDN before your banner is answered. Install the npm package, or serve the
+   script yourself.
+4. **Disclose it.** Your notice needs to name device fingerprinting for fraud
    prevention, name us as a processor, and say how long the data is kept (§7).
-4. **Send erasure requests to us.** There is no self-service or API route to
+5. **Send erasure requests to us.** There is no self-service or API route to
    delete a visitor's data yet; contact us and we handle it manually. In an
    app, also call `deleteStoredIdentity()` on the device (§3.2).
 
@@ -273,8 +310,8 @@ Neither changes what is collected or what we keep about visitors.
 
 | Added | Source | Note |
 |---|---|---|
-| IP address | The request, or a proxy that forwards it (§5) | Stored at full precision |
-| Continent, country, region, city, postal code, time zone, coordinates | Fingerly's own IP database, held on our own servers | Coordinates are stored rounded to one decimal place (about 11 km), a city's reference point rather than the device's position, so this is approximate (coarse) location for the store forms |
+| IP address | The request, or a proxy that forwards it (§5) | Used for the lookup and the request's checks, then not stored. What is kept is its network (an IPv4 /24 or IPv6 /40, returned as `ip_network`) and a keyed per-organisation digest that cannot be reversed without our key |
+| Continent, country, region, city, time zone, coordinates | Fingerly's own IP database, held on our own servers | City level at most: no postal code is kept, and the event keeps the city's reference point rounded to one decimal place (about 11 km), never the device's position, so this is approximate (coarse) location for the store forms. Event reads return the place without coordinates |
 | VPN, proxy, Tor, datacenter, relay and mobile classification; abuse and attack-source flags; ASN, network and organisation names | The same IP database | **Your visitors' IP addresses are not sent to any third party for this lookup.** The database is first-party, read from our own servers' disk, and refreshed daily |
 | Page origin, user agent, and your `tag` | The request | The user agent is also parsed into browser, OS and device type |
 | `visitor_id` | Minted by us | Never derived from a hash of the signals, never chosen by the client, and scoped to one organisation |
@@ -285,31 +322,36 @@ people, such as refusing a signup or blocking a transaction. Under GDPR Art. 22
 you may owe the person an explanation, and the per-event signal breakdown is
 what makes one possible.
 
-Every submission, with its signals exactly as sent, the IP lookup and the
-scoring report, is also kept in an archive for 90 days (§7).
+Every submission, with its signals (from the mobile SDKs, only the fields a
+scoring rule reads), a city-level IP answer and the scoring report, is also
+kept in an archive for 30 days (§7). The IP address is not archived.
 
 ## 7. Retention
 
 | Data | Kept |
 |---|---|
-| Events, including IP address and location | 30 days |
+| Events, including the IP network and location | 30 days |
 | Deferred report index | 30 days |
-| IP address per day, aggregated | 90 days |
-| Per-visitor daily aggregates, keyed by `visitor_id` | 400 days |
+| IP network per day, aggregated | 30 days |
+| Per-visitor daily aggregates, keyed by `visitor_id` | 180 days |
 | Aggregate analytics | 45 to 100 days in detail, 800 days as daily totals |
 | Short-term velocity state (hashed) | 8 days |
 | Device identity index | Until 180 days after the device was last seen, swept hourly |
 | Usage and billing records | About 3 years |
-| Full submission archive, including deferred reports | 90 days, deleted by the storage's own expiry rule |
+| Full submission archive, including deferred reports | 30 days, deleted by the storage's own expiry rule |
 
-The archive keeps each submission as it arrived, with the IP lookup and the
+The archive keeps each submission with its city-level IP answer and the
 scoring report, so the event store can be rebuilt; it is not readable through
-the dashboard or the API.
+the dashboard, and the server API returns only an allow-listed summary of it
+(score, triggers, network, place, attestation), never the signals or the
+deferred report.
 
 ## 8. What we do not do
 
 - No cookies, and no identifier stored by the browser SDK; the mobile SDKs keep
   one install identifier (§3.1), which the app can delete (§3.2)
+- No fingerprinting inside an app's web view: the browser SDK collects
+  nothing there and the server matches nothing (§3.3)
 - No recognition of an app's device from its hardware: on iOS and Android the
   server recognises a device by the stored install ID only, and hardware
   signals serve integrity checks and scoring

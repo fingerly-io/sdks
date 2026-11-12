@@ -8,6 +8,12 @@ recognise returning visitors and spot automation, tampering and abuse.
 npm install @fingerly/web-js
 ```
 
+**Not for apps.** Do not embed this SDK in an app's web view (iOS or macOS
+`WKWebView`, Android `WebView`, Capacitor, Cordova, Ionic, React Native WebView,
+Flutter, Electron). Inside an app it collects nothing and the server matches
+nothing; use the Fingerly iOS or Android SDK there. See
+[docs/privacy.md §3.3](../../../docs/privacy.md).
+
 Using a framework? The bindings wrap this package:
 [`@fingerly/react`](https://www.npmjs.com/package/@fingerly/react),
 [`@fingerly/vue`](https://www.npmjs.com/package/@fingerly/vue),
@@ -26,7 +32,7 @@ import { load } from '@fingerly/web-js'
 const fingerly = await load({ apiKey: 'fly_pk_production_…' })
 
 // Later, from your consent tool, or pass consent: 'granted' to load() if you
-// already have consent or another lawful basis.
+// already have consent or know none is required here (docs/privacy.md §4).
 fingerly.setConsent('granted')
 
 // When the visitor does something worth protecting: sign-up, login, checkout.

@@ -26,11 +26,12 @@
 
 import { FingerlyClient, type FingerlyClientOptions } from '@fingerly/core'
 
+import { detectEmbedding } from './embedding.js'
 import { inspectIntegrity } from './lies/index.js'
 import { browserSources } from './sources/index.js'
 
 export interface FingerlyOptions
-  extends Omit<FingerlyClientOptions, 'sources' | 'integrity' | 'platform'> {
+  extends Omit<FingerlyClientOptions, 'sources' | 'integrity' | 'platform' | 'embedding'> {
   /**
    * Replace the source set. Intended for tests and for a caller who has a
    * reason to run a subset; the default is every browser source.
@@ -51,7 +52,7 @@ export interface FingerlyOptions
  * source runs until `identify()` or `collect()` is called, and those refuse
  * while consent is not `granted`. Consent defaults to `pending`, so a page can
  * load early and call `setConsent('granted')` from its consent tool, or pass
- * `consent: 'granted'` once it already has consent (or another lawful basis).
+ * `consent: 'granted'` once it already has consent (or know none is required here; see docs/privacy.md §4).
  */
 export function load(options: FingerlyOptions): Promise<FingerlyClient> {
   // A configuration mistake, such as a missing key, rejects rather than
@@ -65,12 +66,16 @@ export function load(options: FingerlyOptions): Promise<FingerlyClient> {
         platform: 'web',
         sources: options.sources ?? browserSources,
         integrity: (report) => inspectIntegrity(report.sources),
+        // After the caller's options, so nothing passed to load() can turn
+        // detection off: there is no supported way to fingerprint in an app.
+        embedding: () => detectEmbedding(),
       }),
     ),
   )
 }
 
 export { browserSources } from './sources/index.js'
+export { detectEmbedding } from './embedding.js'
 export { inspectIntegrity } from './lies/index.js'
 
 // Re-exported so a page that only installs @fingerly/web-js can name the types it

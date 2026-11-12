@@ -10,6 +10,11 @@ Requires Nuxt **3 or newer**. Tested against Nuxt 4.
 pnpm add @fingerly/nuxt
 ```
 
+**Not for apps.** This binding runs the browser SDK, which collects nothing
+inside an app's web view (Capacitor, Cordova, Ionic, React Native WebView,
+`WKWebView`, Android `WebView`, Electron). Use the Fingerly iOS or Android SDK
+in an app; see [docs/privacy.md §3.3](../../../docs/privacy.md).
+
 ## Add the module
 
 ```ts
@@ -18,7 +23,7 @@ export default defineNuxtConfig({
   modules: ['@fingerly/nuxt'],
   fingerly: {
     apiKey: 'fly_pk_production_…',
-    // 'granted' only once you have consent (or another lawful basis)
+    // 'granted' only once you have consent (or know none is required here; see docs/privacy.md §4)
     consent: 'granted',
   },
 })

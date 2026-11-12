@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- New `embedding` client option: a detector supplied by the platform SDK. When it names a kind of in-app web view, no source and no integrity check runs, the report carries only the `embedding` source, and no deferred report follows (`deferred` is `skipped` with `not-submitted`). It is asked only once consent is granted. One console warning per page.
+- `SOURCE.embedding` and `EmbeddingSignal`.
+- Publish only after the server that recognises the `embedding` marker is deployed (server ADR 0024).
+
 ## 0.1.2
 
 - Custom ingestion URLs are configured with `endpoints` only; there is no `endpoint` option. The result has no `reason`, and the report types have no `engine.agrees` or `permissions.inconsistent`.

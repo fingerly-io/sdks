@@ -10,6 +10,11 @@ directly). Tested against 19.2.
 pnpm add @fingerly/react
 ```
 
+**Not for apps.** This binding runs the browser SDK, which collects nothing
+inside an app's web view (Capacitor, Cordova, Ionic, React Native WebView,
+`WKWebView`, Android `WebView`, Electron). Use the Fingerly iOS or Android SDK
+in an app; see [docs/privacy.md §3.3](../../../docs/privacy.md).
+
 ## Add the provider
 
 ```tsx
@@ -18,7 +23,7 @@ import { createRoot } from 'react-dom/client'
 import { FingerlyProvider } from '@fingerly/react'
 
 createRoot(document.getElementById('root')!).render(
-  // consent="granted" only once you have consent (or another lawful basis)
+  // consent="granted" only once you have consent (or know none is required here; see docs/privacy.md §4)
   <FingerlyProvider apiKey="fly_pk_production_…" consent="granted">
     <App />
   </FingerlyProvider>,

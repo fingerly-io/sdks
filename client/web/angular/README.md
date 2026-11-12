@@ -10,6 +10,11 @@ bootstrap). Tested against Angular 22.
 pnpm add @fingerly/angular
 ```
 
+**Not for apps.** This binding runs the browser SDK, which collects nothing
+inside an app's web view (Capacitor, Cordova, Ionic, React Native WebView,
+`WKWebView`, Android `WebView`, Electron). Use the Fingerly iOS or Android SDK
+in an app; see [docs/privacy.md §3.3](../../../docs/privacy.md).
+
 ## Provide it
 
 ```ts
@@ -17,7 +22,7 @@ pnpm add @fingerly/angular
 import { provideFingerly } from '@fingerly/angular'
 
 export const appConfig: ApplicationConfig = {
-  // consent: 'granted' only once you have consent (or another lawful basis)
+  // consent: 'granted' only once you have consent (or know none is required here; see docs/privacy.md §4)
   providers: [provideFingerly({ apiKey: 'fly_pk_production_…', consent: 'granted' })],
 }
 ```

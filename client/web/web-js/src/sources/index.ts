@@ -7,7 +7,9 @@
  * await hardware, and are worth having only because the budget bounds them.
  */
 
-import type { Source } from '@fingerly/core'
+import { UnsupportedSignal, type Source } from '@fingerly/core'
+
+import { detectEmbedding } from '../embedding.js'
 
 import { audioLatencySource, audioSource } from './audio.js'
 import {
@@ -38,7 +40,24 @@ import { shieldsSource } from './shields.js'
 import { storageQuotaSource, storageSource } from './storage.js'
 import { fontPreferencesSource, fontsSource } from './text.js'
 
-export const browserSources: readonly Source[] = [
+/**
+ * A source that reads nothing inside an app.
+ *
+ * `load()` already runs no source there. This is for a page that builds a
+ * client from `browserSources` itself: each source checks before it reads, and
+ * reports `unsupported` with the reason `embedded`.
+ */
+function guarded(source: Source): Source {
+  return {
+    ...source,
+    run: (ctx) => {
+      if (detectEmbedding()) throw new UnsupportedSignal('embedded')
+      return source.run(ctx)
+    },
+  }
+}
+
+const allBrowserSources: readonly Source[] = [
   // fast
   engineSource,
   errorsSource,
@@ -79,6 +98,8 @@ export const browserSources: readonly Source[] = [
   domBlockersSource,
   storageDurabilitySource,
 ]
+
+export const browserSources: readonly Source[] = allBrowserSources.map(guarded)
 
 export * from './audio.js'
 export * from './device.js'

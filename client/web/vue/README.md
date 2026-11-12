@@ -10,6 +10,11 @@ Requires Vue **3.3 or newer** (it uses `hasInjectionContext`, `toValue` and
 pnpm add @fingerly/vue
 ```
 
+**Not for apps.** This binding runs the browser SDK, which collects nothing
+inside an app's web view (Capacitor, Cordova, Ionic, React Native WebView,
+`WKWebView`, Android `WebView`, Electron). Use the Fingerly iOS or Android SDK
+in an app; see [docs/privacy.md §3.3](../../../docs/privacy.md).
+
 ## Install the plugin
 
 ```ts
@@ -19,7 +24,7 @@ import { createFingerly } from '@fingerly/vue'
 import App from './App.vue'
 
 createApp(App)
-  // consent: 'granted' only once you have consent (or another lawful basis)
+  // consent: 'granted' only once you have consent (or know none is required here; see docs/privacy.md §4)
   .use(createFingerly({ apiKey: 'fly_pk_production_…', consent: 'granted' }))
   .mount('#app')
 ```
