@@ -29,6 +29,11 @@ schema, but a native report that lacks `schema` or names one below `2` is tamper
 else, so a lower number is a report asking to be read by older rules.
 A source is only read when `status == "ok"` (`sourceValue`), except the rules that test `status` directly.
 
+**v3 HTTP envelope.** Over HTTP (`v: 3`), this raw report travels as the `signals` JSON object inside the unified envelope specified in
+[v3-envelope.md](./v3-envelope.md). Cryptographic attestation proofs (`android_key_register`, `android_key_assert`, `app_attest_register`,
+`app_attest_assert`, `device_token`, and `play_integrity_token`) move to the top-level `attest` (`AttestEnvelope`) field and sign the raw
+UTF-8 `signals` wire bytes before JSON decoding; see section 11.
+
 **Every source id is always sent.** The set of keys never depends on how a run went: a source the budget never reached is
 `{ status: "timeout", reason: "budget-exhausted", ms: 0 }`, and one that overran its own timeout is `timeout` with the time it took. So a
 missing source id, or an `ok` with no object value, is never a slow device. It is evidence (8.11). `tiers` says which tiers ran, and only
@@ -355,6 +360,8 @@ server. Each region goes in exactly one bucket, first match wins:
 | `cloner_installed` | bool | see section 5; absent unless the app includes `fingerly-app-checks` | changed |
 | `foreign_sandbox_maps` | int | count, never names | unchanged |
 | `user_id` | int | | unchanged |
+| `is_managed_profile` | bool | | new |
+| `is_device_protected_storage` | bool | | new |
 | `oem_clone` | bool | | removed (`user_id == 999`) |
 
 ### images (deferred)
@@ -410,6 +417,7 @@ timestamp, and reports Google's verdicts. Its absence is never evidence.
 | `chain_length` | int | | unchanged |
 | `system_trusted` | bool | | unchanged |
 | `root_digest` | hash64 | | unchanged |
+| `root_key_sha256` | string | base64 | new |
 | `leaf_expires_at` | int | epoch seconds | unchanged |
 | `chain_subject_tokens` | TokenSets | at most 6 certs, leaf first; `nameHashes` of subject and issuer DN joined by a space | new |
 | `known_interceptor` | string | | removed |
@@ -449,6 +457,7 @@ Removed entirely. See section 6.
 | Field | Type | Status |
 |---|---|---|
 | `machine`, `uname_machine`, `model`, `target`, `product` | string | unchanged |
+| `gpu_family_max` | int | new (outside the cohort) |
 | `memory_bytes` | int64 | removed (iOS ADR 0001) |
 | `physical_cpu`, `logical_cpu`, `cpu_family`, `cpu_subfamily`, `cacheline`, `l1d_cache`, `l1i_cache`, `l2_cache`, `page_size`, `byte_order` | int | removed (iOS ADR 0001) |
 
@@ -1196,3 +1205,11 @@ Android fixes with no iOS counterpart to port: ADB and developer options counted
 - **iOS thread prefix.** A thread `frida...` with no separator after `frida` is missed; `frida-...` is caught.
 - **Reason detail.** Rules that named the first file found (`package-manager-<leaf>`, `jailbreak-artefact-<leaf>`) now carry counts, because the names cannot leave. Weights are unaffected.
 - **Client measurements the server must accept as read:** the section 5 fields. It can stop trusting them but cannot recompute them.
+
+## 11. v3 HTTP Envelope and Raw-Byte Attestation Binding
+
+In the `v: 3` wire protocol ([v3-envelope.md](./v3-envelope.md)), the `schema: 2` native report defined in sections 2 and 3 is serialized once to UTF-8 bytes (`signalsBytes`) and placed verbatim into the top-level `signals` field of `IdentifyIn` / `IngestIn`:
+
+- **Top-level `AttestEnvelope`**: Cryptographic proofs move from in-report fields to top-level `attest` (`mode` in `{"android_key_register", "android_key_assert", "app_attest_register", "app_attest_assert"}`, stateless KMS-signed `challenge` ticket, `install_id`, `key_id`, iOS `attestation_object` / `assertion` / `device_token`, Android `certificate_chain` / `signature` / `prev_key_id` / `prev_signature`, and optional `play_integrity_token`).
+- **Raw-byte signing**: Mobile clients compute `signalsDigest = SHA256(signalsBytes)` and sign `framedPreimage` (`statementDigest = SHA256(framedPreimage)`) covering the authenticated platform, `challenge` ticket ASCII string, `install_id`, `Idempotency-Key`, `device_token` digest, and `signalsDigest` without cross-language JSON re-canonicalization. The server verifies the hardware signature and single-use ticket over exact `signals` wire bytes before JSON decoding, then checks `attest.install_id == sources.identity.value.install_id`.
+- **1-RTT steady-state**: Every native `IdentifyOut` response carries `next_attestation` (`AttestationChallengeOut`) and optional `attest_key_status` (`"rekey_required"`), while `sources.tls` reads `root_key_sha256` from the shared HTTPS transport cache rather than issuing a separate `HEAD /` probe.

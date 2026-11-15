@@ -127,6 +127,8 @@
         "data_dir_expected": true,
         "data_dir_in_other_app": false,
         "foreign_sandbox_maps": 0,
+        "is_device_protected_storage": false,
+        "is_managed_profile": false,
         "stub_process_name": false,
         "user_id": 0
       }
@@ -986,6 +988,7 @@
         "handshake_failed": false,
         "leaf_expires_at": 1797278757,
         "root_digest": "13ad8c5abf6cb33b",
+        "root_key_sha256": "YSoUL4CBzo5aJ/ES9gSZTsavsgtHsiLLnTG+BKUdork=",
         "system_trusted": true,
         "user_ca_count": 0
       }

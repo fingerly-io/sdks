@@ -5,6 +5,7 @@
   "description": "API contract (OpenAPI spec + generated types) synced from the server repo",
   "license": "Apache-2.0",
   "scripts": {
+    "test": "node --test v3-vectors.test.mjs",
     "sync": "node sync.mjs",
     "check": "node sync.mjs --check",
     "check:docs": "node sync.mjs --check --docs-check"

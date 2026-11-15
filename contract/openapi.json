@@ -1,6 +1,72 @@
 {
   "components": {
     "schemas": {
+      "AttestEnvelope": {
+        "properties": {
+          "assertion": {
+            "description": "Base64 CBOR App Attest assertion object",
+            "type": "string"
+          },
+          "attestation_object": {
+            "description": "Base64 CBOR App Attest attestation object",
+            "type": "string"
+          },
+          "certificate_chain": {
+            "description": "Base64 DER X.509 certificate chain for Android key registration",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "challenge": {
+            "description": "Stateless server-signed challenge ticket",
+            "type": "string"
+          },
+          "device_token": {
+            "description": "Optional Base64 Apple DeviceCheck token bound into statementDigest",
+            "type": "string"
+          },
+          "install_id": {
+            "description": "Canonical 36-char lowercase UUIDv4 matching sources.identity.value.install_id",
+            "type": "string"
+          },
+          "key_id": {
+            "description": "Base64 App Attest key ID (iOS) or 64-char hex SPKI SHA-256 (Android)",
+            "type": "string"
+          },
+          "mode": {
+            "description": "app_attest_register, app_attest_assert, android_key_register, or android_key_assert",
+            "type": "string"
+          },
+          "play_integrity_token": {
+            "description": "Optional Google Play Integrity token with requestHash equal to hex(statementDigest)",
+            "type": "string"
+          },
+          "prev_key_id": {
+            "description": "Optional retiring 64-char hex Android key ID during 24h lease rollover",
+            "type": "string"
+          },
+          "prev_signature": {
+            "description": "Optional Base64 ASN.1 DER signature by retiring Android key over identical framedPreimage",
+            "type": "string"
+          },
+          "reattest_attempt": {
+            "description": "Inline Android lease renewal attempt counter (0 or 1)",
+            "format": "int64",
+            "type": "integer"
+          },
+          "signature": {
+            "description": "Base64 ASN.1 DER SHA256withECDSA signature over framedPreimage",
+            "type": "string"
+          }
+        },
+        "required": [
+          "challenge",
+          "install_id",
+          "mode"
+        ],
+        "type": "object"
+      },
       "AttestationChallengeOut": {
         "properties": {
           "app_attest": {
@@ -436,6 +502,17 @@
       },
       "IdentifyIn": {
         "properties": {
+          "attest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AttestEnvelope"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hardware attestation envelope bound to raw signals bytes (v3 native SDKs)"
+          },
           "consent": {
             "description": "The SDK's consent state; must be granted, or the request is refused with consent_required",
             "type": "string"
@@ -452,6 +529,14 @@
           "tag": {
             "description": "An opaque value echoed back on the event and kept in long-lived rollups. A label for your own systems, such as a client or app name; never a personal identifier (user ID, email, install ID or advertising ID)",
             "type": "string"
+          },
+          "v": {
+            "description": "Wire envelope version; set to 3 for raw-byte hardware-attested submissions",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
           }
         },
         "type": "object"
@@ -460,6 +545,10 @@
         "properties": {
           "app_attest_key": {
             "description": "unknown when the report asserted with an App Attest key the server does not hold; the iOS SDK then attests a new key on its next collection. Absent otherwise",
+            "type": "string"
+          },
+          "attest_key_status": {
+            "description": "rekey_required when the presented v3 attestation key is unknown or expired",
             "type": "string"
           },
           "deferred_token": {
@@ -473,6 +562,17 @@
           "identifiable": {
             "description": "False when the report carried too little to identify anyone",
             "type": "boolean"
+          },
+          "next_attestation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AttestationChallengeOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Fresh attestation challenge ticket and dynamic offer flags for the next native submission"
           },
           "reason": {
             "description": "Why enrichment did not happen. Only answered to a secret key; a browser or app reads it on the server-side event read",
@@ -556,6 +656,17 @@
       },
       "IngestIn": {
         "properties": {
+          "attest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AttestEnvelope"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Hardware attestation envelope bound to raw signals bytes (v3 native SDKs)"
+          },
           "consent": {
             "description": "The SDK's consent state; must be granted, or the request is refused with consent_required",
             "type": "string"
@@ -576,6 +687,14 @@
           "token": {
             "description": "The deferred_token returned by identify. Present only on a deferred report",
             "type": "string"
+          },
+          "v": {
+            "description": "Wire envelope version; set to 3 for raw-byte hardware-attested submissions",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
           }
         },
         "type": "object"

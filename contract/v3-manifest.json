@@ -1,0 +1,82 @@
+{
+  "schema": 3,
+  "wire_version": 3,
+  "domain_separator": "fingerly:v3:identify",
+  "ticket_version": 3,
+  "offer_flag_bits": {
+    "app_attest": 1,
+    "device_check": 2,
+    "play_integrity": 4
+  },
+  "attest_modes": [
+    "app_attest_register",
+    "app_attest_assert",
+    "android_key_register",
+    "android_key_assert"
+  ],
+  "signals": {
+    "attestation_failed": 30,
+    "device_inconsistent": 18,
+    "report_incomplete": 16,
+    "tampering": 8,
+    "custom_root_ca": 0,
+    "secondary_user_profile": 0
+  },
+  "idempotency_key": {
+    "min_length": 16,
+    "max_length": 128,
+    "ascii_min": 33,
+    "ascii_max": 126
+  },
+  "proxy_allowed_platforms": [
+    "ios",
+    "android",
+    "react-native",
+    "flutter",
+    "capacitor",
+    "kotlin-multiplatform"
+  ],
+  "test_hmac_key_utf8": "fingerly-v3-golden-vector-test-hmac-key-32b",
+  "golden_vectors": [
+    {
+      "name": "android_no_token",
+      "platform": "android",
+      "key_id": "k1",
+      "offer_flags": 4,
+      "issued_unix": 1730000000,
+      "exp_unix": 1730000300,
+      "organization_id": "0192ce78-1111-7000-8000-000000000001",
+      "sdk_key_id": "0192ce78-2222-7000-8000-000000000002",
+      "nonce_hex": "0102030405060708090a0b0c0d0e0f10",
+      "challenge": "AwJrMQRnHbSAZx21rAGSzngREXAAgAAAAAAAAAEBks54IiJwAIAAAAAAAAACAQIDBAUGBwgJCgsMDQ4PEMI9rlQG3bMAFsOoTB5vt6bdMFtpEm4l1j4r8IB8tndL",
+      "install_id": "550e8400-e29b-41d4-a716-446655440000",
+      "idempotency_key": "idem_0199a963e40070008000",
+      "device_token": "",
+      "signals_utf8": "{\"schema\":2,\"budget_ms\":1200,\"elapsed_ms\":142.50,\"sources\":{\"identity\":{\"status\":\"ok\",\"ms\":1,\"value\":{\"install_id\":\"550e8400-e29b-41d4-a716-446655440000\"}}},\"integrity\":{\"native_methods\":[{\"method\":\"java.io.File!exists\",\"declared\":1,\"native\":1}]}}",
+      "signals_digest_hex": "4da1f773dad0f6686ecc3bfc9f12892d564115f1ccc501ae3f51305e5aee781d",
+      "device_token_digest_hex": "0000000000000000000000000000000000000000000000000000000000000000",
+      "preimage_byte_length": 281,
+      "statement_digest_hex": "03a6e56ca764228e2f382ef41853fa693afe949c04662082c450749681a3ac5c"
+    },
+    {
+      "name": "ios_with_device_token",
+      "platform": "ios",
+      "key_id": "k1",
+      "offer_flags": 3,
+      "issued_unix": 1730000000,
+      "exp_unix": 1730000300,
+      "organization_id": "0192ce78-1111-7000-8000-000000000001",
+      "sdk_key_id": "0192ce78-3333-7000-8000-000000000003",
+      "nonce_hex": "1112131415161718191a1b1c1d1e1f20",
+      "challenge": "AwJrMQNnHbSAZx21rAGSzngREXAAgAAAAAAAAAEBks54MzNwAIAAAAAAAAADERITFBUWFxgZGhscHR4fIDR77E8AOD-WDM38hmxxk72C6T7kKoosu_djWDexi8ln",
+      "install_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+      "idempotency_key": "idem_ios_0199a963e4007001",
+      "device_token": "YXBwbGUtZGV2aWNlY2hlY2stdG9rZW4tYnl0ZXMtdjM=",
+      "signals_utf8": "{\"schema\":2,\"budget_ms\":1200,\"elapsed_ms\":88,\"sources\":{\"identity\":{\"status\":\"ok\",\"ms\":1,\"value\":{\"install_id\":\"f47ac10b-58cc-4372-a567-0e02b2c3d479\"}},\"hardware\":{\"status\":\"ok\",\"ms\":1,\"value\":{\"machine\":\"iPhone16,1\",\"gpu_family_max\":9}}},\"integrity\":{\"native_symbols\":[],\"objc_methods\":[]}}",
+      "signals_digest_hex": "0209d8b998b085ba77ccea88ee03ec5d6f42defe43e87dc0966ebd7bc36a8d31",
+      "device_token_digest_hex": "44433004fb3802135c6708aad87914d4536d965fdc8285b27fa4e091238b9035",
+      "preimage_byte_length": 277,
+      "statement_digest_hex": "1ef2d5f709ffcc9f7892f01e131d9e0b4093d12eeee713341491a600513405a5"
+    }
+  ]
+}
