@@ -21,7 +21,6 @@ import { engineSource, errorsSource, mathSource } from './engine.js'
 import {
   languagesSource,
   navigatorSource,
-  pluginsSource,
   userAgentDataSource,
   vendorSource,
 } from './navigator.js'
@@ -61,7 +60,6 @@ const allBrowserSources: readonly Source[] = [
   mathSource,
   navigatorSource,
   languagesSource,
-  pluginsSource,
   vendorSource,
   userAgentDataSource,
   workerRealmSource,

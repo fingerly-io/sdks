@@ -4,7 +4,9 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { automationSource, mathSource, userAgentDataSource } from '../src/sources/index.js'
+import { SOURCE } from '@fingerly/core'
+
+import { automationSource, browserSources, mathSource, userAgentDataSource } from '../src/sources/index.js'
 
 const ctx = {} as never
 
@@ -20,6 +22,11 @@ describe('collected fields (WEB-14)', () => {
   it('automation sends no chrome_object', async () => {
     const value = (await automationSource.run(ctx)) as Record<string, unknown>
     expect(value).not.toHaveProperty('chrome_object')
+  })
+
+  it('has no plugins source', () => {
+    expect(browserSources.map((source) => source.id)).not.toContain('plugins')
+    expect(Object.values(SOURCE)).not.toContain('plugins')
   })
 
   it('asks only for the architecture client hint', async () => {

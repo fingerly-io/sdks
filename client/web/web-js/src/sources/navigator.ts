@@ -1,6 +1,9 @@
 /**
  * What the browser claims about itself (`navigator`, `languages`, `vendor`,
- * `plugins`, and `user_agent_data`).
+ * and `user_agent_data`).
+ *
+ * There is no `plugins` source (`WEB-14`): no server rule reads the plugin
+ * names, filenames or MIME lists. Only `navigator.plugin_count` is sent.
  */
 
 import {
@@ -8,7 +11,6 @@ import {
   UnsupportedSignal,
   type LanguagesSignal,
   type NavigatorSignal,
-  type PluginsSignal,
   type Source,
   type VendorSignal,
 } from '@fingerly/core'
@@ -85,29 +87,6 @@ export const vendorSource: Source<VendorSignal> = {
   run() {
     if (typeof navigator === 'undefined') throw new UnsupportedSignal('no-navigator')
     return compact({ vendor: attempt(() => navigator.vendor) })
-  },
-}
-
-export const pluginsSource: Source<PluginsSignal> = {
-  id: SOURCE.plugins,
-  stage: 'collect',
-  run() {
-    if (typeof navigator === 'undefined') throw new UnsupportedSignal('no-navigator')
-    const plugins = navigator.plugins
-    if (!plugins) throw new UnsupportedSignal('no-plugins')
-
-    return {
-      plugins: Array.from(plugins, (plugin) => ({
-        name: plugin.name,
-        filename: plugin.filename,
-        description: plugin.description,
-        mime_types: Array.from(plugin, (mime) => ({
-          type: mime.type,
-          suffixes: mime.suffixes,
-          description: mime.description,
-        })),
-      })),
-    }
   },
 }
 

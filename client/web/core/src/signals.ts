@@ -11,7 +11,6 @@ export const SOURCE = {
   navigator: 'navigator',
   userAgentData: 'user_agent_data',
   languages: 'languages',
-  plugins: 'plugins',
   vendor: 'vendor',
 
   // Engine ground truth.
@@ -124,23 +123,6 @@ export interface NavigatorSignal {
 export interface LanguagesSignal {
   primary?: string
   accepted?: string[]
-}
-
-export interface PluginMimeTypeSignal {
-  type?: string
-  suffixes?: string
-  description?: string
-}
-
-export interface PluginSignal {
-  name?: string
-  filename?: string
-  description?: string
-  mime_types?: PluginMimeTypeSignal[]
-}
-
-export interface PluginsSignal {
-  plugins?: PluginSignal[]
 }
 
 export interface VendorSignal {

@@ -30,7 +30,6 @@ describe('browser source catalogue (single-pass v3)', () => {
       SOURCE.webgl,
       SOURCE.mediaDevices,
       SOURCE.languages,
-      SOURCE.plugins,
       SOURCE.vendor,
       SOURCE.screenFrame,
       SOURCE.colorGamut,
