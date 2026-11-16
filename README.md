@@ -129,7 +129,9 @@ repo relates to `server` and `panels`.
 - `contract`: API contract synced from `server`'s OpenAPI spec (`v3-envelope.md`,
   `v3-manifest.json`, `native-report.md`); the sync point for the API shape
   across every SDK and panel consumer. Server SDKs vendor snapshots so they can
-  build and test independently.
+  build and test independently. `node contract/sync.mjs` also copies the
+  contract files the Android and iOS tests read into each repository's own
+  `contract/`, and `--check` fails when a copy drifts.
 
 ## Development
 
