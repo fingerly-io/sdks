@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0
+
+- The store keeps no signal report; it exposes `identified` once an
+  identification has answered.
+- No event types are re-exported: the server SDKs type the server's event read.
+- The README samples make the enforcement decision on the backend, from the
+  verified event.
+- Uses @fingerly/web-js 0.3.0, which sends a single-use freshness ticket with
+  every report.
+
 ## 0.2.0
 
 - Uses @fingerly/web-js 0.2.0, which keeps the browser SDK from collecting inside an app's web view.

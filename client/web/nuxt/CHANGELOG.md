@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0
+
+- Consent comes only from `setConsent()` at runtime. It is not published in
+  the runtime config, so neither `nuxt.config` nor
+  `NUXT_PUBLIC_FINGERLY_CONSENT` can grant it; a static value other than
+  `pending` warns at build time and is ignored.
+- The README samples make the enforcement decision on the backend, from the
+  verified event.
+- Uses @fingerly/vue 0.3.0.
+
 ## 0.2.0
 
 - Uses @fingerly/vue 0.2.0, which keeps the browser SDK from collecting inside an app's web view.

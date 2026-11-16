@@ -1,5 +1,47 @@
 # Changelog
 
+## 0.3.0
+
+- `identify()` collects and submits in one `v: 3` round trip and resolves
+  without the signal report, which `collect()` returns.
+- Web freshness ticket: the ticket request starts with collection, in
+  parallel, and a held `next_ticket` with more than 10 seconds left is used
+  instead. When the request fails or is slow the report goes without a
+  ticket; `identify()` never waits on it or fails because of it. Tickets live
+  in memory only.
+- Proof of work: when a ticket carries `pow_bits`, the smallest decimal
+  nonce whose `SHA256(ticket:nonce)` has that many leading zero bits is sent
+  as `ticket_pow`. Solving starts when the ticket arrives, runs in a blob
+  Worker when allowed and in time slices otherwise, and stops at 1500 ms,
+  after which the report goes without `ticket_pow`. The SHA-256 is a compact
+  synchronous one with no dependency.
+- Refuses to submit without a secure random `Idempotency-Key`: without
+  `crypto.randomUUID` or `crypto.getRandomValues` the call fails with
+  `TransportError` code `no_secure_random` before any request is made.
+- Options, source fields and the parsed answer are read as own properties
+  only, so a polluted `Object.prototype` cannot change which sources run, the
+  budget, the tag, the result or where the report is sent.
+- No source evaluates code, so no source needs `unsafe-eval` and a strict
+  CSP raises no violation. The errors source reports `regexp_syntax_length`
+  and `redefine_length`.
+- The integrity pass inspects the borrow primitives, the window navigator and
+  screen accessors and the APIs the collectors read, verifies the borrowed
+  realm before trusting it, and records a throwing getter as an
+  `unverified_realm` lie instead of rejecting.
+- `shields` sends the observations behind its booleans: `brave_api`,
+  `brands`, and the canary comparison (`canary_pixels`, `canary_mismatched`,
+  `canary_max_delta`).
+- A worker blocked by CSP is detected by attempting it; a CSP meta counts only
+  as a child of `head`. The worker wait is the remaining budget
+  (`gpu_unanswered` when only the navigator values arrive).
+- Inside an app's web view only `engine`, `math`, `errors`, `navigator`,
+  `worker_realm` and `automation` run, and `navigator` sends `user_agent`,
+  `platform` and `webdriver`.
+- Collects only what the server reads: no `plugins` source (the navigator's
+  `plugin_count` stays), no `math.hash`, no `automation.chrome_object`, and
+  only the `architecture` client hint.
+- Uses @fingerly/types 0.3.0.
+
 ## 0.2.0
 
 - New `embedding` client option: a detector supplied by the platform SDK. When it names a kind of in-app web view, no source and no integrity check runs, the report carries only the `embedding` source, and no deferred report follows (`deferred` is `skipped` with `not-submitted`). It is asked only once consent is granted. One console warning per page.

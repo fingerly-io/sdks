@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0
+
+- `FingerlyRequestId` takes a `tag` the backend checks the event against.
+  `readRequestId` returns a value that stays untrusted until the backend
+  reads the event with a secret key and checks its existence, tag, recency
+  and network.
+- The README samples make the enforcement decision on the backend, from the
+  verified event.
+- Uses @fingerly/react 0.3.0 and @fingerly/node 0.3.0.
+
 ## 0.2.1
 
 - Uses @fingerly/node 0.2.0. 0.2.0 was packed against @fingerly/node 0.1.4, because the node release had not been added to the workspace yet; use 0.2.1.
