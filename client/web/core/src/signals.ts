@@ -169,12 +169,20 @@ export interface MathSignal {
   identities_hold?: boolean
 }
 
+/**
+ * Error message lengths and shapes, measured without evaluating code
+ * (`WEB-10`): no `new Function` and no `eval` call, so a strict CSP raises no
+ * violation. The raw lengths are the evidence the server derives the engine
+ * from; `observed` is the page's own vote, kept next to them.
+ */
 export interface ErrorsSignal {
   null_property_length?: number
-  syntax_length?: number
   json_parse_length?: number
   invalid_array_length?: number
-  const_assign_length?: number
+  /** `new RegExp('(')`: the SyntaxError message length. */
+  regexp_syntax_length?: number
+  /** `Object.defineProperty` on a frozen object: the TypeError message length. */
+  redefine_length?: number
   own_properties?: string
   capture_stack_trace?: boolean
   stack_trace_limit?: boolean

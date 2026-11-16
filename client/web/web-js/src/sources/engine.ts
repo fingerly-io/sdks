@@ -265,13 +265,14 @@ function thrownMessageLength(throwing: () => unknown): number | undefined {
   })
 }
 
-function evalAllowed(): boolean {
-  try {
-    new Function('')
-    return true
-  } catch {
-    return false
-  }
+/** A RegExp syntax error: compiled, not evaluated, so CSP does not apply. */
+function regexpSyntaxError(): unknown {
+  return new RegExp('(')
+}
+
+/** A TypeError that strict and sloppy code raise alike. */
+function redefineFrozen(): unknown {
+  return Object.defineProperty(Object.freeze({ x: 1 }), 'x', { value: 2 })
 }
 
 export function observedFromErrors(errors: Omit<ErrorsSignal, 'observed'>): string | undefined {
@@ -287,8 +288,12 @@ export function observedFromErrors(errors: Omit<ErrorsSignal, 'observed'>): stri
   if (errors.null_property_length === 44) votes.push('chromium')
   else if (errors.null_property_length === 33) votes.push('gecko')
 
-  if (errors.syntax_length === 20) votes.push('chromium')
-  else if (errors.syntax_length === 28) votes.push('gecko')
+  // Measured: V8 51 and 27, JavaScriptCore 37 and 50.
+  if (errors.regexp_syntax_length === 51) votes.push('chromium')
+  else if (errors.regexp_syntax_length === 37) votes.push('webkit')
+
+  if (errors.redefine_length === 27) votes.push('chromium')
+  else if (errors.redefine_length === 50) votes.push('webkit')
 
   if (votes.length === 0) return undefined
 
@@ -326,21 +331,20 @@ export const errorsSource: Source<ErrorsSignal> = {
   stage: 'collect',
   embeddedSafe: true,
   timeoutMs: 50,
+  // No `new Function` or `eval` call (`WEB-10`): under a policy without
+  // 'unsafe-eval' each one raised a CSP violation report on every run, and
+  // three per run in report-only mode. Every probe here throws without
+  // evaluating code.
   run() {
-    const compiles = evalAllowed()
     const shapes = compact<Omit<ErrorsSignal, 'observed'>>({
       null_property_length: thrownMessageLength(() => (null as unknown as { x: unknown }).x),
-      syntax_length: compiles ? thrownMessageLength(() => new Function('!')) : undefined,
       json_parse_length: thrownMessageLength(() => JSON.parse('{')),
       invalid_array_length: thrownMessageLength(() => {
         const array: number[] = []
         array.length = -1
       }),
-      const_assign_length: compiles
-        ? thrownMessageLength(() => {
-            new Function('const c = 1; c = 2')()
-          })
-        : undefined,
+      regexp_syntax_length: thrownMessageLength(regexpSyntaxError),
+      redefine_length: thrownMessageLength(redefineFrozen),
       own_properties: errorOwnProperties(),
       capture_stack_trace: attempt(
         () =>
