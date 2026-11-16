@@ -4,6 +4,7 @@
 
 import { assertConsentState, ConsentError } from './consent.js'
 import { collect, DEFAULT_BUDGET_MS, type ScheduleOptions } from './scheduler.js'
+import { own, ownCopy } from './own.js'
 import { EMBEDDED_SAFE_SOURCES, SOURCE } from './signals.js'
 import type { Source } from './source.js'
 import {
@@ -86,10 +87,17 @@ function isSuspectLevel(value: unknown): value is SuspectLevel {
 }
 
 function isEmbeddedSafeSource(source: Source): boolean {
-  if (source.embeddedSafe === true) return true
-  if (source.embeddedSafe === false) return false
-  return EMBEDDED_SAFE_SOURCES.has(source.id)
+  const flag = own(source, 'embeddedSafe')
+  if (flag === true) return true
+  if (flag === false) return false
+  return EMBEDDED_SAFE_SOURCES.has(String(own(source, 'id')))
 }
+
+function budgetOf(schedule: ScheduleOptions): number {
+  const budget = own(schedule, 'budgetMs')
+  return typeof budget === 'number' && Number.isFinite(budget) ? budget : DEFAULT_BUDGET_MS
+}
+
 
 /** Once per page is enough to tell an integrator; every call would be noise. */
 let embeddingWarned = false
@@ -121,7 +129,11 @@ export class FingerlyClient {
   private consentState: ConsentState
   private readonly consentListeners = new Set<(state: ConsentState) => void>()
 
-  constructor(options: FingerlyClientOptions) {
+  constructor(input: FingerlyClientOptions) {
+    // Own properties only (`WEB-09`): an option the caller did not set is
+    // undefined here even when `Object.prototype` carries one of that name, so
+    // a polluted `endpoints` cannot redirect the report.
+    const options = ownCopy(input) as FingerlyClientOptions
     const consent = options.consent ?? 'pending'
     assertConsentState(consent)
     this.consentState = consent
@@ -203,8 +215,9 @@ export class FingerlyClient {
   /**
    * Collect and submit in a single `v: 3` round trip.
    */
-  async identify(options: IdentifyOptions = {}): Promise<IdentifyResult> {
+  async identify(input: IdentifyOptions = {}): Promise<IdentifyResult> {
     this.requireConsent()
+    const options = ownCopy(input) as IdentifyOptions
     const scope = this.consentScope(options.signal)
     try {
       return await this.identifyWithConsent(options, scope.signal)
@@ -228,26 +241,34 @@ export class FingerlyClient {
       sdk: { platform: this.platform, version: SDK_VERSION },
       consent: this.consentState,
       signals: report,
-      ...(options.tag === undefined || options.tag === '' ? {} : { tag: options.tag }),
+      ...(typeof options.tag === 'string' && options.tag !== '' ? { tag: options.tag } : {}),
     }
 
-    let answer: SubmitResponse
+    let response: SubmitResponse
     try {
-      answer = await this.transport.submit(submission, signal)
+      response = await this.transport.submit(submission, signal)
     } catch (error) {
       this.requireConsent()
       throw consentRefusal(error)
     }
 
+    // Own fields of the answer only (`WEB-09`): a field the server left out
+    // (for example the score on a key that hides it) stays absent.
+    const answer = ownCopy(response)
     const visitorId = typeof answer.visitor_id === 'string' ? answer.visitor_id : ''
     return {
-      requestId: answer.request_id,
+      requestId: typeof answer.request_id === 'string' ? answer.request_id : '',
       visitorId,
-      visitorIsNew: visitorId === '' ? false : (answer.visitor_is_new ?? false),
-      visitorConfidence: visitorId === '' ? 0 : (answer.visitor_confidence ?? 0),
-      identifiable: answer.identifiable ?? false,
-      duplicate: answer.duplicate ?? false,
-      state: answer.state ?? '',
+      visitorIsNew: visitorId === '' ? false : answer.visitor_is_new === true,
+      visitorConfidence:
+        visitorId === '' ||
+        typeof answer.visitor_confidence !== 'number' ||
+        !Number.isFinite(answer.visitor_confidence)
+          ? 0
+          : answer.visitor_confidence,
+      identifiable: answer.identifiable === true,
+      duplicate: answer.duplicate === true,
+      state: typeof answer.state === 'string' ? answer.state : '',
       suspectScore:
         typeof answer.suspect_score === 'number' && Number.isFinite(answer.suspect_score)
           ? answer.suspect_score
@@ -260,8 +281,9 @@ export class FingerlyClient {
   /**
    * Run the sources and assemble the report locally, without submitting.
    */
-  async collect(options: CollectOptions = {}): Promise<SignalReport> {
+  async collect(input: CollectOptions = {}): Promise<SignalReport> {
     this.requireConsent()
+    const options = ownCopy(input) as CollectOptions
     const scope = this.consentScope(options.signal)
     try {
       const incognitoDetection =
@@ -284,7 +306,7 @@ export class FingerlyClient {
     }
 
     const sources = this.#options.sources ?? []
-    const outerFilter = this.#options.schedule?.filter
+    const outerFilter = own(this.#options.schedule, 'filter')
     const filter = embeddedKind
       ? (source: Source) =>
           isEmbeddedSafeSource(source) && (outerFilter ? outerFilter(source) : true)
@@ -293,7 +315,7 @@ export class FingerlyClient {
     const effectiveIncognito: IncognitoDetection = embeddedKind ? 'standard' : incognitoDetection
 
     const schedule: ScheduleOptions = {
-      ...this.#options.schedule,
+      ...ownCopy(this.#options.schedule),
       incognitoDetection: effectiveIncognito,
       ...(filter === undefined ? {} : { filter }),
       ...(signal === undefined ? {} : { signal }),
@@ -316,7 +338,7 @@ export class FingerlyClient {
 
     return {
       schema: SCHEMA_VERSION,
-      budget_ms: schedule.budgetMs ?? DEFAULT_BUDGET_MS,
+      budget_ms: budgetOf(schedule),
       elapsed_ms: result.elapsedMs,
       sources: outcomes,
       integrity,

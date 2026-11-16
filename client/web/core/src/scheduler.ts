@@ -15,6 +15,7 @@ import {
   type Source,
   type SourceContext,
 } from './source.js'
+import { own } from './own.js'
 import type { IncognitoDetection, SignalOutcome, SignalStatus, SourceStage } from './types.js'
 
 /** Wall-clock millisecond source for budget accounting (immune to `performance.now` clamping/mocks). */
@@ -69,18 +70,51 @@ function statusFor(error: unknown): SignalStatus {
   return 'error'
 }
 
-function isEnabled(source: Source, options: ScheduleOptions): boolean {
-  if (source.optIn === 'extended-incognito' && options.incognitoDetection !== 'extended') {
+/**
+ * Every optional field of a source, read as an own property (`WEB-09`). A field
+ * the source does not set is undefined here even when `Object.prototype` has
+ * one of that name.
+ */
+interface NormalizedSource {
+  readonly source: Source
+  readonly id: string
+  readonly stage: SourceStage
+  readonly optIn: Source['optIn']
+  readonly timeoutMs: number | undefined
+}
+
+function normalizeSource(source: Source): NormalizedSource {
+  const stage = own(source, 'stage')
+  const timeoutMs = own(source, 'timeoutMs')
+  return {
+    source,
+    id: String(own(source, 'id')),
+    stage: stage === 'prerequisite' ? 'prerequisite' : 'collect',
+    optIn: own(source, 'optIn'),
+    timeoutMs: typeof timeoutMs === 'number' && Number.isFinite(timeoutMs) ? timeoutMs : undefined,
+  }
+}
+
+function finiteOr(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback
+}
+
+function isEnabled(
+  source: NormalizedSource,
+  incognitoDetection: IncognitoDetection | undefined,
+  filter: ((source: Source) => boolean) | undefined,
+): boolean {
+  if (source.optIn === 'extended-incognito' && incognitoDetection !== 'extended') {
     return false
   }
-  if (options.filter && !options.filter(source)) {
+  if (typeof filter === 'function' && !filter(source.source)) {
     return false
   }
   return true
 }
 
 async function runSource(
-  source: Source,
+  normalized: NormalizedSource,
   deadline: number,
   defaultTimeoutMs: number,
   outerSignal: AbortSignal | undefined,
@@ -94,7 +128,8 @@ async function runSource(
     return { status: 'timeout', ms: 0, reason: 'budget-exhausted' }
   }
 
-  const slice = Math.min(source.timeoutMs ?? defaultTimeoutMs, budgetLeft)
+  const { source } = normalized
+  const slice = Math.min(normalized.timeoutMs ?? defaultTimeoutMs, budgetLeft)
   const controller = new AbortController()
 
   const abortOuter = () => controller.abort(new TimedOutSignal('aborted'))
@@ -141,22 +176,32 @@ export async function collect(
   sources: readonly Source[],
   options: ScheduleOptions = {},
 ): Promise<ScheduleResult> {
-  const budgetMs = options.budgetMs ?? DEFAULTS.budgetMs
-  const defaultSourceTimeoutMs = options.defaultSourceTimeoutMs ?? DEFAULTS.defaultSourceTimeoutMs
-  const concurrency = Math.max(1, options.concurrency ?? DEFAULTS.concurrency)
-  const stages = options.stages ?? ALL_STAGES
+  // Own properties only (`WEB-09`): a polluted `Object.prototype.budgetMs` or
+  // `stages` must not change what runs.
+  const budgetMs = finiteOr(own(options, 'budgetMs'), DEFAULTS.budgetMs)
+  const defaultSourceTimeoutMs = finiteOr(
+    own(options, 'defaultSourceTimeoutMs'),
+    DEFAULTS.defaultSourceTimeoutMs,
+  )
+  const concurrency = Math.max(1, finiteOr(own(options, 'concurrency'), DEFAULTS.concurrency))
+  const ownStages = own(options, 'stages')
+  const stages = Array.isArray(ownStages) ? ownStages : ALL_STAGES
+  const incognitoDetection = own(options, 'incognitoDetection')
+  const filter = own(options, 'filter')
+  const signal = own(options, 'signal')
 
   const started = clock()
   const deadline = started + budgetMs
   const outcomes: Record<string, SignalOutcome> = {}
-  const completed: Record<string, SignalOutcome> = { ...(options.completed ?? {}) }
+  const completed: Record<string, SignalOutcome> = { ...(own(options, 'completed') ?? {}) }
   const shared = new Map<string, unknown>()
+  const normalized = sources.map(normalizeSource)
 
   let truncated = false
 
   for (const stage of stages) {
-    const queue = sources.filter(
-      (source) => (source.stage ?? 'collect') === stage && isEnabled(source, options),
+    const queue = normalized.filter(
+      (source) => source.stage === stage && isEnabled(source, incognitoDetection, filter),
     )
     if (queue.length === 0) continue
 
@@ -171,7 +216,7 @@ export async function collect(
         const source = queue[next++]
         if (!source) continue
 
-        if (clock() >= deadline || options.signal?.aborted) {
+        if (clock() >= deadline || signal?.aborted) {
           truncated = true
           stageOutcomes[source.id] = { status: 'timeout', ms: 0, reason: 'budget-exhausted' }
           continue
@@ -181,7 +226,7 @@ export async function collect(
           source,
           deadline,
           defaultSourceTimeoutMs,
-          options.signal,
+          signal,
           stageSnapshot,
           shared,
         )

@@ -6,6 +6,7 @@
  * exact same `Idempotency-Key` and byte-identical `rawBody`.
  */
 
+import { own, ownCopy } from './own.js'
 import { validateApiVersion } from './routes.js'
 import { DEFAULT_ENDPOINT } from './routing.js'
 import type { IdentifySubmission, IdentifyTrigger, SuspectLevel } from './types.js'
@@ -83,7 +84,7 @@ function retryAfterMs(response: Response): number | undefined {
 async function refusalCode(response: Response): Promise<string | undefined> {
   try {
     const body = (await response.json()) as { error?: { code?: unknown } } | null
-    const code = body?.error?.code
+    const code = own(own(body, 'error'), 'code')
     return typeof code === 'string' && code !== '' ? code : undefined
   } catch {
     return undefined
@@ -123,8 +124,8 @@ async function readAnswer(response: Response): Promise<Partial<SubmitResponse>> 
   if (text.length > MAX_RESPONSE_BYTES) throw unreadable()
   try {
     const parsed: unknown = JSON.parse(text)
-    if (parsed === null || typeof parsed !== 'object') throw unreadable()
-    return parsed as Partial<SubmitResponse>
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) throw unreadable()
+    return ownCopy(parsed as Partial<SubmitResponse>)
   } catch {
     throw unreadable()
   }
@@ -252,7 +253,10 @@ export class HttpTransport implements Transport {
   private readonly requestTimeoutMs: number
   private readonly fetchImpl: typeof fetch
 
-  constructor(options: HttpTransportOptions) {
+  constructor(input: HttpTransportOptions) {
+    // Own properties only (`WEB-09`): a polluted `Object.prototype.endpoints`
+    // must not choose where the report and the key are sent.
+    const options = ownCopy(input) as HttpTransportOptions
     if (!options.apiKey) {
       throw new TransportError('An SDK key is required to submit a fingerprint')
     }

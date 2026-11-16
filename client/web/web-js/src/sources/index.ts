@@ -2,7 +2,7 @@
  * The single-pass two-stage browser source set (`prerequisite` -> `collect`).
  */
 
-import { EMBEDDED_SAFE_SOURCES, UnsupportedSignal, type Source } from '@fingerly/core'
+import { EMBEDDED_SAFE_SOURCES, own, UnsupportedSignal, type Source } from '@fingerly/core'
 
 import { detectEmbedding } from '../embedding.js'
 
@@ -39,7 +39,9 @@ import { workerRealmSource } from './worker_realm.js'
  * permitted.
  */
 function guarded(source: Source): Source {
-  const safeInEmbedded = source.embeddedSafe === true || EMBEDDED_SAFE_SOURCES.has(source.id)
+  // Own property only (`WEB-09`): a polluted `embeddedSafe` must not let a
+  // fingerprinting source run inside an app.
+  const safeInEmbedded = own(source, 'embeddedSafe') === true || EMBEDDED_SAFE_SOURCES.has(source.id)
   return {
     ...source,
     run: (ctx) => {

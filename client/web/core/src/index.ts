@@ -22,6 +22,7 @@ export {
 } from './source.js'
 
 export { hash64 } from './hash.js'
+export { hasOwn, own, ownCopy } from './own.js'
 
 export {
   HttpTransport,
