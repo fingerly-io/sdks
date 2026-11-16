@@ -51,7 +51,6 @@ describe('the module', () => {
       endpoints: [],
       fallbackToDefaultEndpoint: false,
       incognitoDetection: 'extended',
-      consent: 'pending',
     })
   })
 
@@ -64,7 +63,6 @@ describe('the module', () => {
       endpoints: [],
       fallbackToDefaultEndpoint: false,
       incognitoDetection: 'standard',
-      consent: 'pending',
     })
   })
 
@@ -78,7 +76,6 @@ describe('the module', () => {
       endpoints: [],
       fallbackToDefaultEndpoint: false,
       incognitoDetection: 'standard',
-      consent: 'pending',
     })
   })
 
@@ -92,7 +89,6 @@ describe('the module', () => {
       endpoints: [],
       fallbackToDefaultEndpoint: false,
       incognitoDetection: 'standard',
-      consent: 'pending',
     })
   })
 
@@ -103,21 +99,40 @@ describe('the module', () => {
     expect(Object.keys(fingerlyConfig(nuxt) as object).sort()).toEqual([
       'apiKey',
       'apiVersion',
-      'consent',
       'endpoints',
       'fallbackToDefaultEndpoint',
       'incognitoDetection',
     ])
   })
 
-  it('publishes consent, and lets the environment override it', () => {
-    const configured = nuxtWith()
-    module_.setup({ apiKey: 'pk', consent: 'granted' }, configured)
-    expect(fingerlyConfig(configured)).toMatchObject({ consent: 'granted' })
+  it('never publishes consent, from the options or from an existing runtime config', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const configured = nuxtWith()
+      module_.setup({ apiKey: 'pk', consent: 'granted' }, configured)
+      expect(fingerlyConfig(configured)).not.toHaveProperty('consent')
 
-    const overridden = nuxtWith({ fingerly: { consent: 'denied' } })
-    module_.setup({ apiKey: 'pk', consent: 'granted' }, overridden)
-    expect(fingerlyConfig(overridden)).toMatchObject({ consent: 'denied' })
+      const environment = nuxtWith({ fingerly: { consent: 'granted' } })
+      module_.setup({ apiKey: 'pk' }, environment)
+      expect(fingerlyConfig(environment)).not.toHaveProperty('consent')
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('warns at build time when consent is set in nuxt.config, and not otherwise', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      module_.setup({ apiKey: 'pk' }, nuxtWith())
+      module_.setup({ apiKey: 'pk', consent: 'pending' }, nuxtWith())
+      expect(warn).not.toHaveBeenCalled()
+
+      module_.setup({ apiKey: 'pk', consent: 'granted' }, nuxtWith())
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(String(warn.mock.calls[0]?.[0])).toContain('setConsent()')
+    } finally {
+      warn.mockRestore()
+    }
   })
 
   it('does not fail the build when no key is configured anywhere', () => {
@@ -130,7 +145,6 @@ describe('the module', () => {
       endpoints: [],
       fallbackToDefaultEndpoint: false,
       incognitoDetection: 'standard',
-      consent: 'pending',
     })
   })
 

@@ -18,7 +18,13 @@ export interface ModuleOptions {
    * execute (`'standard'` default or `'extended'`).
    */
   incognitoDetection?: IncognitoDetection
-  /** The consent the app starts with. Defaults to `pending`. */
+  /**
+   * Not a setting. Consent is the visitor's answer, so it is never read from
+   * `nuxt.config.ts` or the environment: the client always starts `pending`
+   * and only a runtime `setConsent()` call, made after the visitor answered,
+   * changes it. Kept in the type so a value here is reported at build time
+   * instead of being silently ignored.
+   */
   consent?: ConsentState
 }
 
@@ -26,7 +32,9 @@ export interface ModuleOptions {
  * The shape published at `runtimeConfig.public.fingerly`.
  *
  * Every key is present so Nuxt allows `NUXT_PUBLIC_FINGERLY_*` environment
- * overrides at server startup.
+ * overrides at server startup. Consent is deliberately not one of them: a
+ * deployment-wide value would apply to every visitor before any of them
+ * answered.
  */
 export interface FingerlyPublicConfig {
   apiKey: string
@@ -34,8 +42,12 @@ export interface FingerlyPublicConfig {
   endpoints: string[]
   fallbackToDefaultEndpoint: boolean
   incognitoDetection: IncognitoDetection
-  consent: ConsentState
 }
+
+/** The build-time warning for a `consent` value in the module options. */
+export const STATIC_CONSENT_WARNING =
+  "[fingerly] fingerly.consent in nuxt.config.ts is ignored. Consent is each visitor's answer: " +
+  'the client starts pending, and you call setConsent() at runtime once the visitor has answered.'
 
 export function resolvePublicConfig(
   options: ModuleOptions,
@@ -52,6 +64,5 @@ export function resolvePublicConfig(
       existing?.fallbackToDefaultEndpoint ?? options.fallbackToDefaultEndpoint ?? false,
     incognitoDetection:
       pick(existing?.incognitoDetection, options.incognitoDetection) ?? 'standard',
-    consent: pick(existing?.consent, options.consent) ?? 'pending',
   }
 }

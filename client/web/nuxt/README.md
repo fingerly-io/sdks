@@ -27,12 +27,15 @@ export default defineNuxtConfig({
   modules: ['@fingerly/nuxt'],
   fingerly: {
     apiKey: 'fly_pk_production_…',
-    // 'granted' only once you have consent (or know none is required here; see docs/privacy.md §4)
-    consent: 'granted',
     incognitoDetection: 'standard',
   },
 })
 ```
+
+Consent is not part of this configuration. It is each visitor's answer, so the
+client always starts `pending` and only a runtime `setConsent()` call, made
+once the visitor has answered, changes it; see
+[Waiting for consent](#waiting-for-consent).
 
 Or leave the key out of the config and set it in the environment:
 
@@ -49,13 +52,14 @@ which is what makes it safe in a page. A **secret** key is refused by the API
 whenever a request carries an `Origin`.
 
 The module publishes `fingerly.apiKey`, `fingerly.apiVersion`,
-`fingerly.endpoints`, `fingerly.fallbackToDefaultEndpoint`,
-`fingerly.incognitoDetection` (`'standard' | 'extended'`), and
-`fingerly.consent`, each overridable at server startup with
-`NUXT_PUBLIC_FINGERLY_API_KEY`, `NUXT_PUBLIC_FINGERLY_API_VERSION`,
-`NUXT_PUBLIC_FINGERLY_ENDPOINTS` (a JSON array, such as `'["/k7x2qm4a"]'`),
-`NUXT_PUBLIC_FINGERLY_FALLBACK_TO_DEFAULT_ENDPOINT`,
-`NUXT_PUBLIC_FINGERLY_INCOGNITO_DETECTION`, and `NUXT_PUBLIC_FINGERLY_CONSENT`.
+`fingerly.endpoints`, `fingerly.fallbackToDefaultEndpoint` and
+`fingerly.incognitoDetection` (`'standard' | 'extended'`), each overridable at
+server startup with `NUXT_PUBLIC_FINGERLY_API_KEY`,
+`NUXT_PUBLIC_FINGERLY_API_VERSION`, `NUXT_PUBLIC_FINGERLY_ENDPOINTS` (a JSON
+array, such as `'["/k7x2qm4a"]'`),
+`NUXT_PUBLIC_FINGERLY_FALLBACK_TO_DEFAULT_ENDPOINT` and
+`NUXT_PUBLIC_FINGERLY_INCOGNITO_DETECTION`. There is no consent variable: a
+deployment-wide value would apply to every visitor before any of them answered.
 
 ### Serve it from your own site
 
@@ -87,21 +91,14 @@ export default defineEventHandler((event) => {
 
 ```ts
 // nuxt.config.ts
-fingerly: { endpoints: ['/k7x2qm4a'], consent: 'granted' },
+fingerly: { endpoints: ['/k7x2qm4a'] },
 ```
 
 ### Waiting for consent
 
-Consent defaults to `pending` (`denied` behaves the same). If identifying a
-visitor needs their consent first, leave it `pending`:
-
-```ts
-// nuxt.config.ts
-fingerly: {
-  apiKey: 'fly_pk_production_…',
-  consent: 'pending',
-},
-```
+The client starts `pending` (`denied` behaves the same) on every page load.
+`fingerly.consent` in `nuxt.config.ts` is ignored with a build-time warning,
+and there is no environment variable for it.
 
 Until it is `granted` nothing is collected and nothing is sent:
 `useIdentify({ immediate: true })` waits, and a manual `identify()` fails with a
@@ -112,10 +109,14 @@ the identification that was waiting runs, once:
 <!-- app.vue, or wherever the consent tool is wired up -->
 <script setup lang="ts">
 const fingerly = useFingerly()
-// then, in the consent tool's callback:
+// then, in the consent tool's callback, once the visitor accepted:
 fingerly.setConsent('granted')
 </script>
 ```
+
+Where no consent is required, call `setConsent('granted')` from your own code
+(for example in a client-only plugin) rather than from configuration, so the
+decision stays visible in the app.
 
 `setConsent()` is also on the client (`await fingerly.client()`), and the current
 state is `consent` in `useIdentify()`. The details are in the

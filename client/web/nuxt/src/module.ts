@@ -15,7 +15,12 @@
 
 import { addImports, addPlugin, createResolver, defineNuxtModule } from '@nuxt/kit'
 
-import { resolvePublicConfig, type FingerlyPublicConfig, type ModuleOptions } from './options.js'
+import {
+  resolvePublicConfig,
+  STATIC_CONSENT_WARNING,
+  type FingerlyPublicConfig,
+  type ModuleOptions,
+} from './options.js'
 
 export type { FingerlyPublicConfig, ModuleOptions } from './options.js'
 
@@ -34,6 +39,11 @@ export default defineNuxtModule<ModuleOptions>({
 
     const runtimeConfig = nuxt.options.runtimeConfig
     runtimeConfig.public ??= {} as typeof runtimeConfig.public
+
+    // Consent never comes from configuration (see `ModuleOptions.consent`).
+    if (options.consent !== undefined && options.consent !== 'pending') {
+      console.warn(STATIC_CONSENT_WARNING)
+    }
 
     // Published rather than closed over, so the deployment environment can
     // still override it - a module that baked the key into the bundle would

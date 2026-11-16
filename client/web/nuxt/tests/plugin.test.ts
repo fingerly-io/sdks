@@ -88,7 +88,7 @@ describe('the runtime plugin', () => {
     expect(identifyMock).not.toHaveBeenCalled()
   })
 
-  it('builds the client from the runtime config', async () => {
+  it('builds the client from the runtime config, with consent pending whatever the config says', async () => {
     __setRuntimeConfig({
       fingerly: { apiKey: 'pk_runtime', endpoints: ['/k7x2qm4a'], consent: 'granted' },
     })
@@ -99,7 +99,7 @@ describe('the runtime plugin', () => {
     expect(loadMock).toHaveBeenCalledWith({
       apiKey: 'pk_runtime',
       endpoints: ['/k7x2qm4a'],
-      consent: 'granted',
+      consent: 'pending',
     })
   })
 
@@ -114,8 +114,8 @@ describe('the runtime plugin', () => {
     expect(identifyMock).not.toHaveBeenCalled()
   })
 
-  it('takes consent from the runtime config, and identifies on mount only once it is granted', async () => {
-    __setRuntimeConfig({ fingerly: { apiKey: 'pk_runtime', consent: 'pending' } })
+  it('identifies on mount only once a runtime call grants consent', async () => {
+    __setRuntimeConfig({ fingerly: { apiKey: 'pk_runtime' } })
 
     const { identify, fingerly } = mountWithPlugin(() => ({
       identify: useIdentify({ immediate: true }),
@@ -135,7 +135,7 @@ describe('the runtime plugin', () => {
 
   it('passes incognitoDetection through and preserves visitorId "" on Option B answers', async () => {
     __setRuntimeConfig({
-      fingerly: { apiKey: 'pk_runtime', consent: 'granted', incognitoDetection: 'extended' },
+      fingerly: { apiKey: 'pk_runtime', incognitoDetection: 'extended' },
     })
     identifyMock.mockResolvedValue({
       ...RESULT,
@@ -146,7 +146,11 @@ describe('the runtime plugin', () => {
       identifiable: false,
     })
 
-    const { identify, visitorId, requestId } = mountWithPlugin(() => useIdentify())
+    const { identify, visitorId, requestId, setConsent } = mountWithPlugin(() => ({
+      ...useIdentify(),
+      setConsent: useFingerly().setConsent,
+    }))
+    setConsent('granted')
     await identify()
 
     expect(identifyMock).toHaveBeenCalledWith({ incognitoDetection: 'extended' })
@@ -233,9 +237,10 @@ async function answering(answer: Record<string, unknown>) {
 describe('a public response', () => {
   it.each(PUBLIC_ANSWERS)('%s: absent stays null and no signal is surfaced', async (_name, answer, score, level, suspicious) => {
     await answering(answer)
-    __setRuntimeConfig({ fingerly: { apiKey: 'pk_runtime', consent: 'granted' } })
+    __setRuntimeConfig({ fingerly: { apiKey: 'pk_runtime' } })
 
-    const identify = mountWithPlugin(() => useIdentify())
+    const { identify, fingerly } = mountWithPlugin(() => ({ identify: useIdentify(), fingerly: useFingerly() }))
+    fingerly.setConsent('granted')
     await identify.identify()
 
     expect(identify.error.value).toBeNull()
