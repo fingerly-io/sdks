@@ -204,8 +204,6 @@ function waitBeforeRetry(ms: number, signal: AbortSignal | undefined): Promise<v
   })
 }
 
-let fallbackCounter = 0
-
 function isValidIdempotencyKey(key: string): boolean {
   if (key.length < 16 || key.length > 128) return false
   for (let i = 0; i < key.length; i++) {
@@ -215,8 +213,14 @@ function isValidIdempotencyKey(key: string): boolean {
   return true
 }
 
+/** The code of the error raised when no secure random source exists. */
+export const NO_SECURE_RANDOM_CODE = 'no_secure_random'
+
 /**
- * Generates a valid `16..128`-char printable ASCII `Idempotency-Key`.
+ * Generates a valid `16..128`-char printable ASCII `Idempotency-Key` from a
+ * cryptographic generator. There is no fallback (`WEB-11`): a runtime without
+ * `crypto.randomUUID` or `crypto.getRandomValues` fails the call before any
+ * request is made, rather than sending a predictable key.
  */
 function newIdempotencyKey(): string {
   const available = (globalThis as typeof globalThis & { crypto?: Crypto }).crypto
@@ -233,14 +237,12 @@ function newIdempotencyKey(): string {
     return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
   }
 
-  fallbackCounter = (fallbackCounter + 1) >>> 0
-  const parts = [
-    Date.now().toString(16).padStart(12, '0'),
-    fallbackCounter.toString(16).padStart(8, '0'),
-    Math.floor(Math.random() * 0x1_0000_0000).toString(16).padStart(8, '0'),
-    Math.floor(Math.random() * 0x1_0000_0000).toString(16).padStart(8, '0'),
-  ]
-  return `idem_${parts.join('')}`
+  throw new TransportError(
+    'No secure random source (crypto.getRandomValues) is available for the Idempotency-Key',
+    undefined,
+    false,
+    NO_SECURE_RANDOM_CODE,
+  )
 }
 
 export class HttpTransport implements Transport {

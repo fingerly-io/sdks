@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { HttpTransport, TransportError } from '../src/transport.js'
@@ -69,32 +71,46 @@ describe('HttpTransport v3 envelope & retry idempotency', () => {
     expect(String(sent[1]?.body)).not.toContain('"attest"')
   })
 
-  it('mints unique valid 16..128-char ASCII keys even when crypto is absent and Math.random returns 0', async () => {
-    vi.stubGlobal('crypto', undefined)
-    vi.spyOn(Math, 'random').mockReturnValue(0)
+  it.each([
+    ['crypto is absent', undefined],
+    ['crypto has neither randomUUID nor getRandomValues', {}],
+  ])('refuses to submit when %s, and sends nothing', async (_name, replacement) => {
+    vi.stubGlobal('crypto', replacement)
+    const random = vi.spyOn(Math, 'random')
 
-    const sent: RequestInit[] = []
-    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
-      sent.push(init ?? {})
-      return new Response('{"request_id":"request-ok"}', {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      })
-    }) as typeof fetch
+    const fetchImpl = vi.fn(async () => new Response('{"request_id":"request-ok"}', { status: 200 })) as typeof fetch
     const transport = new HttpTransport({
       apiKey: 'public-test-key',
       endpoints: 'https://example.test',
       fetchImpl,
     })
 
-    await transport.submit(submission())
-    await transport.submit(submission())
+    const failure = await transport.submit(submission()).catch((error: unknown) => error)
+    expect(failure).toBeInstanceOf(TransportError)
+    expect((failure as TransportError).code).toBe('no_secure_random')
+    expect((failure as TransportError).retryable).toBe(false)
+    expect(fetchImpl).not.toHaveBeenCalled()
+    expect(random).not.toHaveBeenCalled()
+  })
 
-    const firstKey = header(sent[0], 'Idempotency-Key')
-    const secondKey = header(sent[1], 'Idempotency-Key')
-    assertValidIdempotencyKey(firstKey)
-    assertValidIdempotencyKey(secondKey)
-    expect(secondKey).not.toBe(firstKey)
+  it('uses getRandomValues when randomUUID is absent', async () => {
+    const real = globalThis.crypto
+    const getRandomValues = (bytes: Uint8Array) => real.getRandomValues(bytes)
+    vi.stubGlobal('crypto', { getRandomValues })
+    const sent: RequestInit[] = []
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      sent.push(init ?? {})
+      return new Response('{"request_id":"request-ok"}', { status: 200 })
+    }) as typeof fetch
+    const transport = new HttpTransport({ apiKey: 'k', endpoints: 'https://example.test', fetchImpl })
+    await transport.submit(submission())
+    expect(header(sent[0], 'Idempotency-Key')).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/)
+  })
+
+  it('uses Math.random only for retry backoff, never for the key', async () => {
+    const source = readFileSync(new URL('../src/transport.ts', import.meta.url), 'utf8')
+    const uses = source.split('\n').filter((line) => line.includes('Math.random'))
+    expect(uses).toEqual(['  const backoff = backoffMs(attempt, Math.random)'])
   })
 
   it('uses a new key for a separate submission', async () => {

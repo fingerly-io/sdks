@@ -25,6 +25,7 @@ export { hash64 } from './hash.js'
 
 export {
   HttpTransport,
+  NO_SECURE_RANDOM_CODE,
   SDK_KEY_HEADER,
   TransportError,
   type HttpTransportOptions,
