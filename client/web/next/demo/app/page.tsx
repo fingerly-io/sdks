@@ -55,9 +55,8 @@ export default function Page() {
         <Row label="suspectScore" value={fingerly.suspectScore ?? 'hidden'} />
         <Row label="suspectLevel" value={fingerly.suspectLevel ?? 'hidden'} hit={fingerly.suspectLevel === 'high'} />
         <Row label="requestId" value={fingerly.requestId ?? '— (submit: false)'} />
-        <Row label="sources" value={fingerly.report ? Object.keys(fingerly.report.sources).length : '—'} />
-        <Row label="elapsed_ms" value={fingerly.report?.elapsed_ms ?? '—'} />
-        <Row label="engine" value={fingerly.report?.integrity.engine.observed ?? '—'} />
+        <Row label="identified" value={String(fingerly.identified)} />
+        <Row label="report" value="not kept in state (collect() to inspect)" />
         {fingerly.error && <Row label="error" value={fingerly.error.message} hit />}
       </div>
 

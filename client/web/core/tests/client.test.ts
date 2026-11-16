@@ -120,8 +120,9 @@ describe('FingerlyClient single-pass v3 collection', () => {
     })
     expect(transport.submit).not.toHaveBeenCalled()
 
-    const identified = await client.identify({ incognitoDetection: 'extended' })
-    expect(identified.report.sources.storage_durability?.status).toBe('ok')
+    await client.identify({ incognitoDetection: 'extended' })
+    const sent = vi.mocked(transport.submit).mock.calls[0]?.[0]
+    expect(sent?.signals.sources.storage_durability?.status).toBe('ok')
     expect(transport.submit).toHaveBeenCalledTimes(1)
   })
 

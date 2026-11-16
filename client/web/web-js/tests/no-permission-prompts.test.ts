@@ -11,7 +11,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { BlockedSignal, SOURCE, type SourceContext } from '@fingerly/core'
+import { BlockedSignal, SOURCE, type IdentifySubmission, type SourceContext } from '@fingerly/core'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { load } from '../src/index.js'
@@ -414,21 +414,26 @@ describe('full runtime pipeline prompt & Gecko RFP pixel-readback spies', () => 
           return origCreateElement(tag)
         }) as typeof document.createElement)
 
+        const submitted: IdentifySubmission[] = []
         const client = await load({
           apiKey: 'fly_pk_development_test',
           consent: 'granted',
           transport: {
-            submit: async () => ({
+            submit: async (submission: IdentifySubmission) => {
+              submitted.push(submission)
+              return {
               request_id: 'req_rfp',
               visitor_id: '',
               identifiable: false,
               state: 'enriched',
-            }),
+              }
+            },
           },
         })
 
         const collected = await client.collect()
-        const identified = await client.identify()
+        await client.identify()
+        const identified = { report: submitted[0]!.signals }
 
         for (const [name, spy] of Object.entries(spies.promptSpies)) {
           expect(spy, `prompt API ${name} must never be called`).not.toHaveBeenCalled()

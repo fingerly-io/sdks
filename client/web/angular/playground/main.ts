@@ -11,8 +11,9 @@
  * inputs - they are found by the ahead-of-time compiler an app would normally
  * use.
  *
- * It uses `submit: false`, so no server answers: the raw report fills in and
- * the score and level read hidden, as they must with nobody to ask.
+ * It uses `submit: false`, so no server answers: the score and level read
+ * hidden, as they must with nobody to ask. The signal report is never kept in
+ * the binding's state; `collect()` on the client is how to inspect one.
  */
 
 // The compiler, first: this application is compiled in the page rather than
@@ -52,16 +53,12 @@ import { injectIdentify, provideFingerly } from '../src/index.js'
         <span class="v">{{ fingerly.requestId() ?? '— (submit: false)' }}</span>
       </div>
       <div class="row">
-        <span class="k">sources</span>
-        <span class="v">{{ sourceCount() }}</span>
+        <span class="k">identified</span>
+        <span class="v">{{ fingerly.identified() }}</span>
       </div>
       <div class="row">
-        <span class="k">elapsed_ms</span>
-        <span class="v">{{ fingerly.report()?.elapsed_ms ?? '—' }}</span>
-      </div>
-      <div class="row">
-        <span class="k">engine</span>
-        <span class="v">{{ fingerly.report()?.integrity?.engine?.observed ?? '—' }}</span>
+        <span class="k">report</span>
+        <span class="v">not kept in state (collect() to inspect)</span>
       </div>
       @if (fingerly.error(); as failure) {
         <div class="row">
@@ -85,11 +82,6 @@ export class Playground {
 
   refresh(): void {
     void this.fingerly.refresh().catch(() => undefined)
-  }
-
-  sourceCount(): number | string {
-    const report = this.fingerly.report()
-    return report ? Object.keys(report.sources).length : '—'
   }
 }
 

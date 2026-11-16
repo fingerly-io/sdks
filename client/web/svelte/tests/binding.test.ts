@@ -185,6 +185,21 @@ describe('useIdentify', () => {
     expect(page.state).not.toHaveProperty('reason')
   })
 
+  it('keeps no signal report in state and hands none back, on the first call or a reused one', async () => {
+    const page = render({ options: { apiKey: 'fly_pk_development_test', consent: 'granted' } })
+
+    const first = await page.state.identify()
+    const reused = await page.state.identify()
+
+    expect(first).not.toHaveProperty('report')
+    expect(reused).not.toHaveProperty('report')
+    expect(first.requestId).toBe('req_1')
+    expect(page.state).not.toHaveProperty('report')
+    expect(page.shared).not.toHaveProperty('report')
+    expect(page.state.identified).toBe(true)
+    expect(page.state.isReady).toBe(true)
+  })
+
   it('never surfaces why a check went unscored, which only a backend is told', async () => {
     identifyMock.mockResolvedValueOnce({
       ...RESULT,

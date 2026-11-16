@@ -254,7 +254,6 @@ export const automationSource: Source<AutomationSignal> = {
       webdriver: attempt(() => navigator.webdriver),
       cdp_artifacts: cdp.length > 0 ? cdp : undefined,
       distinctive_properties: present.length > 0 ? [...present] : undefined,
-      chrome_object: attempt(() => 'chrome' in w),
       window_external: attempt(() => {
         const external = (w as Window & { external?: unknown }).external
         return external ? String(external) : undefined

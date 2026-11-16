@@ -2,11 +2,7 @@
  * `useIdentify()` - the composable a page actually uses.
  */
 
-import {
-  isSuspiciousLevel,
-  type IdentifyResult,
-  type IncognitoDetection,
-} from '@fingerly/web-js'
+import { isSuspiciousLevel, type IncognitoDetection } from '@fingerly/web-js'
 import {
   computed,
   onMounted,
@@ -16,7 +12,7 @@ import {
   type MaybeRefOrGetter,
 } from 'vue'
 
-import { toReadonly, type ReadonlyState } from './plugin.js'
+import { toReadonly, type IdentifyAnswer, type ReadonlyState } from './plugin.js'
 import { useFingerly } from './useFingerly.js'
 
 export interface UseIdentifyOptions {
@@ -38,12 +34,12 @@ export interface UseIdentifyReturn extends ReadonlyState {
     tag?: string
     incognitoDetection?: IncognitoDetection
     force?: boolean
-  }) => Promise<IdentifyResult>
+  }) => Promise<IdentifyAnswer>
   /** Identify again from scratch, ignoring any previous result. */
   refresh: (options?: {
     tag?: string
     incognitoDetection?: IncognitoDetection
-  }) => Promise<IdentifyResult>
+  }) => Promise<IdentifyAnswer>
 }
 
 export function useIdentify(options: UseIdentifyOptions = {}): UseIdentifyReturn {
@@ -92,7 +88,7 @@ export function useIdentify(options: UseIdentifyOptions = {}): UseIdentifyReturn
 
   return {
     ...state,
-    isReady: computed(() => state.report.value !== null || state.error.value !== null),
+    isReady: computed(() => state.identified.value || state.error.value !== null),
     isSuspicious: computed(() => isSuspiciousLevel(state.suspectLevel.value)),
     identify,
     refresh,

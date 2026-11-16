@@ -30,4 +30,17 @@ describe('the integrity pass', () => {
       engine: {},
     })
   })
+
+  it('does not return the report from identify() (WEB-14)', async () => {
+    const client = new FingerlyClient({
+      apiKey: 'fly_pk_development_test',
+      consent: 'granted',
+      sources: [{ id: 'plain', run: () => 1 }],
+      transport: { submit: async () => ({ request_id: 'r1' }) },
+    })
+    const result = await client.identify()
+    expect('report' in result).toBe(false)
+    const report = await client.collect()
+    expect(report.sources.plain?.status).toBe('ok')
+  })
 })

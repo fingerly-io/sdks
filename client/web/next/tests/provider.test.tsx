@@ -231,6 +231,27 @@ describe('FingerlyRequestId', () => {
     expect((container.querySelector('input') as HTMLInputElement).value).toBe('req_1')
   })
 
+  it('keeps no signal report in hook state once the field is filled', async () => {
+    let seen: Record<string, unknown> | undefined
+    const Probe = () => {
+      seen = useIdentify() as unknown as Record<string, unknown>
+      return null
+    }
+    const { container } = render(
+      provider(
+        <>
+          <FingerlyRequestId />
+          <Probe />
+        </>,
+      ),
+    )
+    await act(async () => undefined)
+
+    expect((container.querySelector('input') as HTMLInputElement).value).toBe('req_1')
+    expect(seen?.identified).toBe(true)
+    expect(seen).not.toHaveProperty('report')
+  })
+
   it('costs one identification however many fields a page has', async () => {
     await act(async () => {
       render(

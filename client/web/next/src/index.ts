@@ -31,6 +31,7 @@ export type {
   FingerlyReactOptions,
   FingerlyState,
   FingerlyStore,
+  IdentifyAnswer,
   Confidence,
   ConsentState,
   IdentifyOptions,

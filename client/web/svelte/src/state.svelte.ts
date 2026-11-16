@@ -9,9 +9,24 @@ import {
   type FingerlyClient,
   type IdentifyResult,
   type IncognitoDetection,
-  type SignalReport,
   type SuspectLevel,
 } from '@fingerly/web-js'
+
+/**
+ * What the binding hands back from `identify()`: the result without the full
+ * signal report. The report is evidence for the server; keeping it in app
+ * state for the page lifetime would let any component or debugging tool read
+ * or log the whole fingerprint. Call `(await client()).collect()` to inspect a
+ * report locally.
+ */
+export type IdentifyAnswer = Omit<IdentifyResult, 'report'>
+
+/** A copy of `result` without its `report`, whether or not the client sent one. */
+export function withoutReport<T extends object>(result: T): Omit<T, 'report'> {
+  const copy = { ...result } as Record<string, unknown>
+  delete copy.report
+  return copy as Omit<T, 'report'>
+}
 
 /** Options for [[createFingerly]] and [[setupFingerly]]. */
 export interface FingerlyOptions {
@@ -46,10 +61,16 @@ export interface Fingerly {
   readonly state: string | null
   readonly suspectScore: number | null
   readonly suspectLevel: SuspectLevel | null
-  readonly report: SignalReport | null
+  /** True once an identification has succeeded. */
+  readonly identified: boolean
   readonly error: Error | null
   readonly isLoading: boolean
   readonly isReady: boolean
+  /**
+   * True for `medium` or `high`, `null` when the level is absent. A UI hint
+   * only: access decisions belong on your backend, which reads the event by
+   * `requestId` with the secret key.
+   */
   readonly isSuspicious: boolean | null
   readonly consent: ConsentState
   setConsent(state: ConsentState): void
@@ -58,11 +79,11 @@ export interface Fingerly {
     incognitoDetection?: IncognitoDetection
     force?: boolean
     automatic?: boolean
-  }): Promise<IdentifyResult>
+  }): Promise<IdentifyAnswer>
   refresh(options?: {
     tag?: string
     incognitoDetection?: IncognitoDetection
-  }): Promise<IdentifyResult>
+  }): Promise<IdentifyAnswer>
   client(): Promise<FingerlyClient>
 }
 
@@ -103,17 +124,17 @@ export function createFingerly(options: FingerlyOptions): Fingerly {
   let checkState = $state<string | null>(null)
   let suspectScore = $state<number | null>(null)
   let suspectLevel = $state<SuspectLevel | null>(null)
-  let report = $state<SignalReport | null>(null)
+  let identified = $state(false)
   let error = $state<Error | null>(null)
   let isLoading = $state(false)
   let consent = $state<ConsentState>(options.consent ?? 'pending')
 
-  const isReady = $derived(report !== null || error !== null)
+  const isReady = $derived(identified || error !== null)
   const isSuspicious = $derived(isSuspiciousLevel(suspectLevel))
 
   let clientPromise: Promise<FingerlyClient> | undefined
   let loaded: FingerlyClient | undefined
-  let current: Promise<IdentifyResult> | undefined
+  let current: Promise<IdentifyAnswer> | undefined
   let held: { error: Error; until: number; automaticUntil: number } | undefined
   let consecutiveFailures = 0
 
@@ -172,7 +193,8 @@ export function createFingerly(options: FingerlyOptions): Fingerly {
           ...(incognitoDetection === undefined ? {} : { incognitoDetection }),
         }),
       )
-      .then((result) => {
+      .then((full) => {
+        const result = withoutReport(full)
         requestId = result.requestId === '' ? null : result.requestId
         visitorId = result.visitorId
         visitorIsNew = result.visitorIsNew
@@ -182,7 +204,7 @@ export function createFingerly(options: FingerlyOptions): Fingerly {
         checkState = result.state === '' ? null : result.state
         suspectScore = result.suspectScore ?? null
         suspectLevel = result.suspectLevel ?? null
-        report = result.report
+        identified = true
         held = undefined
         consecutiveFailures = 0
         return result
@@ -234,8 +256,8 @@ export function createFingerly(options: FingerlyOptions): Fingerly {
     get suspectLevel() {
       return suspectLevel
     },
-    get report() {
-      return report
+    get identified() {
+      return identified
     },
     get error() {
       return error

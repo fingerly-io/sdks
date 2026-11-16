@@ -4,7 +4,6 @@
  */
 
 import {
-  hash64,
   SOURCE,
   type EngineSignal,
   type ErrorsSignal,
@@ -224,7 +223,6 @@ export const mathSource: Source<MathSignal> = {
   embeddedSafe: true,
   timeoutMs: 50,
   run() {
-    const results: string[] = []
     let probed = 0
     const values = new Map<string, number>()
 
@@ -233,14 +231,11 @@ export const mathSource: Source<MathSignal> = {
       if (typeof value === 'number' && Number.isFinite(value)) {
         probed += 1
         values.set(name, value)
-        results.push(`${name}:${value}`)
-      } else {
-        results.push(`${name}:`)
       }
     }
 
+    // No digest of the results: no server rule reads one (`WEB-14`).
     return compact<MathSignal>({
-      hash: hash64(results.join('|')),
       probed,
       atanh_half: values.get('atanh'),
       expm1_1: values.get('expm1'),

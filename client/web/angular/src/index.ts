@@ -5,7 +5,7 @@
 export { FINGERLY, FINGERLY_OPTIONS, provideFingerly } from './provide.js'
 
 export { createFingerly, FingerlyServerError } from './state.js'
-export type { Fingerly, FingerlyOptions } from './state.js'
+export type { Fingerly, FingerlyOptions, IdentifyAnswer } from './state.js'
 
 export { injectFingerly, injectIdentify } from './inject.js'
 export type { InjectIdentifyOptions } from './inject.js'

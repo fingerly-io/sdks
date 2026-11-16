@@ -8,7 +8,7 @@ export { FingerlyContext, FingerlyProvider } from './context.js'
 export type { FingerlyProviderProps } from './context.js'
 
 export { createFingerlyStore, FingerlyServerError } from './store.js'
-export type { FingerlyReactOptions, FingerlyState, FingerlyStore } from './store.js'
+export type { FingerlyReactOptions, FingerlyState, FingerlyStore, IdentifyAnswer } from './store.js'
 
 export { useFingerly } from './useFingerly.js'
 export { useIdentify } from './useIdentify.js'

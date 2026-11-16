@@ -268,6 +268,9 @@ export class FingerlyClient {
     // (for example the score on a key that hides it) stays absent.
     const answer = ownCopy(response)
     const visitorId = typeof answer.visitor_id === 'string' ? answer.visitor_id : ''
+    // The report is not part of the result (`WEB-14`): it describes the
+    // device, and callers that keep the result in application state would
+    // keep it too. `collect()` returns it for debugging.
     return {
       requestId: typeof answer.request_id === 'string' ? answer.request_id : '',
       visitorId,
@@ -286,7 +289,6 @@ export class FingerlyClient {
           ? answer.suspect_score
           : null,
       suspectLevel: isSuspectLevel(answer.suspect_level) ? answer.suspect_level : null,
-      report,
     }
   }
 

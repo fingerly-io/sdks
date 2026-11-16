@@ -170,10 +170,13 @@ describe('the runtime plugin', () => {
     plugin({ vueApp: app })
     app.mount(document.createElement('div'))
 
-    await Promise.all([first.identify(), second.identify()])
+    const [answer] = await Promise.all([first.identify(), second.identify()])
 
     expect(identifyMock).toHaveBeenCalledTimes(1)
     expect(second.requestId.value).toBe('req_1')
+    // The report is evidence for the server, not app state.
+    expect(answer).not.toHaveProperty('report')
+    expect(first).not.toHaveProperty('report')
   })
 
   it('still installs with no key, and says so once', async () => {

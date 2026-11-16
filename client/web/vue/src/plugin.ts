@@ -8,7 +8,6 @@ import {
   type FingerlyClient,
   type IdentifyResult,
   type IncognitoDetection,
-  type SignalReport,
   type SuspectLevel,
 } from '@fingerly/web-js'
 import {
@@ -16,7 +15,6 @@ import {
   ref,
   shallowRef,
   type App,
-  type DeepReadonly,
   type InjectionKey,
   type Plugin,
   type Ref,
@@ -24,6 +22,22 @@ import {
 } from 'vue'
 
 /** Options for [[createFingerly]]. */
+/**
+ * What the plugin hands back from `identify()`: the result without the full
+ * signal report. The report is evidence for the server; keeping it in app
+ * state for the page lifetime would let any component or debugging tool read
+ * or log the whole fingerprint. Call `(await client()).collect()` to inspect a
+ * report locally.
+ */
+export type IdentifyAnswer = Omit<IdentifyResult, 'report'>
+
+/** A copy of `result` without its `report`, whether or not the client sent one. */
+export function withoutReport<T extends object>(result: T): Omit<T, 'report'> {
+  const copy = { ...result } as Record<string, unknown>
+  delete copy.report
+  return copy as Omit<T, 'report'>
+}
+
 export interface FingerlyVueOptions {
   /** The SDK key from the dashboard. A public key is safe in a page. */
   apiKey: string
@@ -56,7 +70,8 @@ export interface FingerlyState {
   state: ShallowRef<string | null>
   suspectScore: ShallowRef<number | null>
   suspectLevel: ShallowRef<SuspectLevel | null>
-  report: ShallowRef<SignalReport | null>
+  /** True once an identification has succeeded. */
+  identified: ShallowRef<boolean>
   error: ShallowRef<Error | null>
   isLoading: Ref<boolean>
   consent: ShallowRef<ConsentState>
@@ -73,7 +88,7 @@ export interface FingerlyContext {
     incognitoDetection?: IncognitoDetection
     force?: boolean
     automatic?: boolean
-  }): Promise<IdentifyResult>
+  }): Promise<IdentifyAnswer>
 }
 
 export function failureHold(
@@ -116,7 +131,7 @@ function createState(consent: ConsentState): FingerlyState {
     state: shallowRef<string | null>(null),
     suspectScore: shallowRef<number | null>(null),
     suspectLevel: shallowRef<SuspectLevel | null>(null),
-    report: shallowRef<SignalReport | null>(null),
+    identified: shallowRef(false),
     error: shallowRef<Error | null>(null),
     isLoading: ref(false),
     consent: shallowRef(consent),
@@ -128,8 +143,8 @@ export function createFingerly(options: FingerlyVueOptions): Plugin {
 
   let clientPromise: Promise<FingerlyClient> | undefined
   let loaded: FingerlyClient | undefined
-  let inFlight: Promise<IdentifyResult> | undefined
-  let completed: IdentifyResult | undefined
+  let inFlight: Promise<IdentifyAnswer> | undefined
+  let completed: IdentifyAnswer | undefined
   let held: { error: Error; until: number; automaticUntil: number } | undefined
   let consecutiveFailures = 0
 
@@ -192,7 +207,8 @@ export function createFingerly(options: FingerlyVueOptions): Plugin {
           ...(incognitoDetection === undefined ? {} : { incognitoDetection }),
         }),
       )
-      .then((result) => {
+      .then((full) => {
+        const result = withoutReport(full)
         state.requestId.value = result.requestId === '' ? null : result.requestId
         state.visitorId.value = result.visitorId
         state.visitorIsNew.value = result.visitorIsNew
@@ -202,7 +218,7 @@ export function createFingerly(options: FingerlyVueOptions): Plugin {
         state.state.value = result.state === '' ? null : result.state
         state.suspectScore.value = result.suspectScore ?? null
         state.suspectLevel.value = result.suspectLevel ?? null
-        state.report.value = result.report
+        state.identified.value = true
         completed = result
         held = undefined
         consecutiveFailures = 0
@@ -245,7 +261,7 @@ export type ReadonlyState = {
   state: Readonly<ShallowRef<string | null>>
   suspectScore: Readonly<ShallowRef<number | null>>
   suspectLevel: Readonly<ShallowRef<SuspectLevel | null>>
-  report: Readonly<ShallowRef<DeepReadonly<SignalReport> | null>>
+  identified: Readonly<ShallowRef<boolean>>
   error: Readonly<ShallowRef<Error | null>>
   isLoading: Readonly<Ref<boolean>>
   consent: Readonly<ShallowRef<ConsentState>>
@@ -262,7 +278,7 @@ export function toReadonly(state: FingerlyState): ReadonlyState {
     state: readonly(state.state),
     suspectScore: readonly(state.suspectScore),
     suspectLevel: readonly(state.suspectLevel),
-    report: readonly(state.report) as ReadonlyState['report'],
+    identified: readonly(state.identified),
     error: readonly(state.error) as ReadonlyState['error'],
     isLoading: readonly(state.isLoading),
     consent: readonly(state.consent),

@@ -128,15 +128,12 @@ export const userAgentDataSource: Source<Record<string, unknown>> = {
 
     if (typeof data.getHighEntropyValues !== 'function') return low
 
-    const high = await data.getHighEntropyValues([
-      'architecture',
-      'bitness',
-      'model',
-      'platformVersion',
-      'fullVersionList',
-      'wow64',
-    ])
+    // Only the hint a server rule reads (`WEB-14`): the identity vector uses
+    // `architecture`. Bitness, model, platform version, the full version list
+    // and wow64 are not requested.
+    const high = await data.getHighEntropyValues(['architecture'])
+    const architecture = attempt(() => (high as Record<string, unknown>).architecture)
 
-    return { ...low, ...high }
+    return typeof architecture === 'string' ? { ...low, architecture } : low
   },
 }

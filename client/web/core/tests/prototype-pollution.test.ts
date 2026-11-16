@@ -89,7 +89,7 @@ describe('a polluted Object.prototype (WEB-09)', () => {
     pollute('duplicate', true)
     pollute('state', 'polluted')
     const { result } = await run()
-    expect(result).toMatchObject({
+    expect(result).toEqual({
       requestId: 'r1',
       visitorId: '',
       visitorIsNew: false,

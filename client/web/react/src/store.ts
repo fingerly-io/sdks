@@ -8,9 +8,24 @@ import {
   type FingerlyClient,
   type IdentifyResult,
   type IncognitoDetection,
-  type SignalReport,
   type SuspectLevel,
 } from '@fingerly/web-js'
+
+/**
+ * What the binding hands back from `identify()`: the result without the full
+ * signal report. The report is evidence for the server; keeping it in app
+ * state for the page lifetime would let any component or debugging tool read
+ * or log the whole fingerprint. Call `(await client()).collect()` to inspect a
+ * report locally.
+ */
+export type IdentifyAnswer = Omit<IdentifyResult, 'report'>
+
+/** A copy of `result` without its `report`, whether or not the client sent one. */
+export function withoutReport<T extends object>(result: T): Omit<T, 'report'> {
+  const copy = { ...result } as Record<string, unknown>
+  delete copy.report
+  return copy as Omit<T, 'report'>
+}
 
 /** Options for [[createFingerlyStore]] and for `<FingerlyProvider>`. */
 export interface FingerlyReactOptions {
@@ -48,7 +63,8 @@ export interface FingerlyState {
   state: string | null
   suspectScore: number | null
   suspectLevel: SuspectLevel | null
-  report: SignalReport | null
+  /** True once an identification has succeeded. */
+  identified: boolean
   error: Error | null
   isLoading: boolean
   consent: ConsentState
@@ -64,7 +80,7 @@ const INITIAL: FingerlyState = Object.freeze({
   state: null,
   suspectScore: null,
   suspectLevel: null,
-  report: null,
+  identified: false,
   error: null,
   isLoading: false,
   consent: 'pending',
@@ -83,7 +99,7 @@ export interface FingerlyStore {
     incognitoDetection?: IncognitoDetection
     force?: boolean
     automatic?: boolean
-  }): Promise<IdentifyResult>
+  }): Promise<IdentifyAnswer>
 }
 
 export function failureHold(
@@ -128,8 +144,8 @@ export function createFingerlyStore(options: FingerlyReactOptions): FingerlyStor
 
   let clientPromise: Promise<FingerlyClient> | undefined
   let loaded: FingerlyClient | undefined
-  let current: Promise<IdentifyResult> | undefined
-  let held: { promise: Promise<IdentifyResult>; until: number; automaticUntil: number } | undefined
+  let current: Promise<IdentifyAnswer> | undefined
+  let held: { promise: Promise<IdentifyAnswer>; until: number; automaticUntil: number } | undefined
   let consecutiveFailures = 0
 
   const mirrorConsent = (consent: ConsentState): void => {
@@ -186,7 +202,8 @@ export function createFingerlyStore(options: FingerlyReactOptions): FingerlyStor
           ...(incognitoDetection === undefined ? {} : { incognitoDetection }),
         }),
       )
-      .then((result) => {
+      .then((full) => {
+        const result = withoutReport(full)
         setState({
           requestId: result.requestId === '' ? null : result.requestId,
           visitorId: result.visitorId,
@@ -197,7 +214,7 @@ export function createFingerlyStore(options: FingerlyReactOptions): FingerlyStor
           state: result.state === '' ? null : result.state,
           suspectScore: result.suspectScore ?? null,
           suspectLevel: result.suspectLevel ?? null,
-          report: result.report,
+          identified: true,
         })
         held = undefined
         consecutiveFailures = 0

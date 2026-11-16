@@ -5,7 +5,7 @@
 export { FINGERLY_KEY, setupFingerly, useFingerly } from './context.js'
 
 export { createFingerly, FingerlyServerError } from './state.svelte.js'
-export type { Fingerly, FingerlyOptions } from './state.svelte.js'
+export type { Fingerly, FingerlyOptions, IdentifyAnswer } from './state.svelte.js'
 
 export { useIdentify } from './hooks.svelte.js'
 export type { UseIdentifyOptions } from './hooks.svelte.js'

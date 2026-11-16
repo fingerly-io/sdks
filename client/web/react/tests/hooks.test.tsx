@@ -230,6 +230,20 @@ describe('FingerlyProvider', () => {
       incognitoDetection: 'extended',
     })
   })
+
+  it('keeps no signal report in the store and hands none back, on the first call or a reused one', async () => {
+    const { createFingerlyStore } = await import('../src/store.js')
+    const store = createFingerlyStore({ apiKey: 'pk_request', consent: 'granted' })
+
+    const first = await store.identify()
+    const reused = await store.identify()
+
+    expect(first).not.toHaveProperty('report')
+    expect(reused).not.toHaveProperty('report')
+    expect(first.requestId).toBe('req_1')
+    expect(store.getState()).not.toHaveProperty('report')
+    expect(store.getState().identified).toBe(true)
+  })
 })
 
 describe('useFingerly', () => {
@@ -340,7 +354,8 @@ describe('useIdentify', () => {
     expect(identifyMock).toHaveBeenCalledTimes(1)
     expect(a.latest().requestId).toBe('req_1')
     expect(b.latest().requestId).toBe('req_1')
-    expect(c.latest().report).toBe(a.latest().report)
+    expect(c.latest().visitorId).toBe(a.latest().visitorId)
+    expect(c.latest()).not.toHaveProperty('report')
   })
 
   it('costs one identification under StrictMode, which mounts twice', async () => {
@@ -519,7 +534,7 @@ describe('useIdentify', () => {
     expect(identifyMock).toHaveBeenCalledTimes(1)
     expect(identifyMock).toHaveBeenCalledWith({ incognitoDetection: 'extended' })
     expect(a.latest().visitorId).toBe('')
-    expect(b.latest().report).not.toBeNull()
+    expect(b.latest().identified).toBe(true)
   })
 
   describe('isSuspicious', () => {
@@ -751,8 +766,8 @@ describe('consent', () => {
 
   it('renders the unidentified state instead of suspending until consent is granted', async () => {
     const Card = () => {
-      const { report } = useIdentify({ suspend: true })
-      return <span>{report ? 'identified' : 'waiting'}</span>
+      const { identified } = useIdentify({ suspend: true })
+      return <span>{identified ? 'identified' : 'waiting'}</span>
     }
 
     const { container } = await renderAsync(

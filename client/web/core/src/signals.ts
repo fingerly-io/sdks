@@ -162,7 +162,6 @@ export interface EngineSignal {
 }
 
 export interface MathSignal {
-  hash?: string
   probed?: number
   atanh_half?: number
   expm1_1?: number
@@ -361,7 +360,6 @@ export interface AutomationSignal {
   webdriver?: boolean
   cdp_artifacts?: string[]
   distinctive_properties?: string[]
-  chrome_object?: boolean
   window_external?: string
 }
 

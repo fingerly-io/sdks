@@ -7,6 +7,7 @@ export type {
   FingerlyContext,
   FingerlyState,
   FingerlyVueOptions,
+  IdentifyAnswer,
   ReadonlyState,
 } from './plugin.js'
 

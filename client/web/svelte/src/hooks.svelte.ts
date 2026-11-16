@@ -83,8 +83,8 @@ export function useIdentify(options: UseIdentifyOptions = {}): Fingerly {
     get suspectLevel() {
       return fingerly.suspectLevel
     },
-    get report() {
-      return fingerly.report
+    get identified() {
+      return fingerly.identified
     },
     get error() {
       return fingerly.error

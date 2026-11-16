@@ -10,9 +10,24 @@ import {
   type FingerlyClient,
   type IdentifyResult,
   type IncognitoDetection,
-  type SignalReport,
   type SuspectLevel,
 } from '@fingerly/web-js'
+
+/**
+ * What the binding hands back from `identify()`: the result without the full
+ * signal report. The report is evidence for the server; keeping it in app
+ * state for the page lifetime would let any component or debugging tool read
+ * or log the whole fingerprint. Call `(await client()).collect()` to inspect a
+ * report locally.
+ */
+export type IdentifyAnswer = Omit<IdentifyResult, 'report'>
+
+/** A copy of `result` without its `report`, whether or not the client sent one. */
+export function withoutReport<T extends object>(result: T): Omit<T, 'report'> {
+  const copy = { ...result } as Record<string, unknown>
+  delete copy.report
+  return copy as Omit<T, 'report'>
+}
 
 /** Options for [[provideFingerly]]. */
 export interface FingerlyOptions {
@@ -47,10 +62,16 @@ export interface Fingerly {
   readonly state: Signal<string | null>
   readonly suspectScore: Signal<number | null>
   readonly suspectLevel: Signal<SuspectLevel | null>
-  readonly report: Signal<SignalReport | null>
+  /** True once an identification has succeeded. */
+  readonly identified: Signal<boolean>
   readonly error: Signal<Error | null>
   readonly isLoading: Signal<boolean>
   readonly isReady: Signal<boolean>
+  /**
+   * True for `medium` or `high`, `null` when the level is absent. A UI hint
+   * only: access decisions belong on your backend, which reads the event by
+   * `requestId` with the secret key.
+   */
   readonly isSuspicious: Signal<boolean | null>
   readonly consent: Signal<ConsentState>
   setConsent(state: ConsentState): void
@@ -59,11 +80,11 @@ export interface Fingerly {
     incognitoDetection?: IncognitoDetection
     force?: boolean
     automatic?: boolean
-  }): Promise<IdentifyResult>
+  }): Promise<IdentifyAnswer>
   refresh(options?: {
     tag?: string
     incognitoDetection?: IncognitoDetection
-  }): Promise<IdentifyResult>
+  }): Promise<IdentifyAnswer>
   client(): Promise<FingerlyClient>
 }
 
@@ -104,17 +125,17 @@ export function createFingerly(options: FingerlyOptions): Fingerly {
   const state = signal<string | null>(null)
   const suspectScore = signal<number | null>(null)
   const suspectLevel = signal<SuspectLevel | null>(null)
-  const report = signal<SignalReport | null>(null)
+  const identified = signal(false)
   const error = signal<Error | null>(null)
   const isLoading = signal(false)
   const consent = signal<ConsentState>(options.consent ?? 'pending')
 
-  const isReady = computed(() => report() !== null || error() !== null)
+  const isReady = computed(() => identified() || error() !== null)
   const isSuspicious = computed(() => isSuspiciousLevel(suspectLevel()))
 
   let clientPromise: Promise<FingerlyClient> | undefined
   let loaded: FingerlyClient | undefined
-  let current: Promise<IdentifyResult> | undefined
+  let current: Promise<IdentifyAnswer> | undefined
   let held: { error: Error; until: number; automaticUntil: number } | undefined
   let consecutiveFailures = 0
 
@@ -169,7 +190,8 @@ export function createFingerly(options: FingerlyOptions): Fingerly {
           ...(incognitoDetection === undefined ? {} : { incognitoDetection }),
         }),
       )
-      .then((result) => {
+      .then((full) => {
+        const result = withoutReport(full)
         requestId.set(result.requestId === '' ? null : result.requestId)
         visitorId.set(result.visitorId)
         visitorIsNew.set(result.visitorIsNew)
@@ -179,7 +201,7 @@ export function createFingerly(options: FingerlyOptions): Fingerly {
         state.set(result.state === '' ? null : result.state)
         suspectScore.set(result.suspectScore ?? null)
         suspectLevel.set(result.suspectLevel ?? null)
-        report.set(result.report)
+        identified.set(true)
         held = undefined
         consecutiveFailures = 0
         return result
@@ -213,7 +235,7 @@ export function createFingerly(options: FingerlyOptions): Fingerly {
     state: state.asReadonly(),
     suspectScore: suspectScore.asReadonly(),
     suspectLevel: suspectLevel.asReadonly(),
-    report: report.asReadonly(),
+    identified: identified.asReadonly(),
     error: error.asReadonly(),
     isLoading: isLoading.asReadonly(),
     isReady,

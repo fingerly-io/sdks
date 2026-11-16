@@ -384,7 +384,7 @@ describe('injectIdentify', () => {
     expect(identifyMock).toHaveBeenCalledWith({ incognitoDetection: 'extended' })
     expect(first.requestId()).toBeNull()
     expect(first.visitorId()).toBe('')
-    expect(second.report()).not.toBeNull()
+    expect(second.identified()).toBe(true)
   })
 })
 
@@ -397,6 +397,21 @@ describe('the state itself', () => {
     // component sees.
     expect('set' in fingerly.requestId).toBe(false)
     expect('update' in fingerly.isLoading).toBe(false)
+  })
+
+  it('keeps no signal report and hands none back, on the first call or a reused one', async () => {
+    application({ apiKey: 'fly_pk_development_test', consent: 'granted' })
+    const fingerly = TestBed.runInInjectionContext(() => injectIdentify())
+
+    const first = await fingerly.identify()
+    const reused = await fingerly.identify()
+
+    expect(first).not.toHaveProperty('report')
+    expect(reused).not.toHaveProperty('report')
+    expect(first.requestId).toBe(RESULT.requestId)
+    expect(fingerly).not.toHaveProperty('report')
+    expect(fingerly.identified()).toBe(true)
+    expect(fingerly.isReady()).toBe(true)
   })
 })
 

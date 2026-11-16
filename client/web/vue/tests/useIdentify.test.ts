@@ -191,7 +191,8 @@ describe('createFingerly', () => {
 
     expect(result.requestId.value).toBeNull()
     expect(result.visitorId.value).toBe('')
-    expect(result.report.value).not.toBeNull()
+    expect(result.identified.value).toBe(true)
+    expect(result).not.toHaveProperty('report')
   })
 })
 
@@ -588,5 +589,25 @@ describe('consent', () => {
 
     expect(result.error.value).toBeInstanceOf(ConsentError)
     expect(identifyMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('the signal report', () => {
+  it('is not kept in shared state or handed back, by the first call or a reused one', async () => {
+    const { result } = withSetup(
+      () => ({ identify: useIdentify(), fingerly: useFingerly() }),
+      createFingerly({ apiKey: 'fly_pk_development_test', consent: 'granted' }),
+    )
+
+    const first = await result.identify.identify()
+    const reused = await result.identify.identify()
+
+    expect(first).not.toHaveProperty('report')
+    expect(reused).not.toHaveProperty('report')
+    expect(first.requestId).toBe('req_1')
+    expect(result.identify).not.toHaveProperty('report')
+    expect(result.fingerly.state).not.toHaveProperty('report')
+    expect(result.identify.identified.value).toBe(true)
+    expect(result.identify.isReady.value).toBe(true)
   })
 })

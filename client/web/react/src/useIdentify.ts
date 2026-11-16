@@ -4,7 +4,7 @@
  * `useIdentify()` - the hook a page actually uses.
  */
 
-import { isSuspiciousLevel, type IdentifyResult, type IncognitoDetection } from '@fingerly/web-js'
+import { isSuspiciousLevel, type IncognitoDetection } from '@fingerly/web-js'
 import {
   use,
   useCallback,
@@ -15,7 +15,7 @@ import {
   useSyncExternalStore,
 } from 'react'
 
-import type { FingerlyState } from './store.js'
+import type { FingerlyState, IdentifyAnswer } from './store.js'
 import { useFingerly } from './useFingerly.js'
 
 export interface UseIdentifyOptions {
@@ -42,12 +42,12 @@ export interface UseIdentifyReturn extends FingerlyState {
     tag?: string
     incognitoDetection?: IncognitoDetection
     force?: boolean
-  }) => Promise<IdentifyResult>
+  }) => Promise<IdentifyAnswer>
   /** Identify again from scratch, ignoring any previous result. */
   refresh: (options?: {
     tag?: string
     incognitoDetection?: IncognitoDetection
-  }) => Promise<IdentifyResult>
+  }) => Promise<IdentifyAnswer>
 }
 
 const resolveTag = (tag: UseIdentifyOptions['tag']): string | undefined =>
@@ -99,7 +99,7 @@ export function useIdentify(options: UseIdentifyOptions = {}): UseIdentifyReturn
       .catch(() => undefined)
   }, [immediate, consented, fingerly])
 
-  if (suspend && consented && typeof window !== 'undefined' && state.report === null) {
+  if (suspend && consented && typeof window !== 'undefined' && !state.identified) {
     const tag = resolveTag(tagRef.current)
     const incognitoDetection = options.incognitoDetection
     use(
@@ -111,7 +111,7 @@ export function useIdentify(options: UseIdentifyOptions = {}): UseIdentifyReturn
     )
   }
 
-  const isReady = state.report !== null || state.error !== null
+  const isReady = state.identified || state.error !== null
   const isSuspicious = useMemo(() => isSuspiciousLevel(state.suspectLevel), [state.suspectLevel])
 
   useDebugValue(
