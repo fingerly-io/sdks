@@ -34,7 +34,9 @@ export interface UseIdentifyReturn extends FingerlyState {
   isReady: boolean
   /**
    * True when the server scored this `medium` or `high` under the weights you
-   * set; `null` when no server has answered or the level is absent.
+   * set; `null` when no server has answered or the level is absent. A UI hint
+   * only: the page is controlled by the visitor, so access decisions belong on
+   * your backend, which reads the event by `requestId` with the secret key.
    */
   isSuspicious: boolean | null
   /** Collect and submit. Reuses a completed run unless `force`. */

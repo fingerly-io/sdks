@@ -86,14 +86,22 @@ Consent defaults to `pending`, and nothing is collected or sent until it is
 <script lang="ts">
   import { useIdentify } from '@fingerly/svelte'
 
-  const fingerly = useIdentify()
+  let { orderId }: { orderId: string } = $props()
+  const fingerly = useIdentify({ tag: () => `checkout:${orderId}` })
+  let challenge = $state(false)
 
   async function submit() {
-    await fingerly.identify()
+    const { requestId } = await fingerly.identify()
 
-    if (fingerly.isSuspicious) {
-      // step up to MFA, hold for review, add friction
-    }
+    // The page only forwards the request ID. Your backend reads the event with
+    // the secret key and decides; the page acts on that decision.
+    const response = await fetch('/api/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId, requestId }),
+    })
+    const { decision } = await response.json()
+    challenge = decision === 'challenge'
   }
 </script>
 
@@ -101,6 +109,7 @@ Consent defaults to `pending`, and nothing is collected or sent until it is
   {fingerly.isLoading ? 'Checking…' : 'Continue'}
 </button>
 
+{#if challenge}<StepUp />{/if}
 {#if fingerly.error}<p>{fingerly.error.message}</p>{/if}
 ```
 
@@ -110,6 +119,61 @@ including the Stage 1 Gecko `<= 3 ms` RFP timer guard and CSP-safe
 resolving with the server's answer: `requestId`, `visitorId`, `identifiable`,
 and `suspectScore` / `suspectLevel` (unless hidden by the key). Nothing is
 decided in the page: scoring lives on the server, under the weights you set.
+
+### Decide on your backend
+
+Whoever controls the page controls every branch in it, so access decisions
+(allow, step up, hold, refuse) are made on your backend. The `requestId` the
+page sends is untrusted form input until your backend has verified it. Read the
+event with the secret key and run the checks described in
+[server-side verification](https://docs.fingerly.io/docs/server-side-verification):
+
+```ts
+// src/lib/server/fingerly.ts, never in the page
+import { BlockList } from 'node:net'
+import { Fingerly, FingerlyAPIError } from '@fingerly/node'
+
+const fingerly = new Fingerly({ secretKey: process.env.FINGERLY_SECRET_KEY })
+const MAX_AGE_MS = 2 * 60 * 1000
+
+// expectedTag comes from your server session (the order this visitor is
+// paying for), never from the request body. clientIp is the address of this
+// post, for example event.getClientAddress() in a SvelteKit endpoint.
+export async function decide(requestId: string, expectedTag: string, clientIp: string) {
+  let event
+  try {
+    event = await fingerly.events.get(requestId)                       // 1. it exists
+  } catch (error) {
+    if (error instanceof FingerlyAPIError && error.isPending) return 'retry'
+    if (error instanceof FingerlyAPIError && error.code === 'event_not_found') return 'refuse'
+    throw error
+  }
+  if (event.tag !== expectedTag) return 'refuse'                           // 2. this action
+  if (Date.now() - Date.parse(event.occurred_at) > MAX_AGE_MS) return 'refuse' // 3. recent
+  if (!event.identifiable || event.suspect_score === null) return 'refuse' // 4. identifiable and scored
+  if (event.suspect_level === 'high') return 'review'                      // 5. your policy
+  // 6. another network than this post: step up (for example a second factor)
+  if (!event.ip_network || !inNetwork(clientIp, event.ip_network)) return 'challenge'
+  if (event.suspect_level === 'medium') return 'challenge'
+  return 'allow'
+}
+
+// ip_network is the /24 (IPv4) or /40 (IPv6) the identification came from;
+// the API never returns the address itself.
+function inNetwork(ip: string, cidr: string): boolean {
+  const [base = '', bits = '0'] = cidr.split('/')
+  const type = base.includes(':') ? 'ipv6' : 'ipv4'
+  const list = new BlockList()
+  list.addSubnet(base, Number(bits), type)
+  return list.check(ip, type)
+}
+```
+
+`isSuspicious`, `suspectScore` and `suspectLevel` in the page are a UI hint
+only (for example, to show a spinner a little longer). Never gate an action on
+them. One event can back more than one decision inside the recency window; for
+a flow that must be single use, record the `requestId` with the outcome and
+refuse one you have already seen.
 
 ### On mount instead
 
@@ -165,7 +229,7 @@ unscored, or the SDK key hides the score from the page. Null is not a clean
 result.
 
 Under **Option B** (`v: 3`), `fingerly.visitorId` is `null` before the first
-identification completes, and afterwards holds `result.visitorId` — which is
+identification completes, and afterwards holds `result.visitorId`, which is
 `""` (with `fingerly.visitorIsNew === false`) whenever
 `fingerly.identifiable === false`, inside an embedded WebView, or when an
 unmatched Web report is high-risk.
@@ -241,20 +305,26 @@ fingerly.duplicate         // boolean:              answered before; this is the
 fingerly.state             // string | null:        the server's disposition
 fingerly.suspectScore      // number | null:        null when unscored or hidden by the key
 fingerly.suspectLevel      // string | null:        low, medium, high
-fingerly.report            // SignalReport | null:  every source, with status and timing
+fingerly.identified        // boolean:              an identification has succeeded
 fingerly.error             // Error | null
 fingerly.consent           // ConsentState        (granted, pending or denied)
 fingerly.isLoading         // boolean
 fingerly.isReady           // boolean:              finished, successfully or not
-fingerly.isSuspicious      // boolean | null:       true for medium or high; null when absent
-fingerly.identify()        // Promise<IdentifyResult>
-fingerly.refresh()         // Promise<IdentifyResult>
+fingerly.isSuspicious      // boolean | null:       UI hint only; true for medium or high, null when absent
+fingerly.identify()        // Promise<IdentifyAnswer>
+fingerly.refresh()         // Promise<IdentifyAnswer>
 fingerly.setConsent('granted')
 ```
 
 Every field is a getter over a rune, so reading one in a template subscribes to
 it and reading one in an event handler gets the current value. None of them is
 settable.
+
+The binding never keeps the signal report: `identify()` resolves with the
+server's answer (`IdentifyAnswer`, the result without `report`), and nothing of
+the report stays in state. Use `collect()`
+([Local collection without submitting](#local-collection-without-submitting))
+to inspect one.
 
 ## The visitor is never asked for anything
 

@@ -64,17 +64,27 @@ its contents:
 ## Identify (single-pass `v: 3`, `<= 350 ms` budget)
 
 ```tsx
+import { useState } from 'react'
 import { useIdentify } from '@fingerly/react'
 
-function Checkout() {
-  const { identify, isSuspicious, isLoading, error } = useIdentify()
+function Checkout({ orderId }: { orderId: string }) {
+  const { identify, isLoading, error } = useIdentify({ tag: () => `checkout:${orderId}` })
+  const [challenge, setChallenge] = useState(false)
 
   async function onSubmit() {
-    await identify()
+    // Use what identify() resolves with. A value read from this render
+    // (isSuspicious, suspectLevel) is still the one from before the answer.
+    const { requestId } = await identify()
 
-    if (isSuspicious) {
-      // step up to MFA, hold for review, add friction
-    }
+    // The page only forwards the request ID. Your backend reads the event with
+    // the secret key and decides; the page acts on that decision.
+    const response = await fetch('/api/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId, requestId }),
+    })
+    const { decision } = await response.json()
+    setChallenge(decision === 'challenge')
   }
 
   return (
@@ -82,6 +92,7 @@ function Checkout() {
       <button onClick={onSubmit} disabled={isLoading}>
         {isLoading ? 'Checking…' : 'Continue'}
       </button>
+      {challenge && <StepUp />}
       {error && <p>{error.message}</p>}
     </>
   )
@@ -94,6 +105,61 @@ including the Stage 1 Gecko `<= 3 ms` RFP timer guard and CSP-safe
 resolving with the server's answer: `requestId`, `visitorId`, `identifiable`,
 and `suspectScore` / `suspectLevel` (unless hidden by the key). Nothing is
 decided in the page: scoring lives on the server, under the weights you set.
+
+### Decide on your backend
+
+Whoever controls the page controls every branch in it, so access decisions
+(allow, step up, hold, refuse) are made on your backend. The `requestId` the
+page sends is untrusted form input until your backend has verified it. Read the
+event with the secret key and run the checks described in
+[server-side verification](https://docs.fingerly.io/docs/server-side-verification):
+
+```ts
+// server (Node.js), never in the page
+import { BlockList } from 'node:net'
+import { Fingerly, FingerlyAPIError } from '@fingerly/node'
+
+const fingerly = new Fingerly({ secretKey: process.env.FINGERLY_SECRET_KEY })
+const MAX_AGE_MS = 2 * 60 * 1000
+
+// expectedTag comes from your server session (the order this visitor is
+// paying for), never from the request body. clientIp is the address of this
+// form post, as your framework resolves it behind your own proxies.
+export async function decide(requestId: string, expectedTag: string, clientIp: string) {
+  let event
+  try {
+    event = await fingerly.events.get(requestId)                       // 1. it exists
+  } catch (error) {
+    if (error instanceof FingerlyAPIError && error.isPending) return 'retry'
+    if (error instanceof FingerlyAPIError && error.code === 'event_not_found') return 'refuse'
+    throw error
+  }
+  if (event.tag !== expectedTag) return 'refuse'                           // 2. this action
+  if (Date.now() - Date.parse(event.occurred_at) > MAX_AGE_MS) return 'refuse' // 3. recent
+  if (!event.identifiable || event.suspect_score === null) return 'refuse' // 4. identifiable and scored
+  if (event.suspect_level === 'high') return 'review'                      // 5. your policy
+  // 6. another network than this post: step up (for example a second factor)
+  if (!event.ip_network || !inNetwork(clientIp, event.ip_network)) return 'challenge'
+  if (event.suspect_level === 'medium') return 'challenge'
+  return 'allow'
+}
+
+// ip_network is the /24 (IPv4) or /40 (IPv6) the identification came from;
+// the API never returns the address itself.
+function inNetwork(ip: string, cidr: string): boolean {
+  const [base = '', bits = '0'] = cidr.split('/')
+  const type = base.includes(':') ? 'ipv6' : 'ipv4'
+  const list = new BlockList()
+  list.addSubnet(base, Number(bits), type)
+  return list.check(ip, type)
+}
+```
+
+`isSuspicious`, `suspectScore` and `suspectLevel` in the page are a UI hint
+only (for example, to show a spinner a little longer). Never gate an action on
+them. One event can back more than one decision inside the recency window; for
+a flow that must be single use, record the `requestId` with the outcome and
+refuse one you have already seen.
 
 ### On mount instead
 
@@ -162,7 +228,7 @@ unscored, or the SDK key hides the score from the page. Null is not a clean
 result.
 
 Under **Option B** (`v: 3`), `visitorId` is `null` before the first
-identification completes, and afterwards holds `result.visitorId` — which is
+identification completes, and afterwards holds `result.visitorId`, which is
 `""` (with `visitorIsNew === false`) whenever `identifiable === false`, inside
 an embedded WebView, or when an unmatched Web report is high-risk.
 
@@ -255,16 +321,20 @@ const {
   state,             // string | null:        the server's disposition
   suspectScore,      // number | null:        null when unscored or hidden by the key
   suspectLevel,      // string | null:        low, medium, high
-  report,            // SignalReport | null:  every source, with status and timing
+  identified,        // boolean:              an identification has succeeded
   error,             // Error | null
   consent,           // ConsentState        (granted, pending or denied)
   isLoading,         // boolean
   isReady,           // boolean:              finished, successfully or not
-  isSuspicious,      // boolean | null:       true for medium or high; null when the level is absent
-  identify,          // (opts?) => Promise<IdentifyResult>
-  refresh,           // (opts?) => Promise<IdentifyResult>
+  isSuspicious,      // boolean | null:       UI hint only; true for medium or high, null when the level is absent
+  identify,          // (opts?) => Promise<IdentifyAnswer>
+  refresh,           // (opts?) => Promise<IdentifyAnswer>
 } = useIdentify()
 ```
+
+The binding never keeps the signal report: `identify()` resolves with the
+server's answer (`IdentifyAnswer`, the result without `report`), and nothing of
+the report stays in component state. Use `collect()` ([Local collection without submitting](#local-collection-without-submitting)) to inspect one.
 
 `identify` and `refresh` are stable across renders, so they can go in a
 dependency array without restarting anything. `suspectScore` is `null`, not `0`,

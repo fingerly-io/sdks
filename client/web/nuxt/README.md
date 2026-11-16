@@ -128,13 +128,28 @@ The composables are auto-imported, like every other Nuxt composable:
 
 ```vue
 <script setup lang="ts">
-const { visitorId, identifiable, suspectLevel, isSuspicious, isReady } = useIdentify({
-  immediate: true,
-})
+const route = useRoute()
+const { identify, isLoading } = useIdentify({ tag: () => `checkout:${route.params.orderId}` })
+const challenge = ref(false)
+
+async function onSubmit() {
+  const { requestId } = await identify()
+
+  // The page only forwards the request ID. Your backend reads the event with
+  // the secret key and decides; the page acts on that decision.
+  const { decision } = await $fetch<{ decision: string }>('/api/checkout', {
+    method: 'POST',
+    body: { orderId: route.params.orderId, requestId },
+  })
+  challenge.value = decision === 'challenge'
+}
 </script>
 
 <template>
-  <p v-if="isReady && isSuspicious">Something about this session is unusual.</p>
+  <form @submit.prevent="onSubmit">
+    <button :disabled="isLoading">Continue</button>
+  </form>
+  <StepUp v-if="challenge" />
 </template>
 ```
 
@@ -151,6 +166,67 @@ the raw `SignalReport` locally without submitting, call
 unchanged. Their full surface is in that [package's README](../vue/README.md):
 `immediate`, `refresh`, `incognitoDetection`, a correlation `tag`, and reading
 `suspectLevel` and `isSuspicious` (which is `null`, not `false`, when absent).
+
+### Decide on your backend
+
+Whoever controls the page controls every branch in it, so access decisions
+(allow, step up, hold, refuse) are made on your backend. The `requestId` the
+page sends is untrusted input until your backend has verified it. Read the
+event with the secret key and run the checks described in
+[server-side verification](https://docs.fingerly.io/docs/server-side-verification):
+
+```ts
+// server/api/checkout.post.ts
+import { BlockList } from 'node:net'
+import { Fingerly, FingerlyAPIError } from '@fingerly/node'
+import { getRequestIP, readBody } from 'h3'
+
+const fingerly = new Fingerly({ secretKey: process.env.FINGERLY_SECRET_KEY })
+const MAX_AGE_MS = 2 * 60 * 1000
+
+export default defineEventHandler(async (h3) => {
+  const { requestId } = await readBody<{ requestId: string }>(h3)
+  // From your server session (the order this visitor is paying for), never
+  // from the request body.
+  const expectedTag = `checkout:${await orderIdFromSession(h3)}`
+  const clientIp = getRequestIP(h3) ?? ''
+  return { decision: await decide(requestId, expectedTag, clientIp) }
+})
+
+async function decide(requestId: string, expectedTag: string, clientIp: string) {
+  let event
+  try {
+    event = await fingerly.events.get(requestId)                       // 1. it exists
+  } catch (error) {
+    if (error instanceof FingerlyAPIError && error.isPending) return 'retry'
+    if (error instanceof FingerlyAPIError && error.code === 'event_not_found') return 'refuse'
+    throw error
+  }
+  if (event.tag !== expectedTag) return 'refuse'                           // 2. this action
+  if (Date.now() - Date.parse(event.occurred_at) > MAX_AGE_MS) return 'refuse' // 3. recent
+  if (!event.identifiable || event.suspect_score === null) return 'refuse' // 4. identifiable and scored
+  if (event.suspect_level === 'high') return 'review'                      // 5. your policy
+  // 6. another network than this post: step up (for example a second factor)
+  if (!event.ip_network || !inNetwork(clientIp, event.ip_network)) return 'challenge'
+  if (event.suspect_level === 'medium') return 'challenge'
+  return 'allow'
+}
+
+// ip_network is the /24 (IPv4) or /40 (IPv6) the identification came from;
+// the API never returns the address itself.
+function inNetwork(ip: string, cidr: string): boolean {
+  const [base = '', bits = '0'] = cidr.split('/')
+  const type = base.includes(':') ? 'ipv6' : 'ipv4'
+  const list = new BlockList()
+  list.addSubnet(base, Number(bits), type)
+  return list.check(ip, type)
+}
+```
+
+`isSuspicious`, `suspectScore` and `suspectLevel` in the page are a UI hint
+only. Never gate an action on them. One event can back more than one decision
+inside the recency window; for a flow that must be single use, record the
+`requestId` with the outcome and refuse one you have already seen.
 
 ## What happens on the server
 

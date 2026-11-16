@@ -42,9 +42,17 @@ const fingerly = await load({
 fingerly.setConsent('granted')
 
 // When the visitor does something worth protecting: sign-up, login, checkout.
-const { requestId, visitorId, identifiable, suspectLevel } = await fingerly.identify({
-  tag: 'login',
-})
+// The tag names this action; your backend checks it against the one it expects.
+const { requestId } = await fingerly.identify({ tag: `login:${loginAttemptId}` })
+
+// Forward the request ID; your backend verifies it and decides.
+const { decision } = await (
+  await fetch('/api/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password, requestId }),
+  })
+).json()
 ```
 
 Loading collects nothing and sends nothing. Consent defaults to `'pending'`, and
@@ -52,7 +60,7 @@ Loading collects nothing and sends nothing. Consent defaults to `'pending'`, and
 `'granted'`.
 
 `identify()` executes a single-pass `v: 3` collection (`<= 350 ms` default
-wall-clock budget) and posts once to `POST /api/v1/ingest` — there are no
+wall-clock budget) and posts once to `POST /api/v1/ingest`; there are no
 multi-tier runs or follow-up sidecar requests. Under **Option B**,
 `visitorId === ""` and `visitorIsNew === false` whenever `identifiable === false`,
 when the report came from an embedded WebView, or when an unmatched Web report
@@ -60,10 +68,61 @@ is high-risk.
 
 Everything about the score is decided on the server, under the weights you set:
 `suspectLevel` (`'low' | 'medium' | 'high'`) and `suspectScore` are `null` when
-unscored or hidden by `hide_client_score` on the SDK key — `null` is not a clean
-result. Send `requestId` to your server and read the stored event and active
-signals there with a secret key (see the server SDKs), rather than trusting what
-the page reports.
+unscored or hidden by `hide_client_score` on the SDK key; `null` is not a clean
+result. They are a UI hint only: whoever controls the page controls every branch
+in it, so never gate an action on them in the browser.
+
+### Decide on your backend
+
+The `requestId` the page sends is untrusted input until your backend has
+verified it. Read the stored event with a secret key and run the checks
+described in
+[server-side verification](https://docs.fingerly.io/docs/server-side-verification):
+
+```ts
+// server (Node.js), never in the page
+import { BlockList } from 'node:net'
+import { Fingerly, FingerlyAPIError } from '@fingerly/node'
+
+const fingerly = new Fingerly({ secretKey: process.env.FINGERLY_SECRET_KEY })
+const MAX_AGE_MS = 2 * 60 * 1000
+
+// expectedTag comes from your server session (`login:${loginAttemptId}` for
+// the attempt your server issued), never from the request body. clientIp is
+// the address of this post, as your framework resolves it.
+export async function decide(requestId: string, expectedTag: string, clientIp: string) {
+  let event
+  try {
+    event = await fingerly.events.get(requestId)                       // 1. it exists
+  } catch (error) {
+    if (error instanceof FingerlyAPIError && error.isPending) return 'retry'
+    if (error instanceof FingerlyAPIError && error.code === 'event_not_found') return 'refuse'
+    throw error
+  }
+  if (event.tag !== expectedTag) return 'refuse'                           // 2. this action
+  if (Date.now() - Date.parse(event.occurred_at) > MAX_AGE_MS) return 'refuse' // 3. recent
+  if (!event.identifiable || event.suspect_score === null) return 'refuse' // 4. identifiable and scored
+  if (event.suspect_level === 'high') return 'review'                      // 5. your policy
+  // 6. another network than this post: step up (for example a second factor)
+  if (!event.ip_network || !inNetwork(clientIp, event.ip_network)) return 'challenge'
+  if (event.suspect_level === 'medium') return 'challenge'
+  return 'allow'
+}
+
+// ip_network is the /24 (IPv4) or /40 (IPv6) the identification came from;
+// the API never returns the address itself.
+function inNetwork(ip: string, cidr: string): boolean {
+  const [base = '', bits = '0'] = cidr.split('/')
+  const type = base.includes(':') ? 'ipv6' : 'ipv4'
+  const list = new BlockList()
+  list.addSubnet(base, Number(bits), type)
+  return list.check(ip, type)
+}
+```
+
+One event can back more than one decision inside the recency window; for a flow
+that must be single use, record the `requestId` with the outcome and refuse one
+you have already seen.
 
 ### Local collection without submitting (`collect()`)
 

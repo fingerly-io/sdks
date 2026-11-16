@@ -114,10 +114,15 @@ The hooks are `@fingerly/react`'s, re-exported so you install one package:
 import { useIdentify } from '@fingerly/next'
 
 export function Checkout() {
-  const { identify, visitorId, identifiable, isSuspicious, suspectLevel, isLoading } = useIdentify()
+  const { identify, isLoading } = useIdentify()
   …
 }
 ```
+
+Send the `requestId` that `await identify()` resolves with to your backend and
+act on its decision (see [Decide on your backend](#decide-on-your-backend)).
+`isSuspicious`, `suspectScore` and `suspectLevel` are a UI hint only; never gate
+an action on them in the page.
 
 `identify()` runs a single-pass `v: 3` collection (`<= 350 ms` default budget,
 Stage 1 Gecko `<= 3 ms` RFP canvas-prompt guard, CSP-safe `worker_realm`, and
@@ -145,11 +150,13 @@ travel with the submission:
 import { FingerlyRequestId } from '@fingerly/next'
 import { signUp } from './actions'
 
-export default function Page() {
+// attemptId: a random value your server issued for this form and keeps in the
+// visitor's session (for example in an HttpOnly cookie).
+export default function Page({ attemptId }: { attemptId: string }) {
   return (
     <form action={signUp}>
       <input name="email" />
-      <FingerlyRequestId />
+      <FingerlyRequestId tag={`signup:${attemptId}`} />
       <button>Create account</button>
     </form>
   )
@@ -159,13 +166,74 @@ export default function Page() {
 ```ts
 // app/signup/actions.ts
 'use server'
+import { cookies, headers } from 'next/headers'
 import { readRequestId } from '@fingerly/next/server'
+import { decide } from '@/lib/fingerly' // the check below
 
 export async function signUp(formData: FormData) {
   const requestId = readRequestId(formData)
-  // correlate the signup with the identification, or proceed without one
+  if (!requestId) return { error: 'Please try again.' }
+
+  const attemptId = (await cookies()).get('signup_attempt')?.value ?? ''
+  const clientIp = (await headers()).get('x-forwarded-for')?.split(',').at(-1)?.trim() ?? ''
+
+  const decision = await decide(requestId, `signup:${attemptId}`, clientIp)
+  if (decision === 'refuse') return { error: 'Please try again.' }
+  if (decision === 'challenge') return { challenge: true }
+  // allow, or queue for review
 }
 ```
+
+## Decide on your backend
+
+The `requestId` in the form is untrusted form input until your backend has
+verified it: whoever submits the form chooses its value. Read the event with
+the secret key and run the checks described in
+[server-side verification](https://docs.fingerly.io/docs/server-side-verification):
+
+```ts
+// lib/fingerly.ts (server only)
+import { BlockList } from 'node:net'
+import { Fingerly, FingerlyAPIError } from '@fingerly/node'
+
+const fingerly = new Fingerly({ secretKey: process.env.FINGERLY_SECRET_KEY })
+const MAX_AGE_MS = 2 * 60 * 1000
+
+// expectedTag comes from your server session, never from the form. clientIp is
+// the address of this form post, as your platform resolves it.
+export async function decide(requestId: string, expectedTag: string, clientIp: string) {
+  let event
+  try {
+    event = await fingerly.events.get(requestId)                       // 1. it exists
+  } catch (error) {
+    if (error instanceof FingerlyAPIError && error.isPending) return 'retry'
+    if (error instanceof FingerlyAPIError && error.code === 'event_not_found') return 'refuse'
+    throw error
+  }
+  if (event.tag !== expectedTag) return 'refuse'                           // 2. this action
+  if (Date.now() - Date.parse(event.occurred_at) > MAX_AGE_MS) return 'refuse' // 3. recent
+  if (!event.identifiable || event.suspect_score === null) return 'refuse' // 4. identifiable and scored
+  if (event.suspect_level === 'high') return 'review'                      // 5. your policy
+  // 6. another network than this post: step up (for example a second factor)
+  if (!event.ip_network || !inNetwork(clientIp, event.ip_network)) return 'challenge'
+  if (event.suspect_level === 'medium') return 'challenge'
+  return 'allow'
+}
+
+// ip_network is the /24 (IPv4) or /40 (IPv6) the identification came from;
+// the API never returns the address itself.
+function inNetwork(ip: string, cidr: string): boolean {
+  const [base = '', bits = '0'] = cidr.split('/')
+  const type = base.includes(':') ? 'ipv6' : 'ipv4'
+  const list = new BlockList()
+  list.addSubnet(base, Number(bits), type)
+  return list.check(ip, type)
+}
+```
+
+One event can back more than one decision inside the recency window. For a
+flow that must be single use, record the `requestId` with the outcome and refuse
+one you have already seen.
 
 `<FingerlyRequestId />` identifies on mount and renders a hidden field. It is in
 the server-rendered HTML **empty** rather than absent, which is deliberate: a

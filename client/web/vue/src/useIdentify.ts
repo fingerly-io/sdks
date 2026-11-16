@@ -27,7 +27,11 @@ export interface UseIdentifyOptions {
 export interface UseIdentifyReturn extends ReadonlyState {
   /** True once an identification has completed, successfully or not. */
   isReady: ComputedRef<boolean>
-  /** True when the server scored this `medium` or `high`; `null` when absent. */
+  /**
+   * True when the server scored this `medium` or `high`; `null` when absent.
+   * A UI hint only: access decisions belong on your backend, which reads the
+   * event by `requestId` with the secret key.
+   */
   isSuspicious: ComputedRef<boolean | null>
   /** Collect and submit. Reuses a completed run unless `force`. */
   identify: (options?: {
