@@ -1,19 +1,23 @@
 # @fingerly/vue
 
-Vue 3 bindings for the Fingerly SDK. A plugin, three composables, and one shared
-result per page.
+Vue 3 bindings for the Fingerly SDK (`0.3.0`, single-pass `v: 3`). A plugin, two
+composables (`useIdentify` and `useFingerly`), and one shared `1-RTT` result per
+page.
 
 Requires Vue **3.3 or newer** (it uses `hasInjectionContext`, `toValue` and
 `MaybeRefOrGetter`). Tested against 3.5.
 
-```
-pnpm add @fingerly/vue
+```sh
+pnpm add @fingerly/vue@^0.3.0
 ```
 
-**Not for apps.** This binding runs the browser SDK, which collects nothing
-inside an app's web view (Capacitor, Cordova, Ionic, React Native WebView,
-`WKWebView`, Android `WebView`, Electron). Use the Fingerly iOS or Android SDK
-in an app; see [docs/privacy.md §3.3](../../../docs/privacy.md).
+**Not for apps.** This binding runs `@fingerly/web-js`, which skips all
+device-fingerprinting collectors inside embedded app WebViews (`WKWebView`,
+Android `WebView`, Capacitor, Cordova, Ionic, React Native WebView, Flutter
+WebView, Electron) to preserve Apple DPLA §3.3.3(B) compliance, running only the
+non-identifying `EMBEDDED_SAFE_SOURCES` subset and returning `visitorId: ""`
+under Option B. Use the native Fingerly iOS or Android SDK (or the React Native,
+Flutter, or Lynx bridge) in an app; see [docs/privacy.md §3.3](../../../docs/privacy.md).
 
 ## Install the plugin
 
@@ -25,7 +29,13 @@ import App from './App.vue'
 
 createApp(App)
   // consent: 'granted' only once you have consent (or know none is required here; see docs/privacy.md §4)
-  .use(createFingerly({ apiKey: 'fly_pk_production_…', consent: 'granted' }))
+  .use(
+    createFingerly({
+      apiKey: 'fly_pk_production_…',
+      consent: 'granted',
+      incognitoDetection: 'standard',
+    }),
+  )
   .mount('#app')
 ```
 
@@ -53,7 +63,7 @@ its contents:
 createFingerly({ apiKey: 'fly_pk_production_…', endpoints: '/k7x2qm4a', consent: 'granted' })
 ```
 
-## Identify
+## Identify (single-pass `v: 3`, `<= 350 ms` budget)
 
 ```vue
 <script setup lang="ts">
@@ -80,10 +90,12 @@ async function onSubmit() {
 </template>
 ```
 
-`identify()` collects and submits, and resolves with the server's answer in the
-same round trip: the `requestId`, who the visitor is (`visitorId`), and the
-`suspectScore` and `suspectLevel`, unless the key hides them. Nothing is decided
-in the page: scoring lives on the server, under the weights you set.
+`identify()` runs a single-pass browser collection (`<= 350 ms` default budget,
+including the Stage 1 Gecko `<= 3 ms` RFP timer guard and CSP-safe
+`worker_realm` check) and submits once in **1 RTT** to `POST /api/v1/ingest`,
+resolving with the server's answer: `requestId`, `visitorId`, `identifiable`,
+and `suspectScore` / `suspectLevel` (unless hidden by the key). Nothing is
+decided in the page: scoring lives on the server, under the weights you set.
 
 ### On mount instead
 
@@ -100,6 +112,13 @@ and collects on the client with no guard of its own.
 Pass it in as many components as want it. The result is shared (see below), so
 the second and third callers get the first one's answer rather than starting
 their own submission.
+
+### Incognito detection (`'standard' | 'extended'`)
+
+Pass `incognitoDetection` on `createFingerly()`, `useIdentify()` (accepts a ref
+or getter), or `identify()` / `refresh()`: `'standard'` (default) runs
+zero-write probes, while `'extended'` opts into Chromium IndexedDB
+`storage_durability` timing within the single-pass budget.
 
 ## One identification per page
 
@@ -120,13 +139,18 @@ const { refresh } = useIdentify()
 await refresh() // ignores the cached result and collects afresh
 ```
 
-## Reading the answer
+## Reading the answer & Option B
 
 `suspectLevel` is the server's band for this submission, under the weights you
 set. `isSuspicious` is `true` for `medium` or `high`, `false` for `low`, and
 `null` when the level is absent: no server has answered yet, the submission went
-unscored, or the SDK key hides the score from the page, which cannot tell those
-apart. Null is not a clean result.
+unscored, or the SDK key hides the score from the page. Null is not a clean
+result.
+
+Under **Option B** (`v: 3`), `visitorId.value` is `null` before the first
+identification completes, and afterwards holds `result.visitorId` — which is
+`""` (with `visitorIsNew.value === false`) whenever `identifiable.value === false`,
+inside an embedded WebView, or when an unmatched Web report is high-risk.
 
 Signals are read on your backend, by `requestId`, never in the page: which check
 tripped is what a fraudster wants to learn.
@@ -142,25 +166,26 @@ const route = useRoute()
 const { identify } = useIdentify({ tag: () => `checkout:${route.params.orderId}` })
 ```
 
-## Collect without submitting
+## Local collection without submitting (`collect()`)
 
-For a debug page that wants the raw report and nothing else:
+For a debug page that wants to inspect the raw `SignalReport` locally without
+posting to `/api/v1/ingest`, call `collect()` on the underlying client:
 
 ```ts
-app.use(createFingerly({ apiKey: 'fly_pk_production_…', submit: false }))
+const fingerly = useFingerly()
+const client = await fingerly.client()
+const report = await client.collect()
 ```
 
-Everything the server decides comes back empty: no `requestId`, no `visitorId`,
-`suspectScore` is `null` rather than `0`, and `isSuspicious` is
-`null` rather than `false`. That is the honest answer rather than a gap: nothing
-was sent, so nobody scored it, and this SDK decides nothing on its own.
+`collect()` still requires `consent === 'granted'` and rejects with
+`ConsentError` otherwise.
 
 ## Waiting for consent
 
 If identifying a visitor needs their consent first, install the plugin with
-`consent: 'pending'`, the default. Until it is `granted` nothing is collected and nothing is
-sent: `useIdentify({ immediate: true })` waits, and the client is not even
-built.
+`consent: 'pending'`, the default. Until it is `granted` nothing is collected
+and nothing is sent: `useIdentify({ immediate: true })` waits, and the client is
+not even built.
 
 ```ts
 app.use(createFingerly({ apiKey: 'fly_pk_production_…', consent: 'pending' }))
@@ -189,8 +214,8 @@ running stops it before it submits, and it fails with a `ConsentError`.
 
 ## Options API
 
-Not every Vue 3 component is `<script setup>`, and a fraud check is exactly the
-kind of thing that gets retrofitted. The context is on `this.$fingerly`:
+Not every Vue 3 component is `<script setup>`. The context is on
+`this.$fingerly`:
 
 ```vue
 <script lang="ts">
@@ -208,45 +233,36 @@ export default {
 
 ```ts
 const {
-  requestId,         // Ref<string | null>:        identifies this submission
-  visitorId,         // Ref<string | null>:        who the server decided this is
-  visitorIsNew,      // Ref<boolean>:              never seen before
-  visitorConfidence, // Ref<number>:               0 to 100
-  identifiable,      // Ref<boolean>:              false when the signals were too thin
-  duplicate,         // Ref<boolean>:              answered before; this is the first answer
-  state,             // Ref<string | null>:        the server's disposition
-  suspectScore,      // Ref<number | null>:        null when nothing scored it
-  suspectLevel,      // Ref<string | null>:        low, medium, high
-  report,            // Ref<SignalReport | null>:  every source, with status and timing
-  error,             // Ref<Error | null>
-  consent,           // Ref<ConsentState>        (granted, pending or denied)
-  isLoading,    // Ref<boolean>
-  isReady,      // ComputedRef<boolean>:     finished, successfully or not
-  isSuspicious, // ComputedRef<boolean | null>: true for medium or high; null when the level is absent
-  identify,     // () => Promise<IdentifyResult>
-  refresh,      // () => Promise<IdentifyResult>
+  requestId,         // Readonly<ShallowRef<string | null>>:  identifies this submission
+  visitorId,         // Readonly<ShallowRef<string | null>>:  null before completion; "" when identifiable === false (Option B)
+  visitorIsNew,      // Readonly<ShallowRef<boolean>>:        true only when a new visitor was minted
+  visitorConfidence, // Readonly<ShallowRef<number>>:         0 to 100
+  identifiable,      // Readonly<ShallowRef<boolean>>:        false when the signals were too thin
+  duplicate,         // Readonly<ShallowRef<boolean>>:        answered before; this is the cached answer
+  state,             // Readonly<ShallowRef<string | null>>:  the server's disposition
+  suspectScore,      // Readonly<ShallowRef<number | null>>:  null when unscored or hidden by the key
+  suspectLevel,      // Readonly<ShallowRef<SuspectLevel | null>>: low, medium, high
+  report,            // Readonly<ShallowRef<SignalReport | null>>: every source, with status and timing
+  error,             // Readonly<ShallowRef<Error | null>>
+  consent,           // Readonly<ShallowRef<ConsentState>>    (granted, pending or denied)
+  isLoading,         // Readonly<Ref<boolean>>
+  isReady,           // ComputedRef<boolean>:                 finished, successfully or not
+  isSuspicious,      // ComputedRef<boolean | null>:          true for medium or high; null when absent
+  identify,          // (opts?) => Promise<IdentifyResult>
+  refresh,           // (opts?) => Promise<IdentifyResult>
 } = useIdentify()
 ```
 
 Every ref is **readonly**. The state is shared, so a component that could assign
 to it would be changing what every other component sees.
 
-Weights and signal names never reach the browser: your backend reads them on the
-server-side event read.
-
-The detectors run on the server, over the report this package sends, so rules
-improve without every integration redeploying. Everything here that says
-anything about a visitor came from the server.
-
 ## The visitor is never asked for anything
 
-No permission prompt, no picker, no dialog, on any browser. Reading a
-permission's *state* prompts nobody and is used freely; requesting is banned
-outright and enforced by a test in `@fingerly/web-js`. The one API that prompts on
-some browsers (canvas readback, which raises a doorhanger in Tor Browser) is
-skipped when the SDK measures a clamped clock.
-
-You can drop this into a checkout without it ever interrupting the checkout.
+No permission prompt, no picker, no dialog, on any browser. Stage 1 runs a
+bounded `<= 3 ms` Gecko-only `performance.now()` clamping guard before Stage 2
+starts, skipping `<canvas>` readback (`blocked / rfp-canvas-prompt-avoided`) on
+Tor Browser and Firefox `resistFingerprinting` so no canvas doorhanger ever
+appears.
 
 ## Errors
 
@@ -266,42 +282,23 @@ try {
 
 A failed identification is not repeated behind your back. When the server
 answers `429` with `Retry-After`, every call, `refresh()` included, gets the
-same error until that time has passed; the error carries it as
-`retryAfterMs`. After a transient failure without one (a `5xx`, a network
-error), components that identify automatically wait 5 seconds, doubling per
-consecutive failure up to a minute, so route changes during an outage send
-nothing; a call you make yourself, such as on a click, still tries at once.
-Any other failure, such as a wrong key, is tried again on the next call.
+same error until that time has passed; the error carries it as `retryAfterMs`.
+After a transient failure without one (a `5xx`, a network error), components
+that identify automatically wait 5 seconds, doubling per consecutive failure up
+to a minute, so route changes during an outage send nothing; a call you make
+yourself, such as on a click, still tries at once.
 
-`TransportError` carries a `status`. The two worth branching on are `401` (the
-key is wrong, or was used from an origin it does not list) and `402` (the
-organisation is not accepting traffic). Both are your configuration rather than
-the visitor's.
-
-`ConsentError` means consent is not `granted`. It carries `code:
-'consent_required'` and the `state`, and lands in `error` like any other
-failure. `{ immediate: true }` waits for consent rather than producing one, so
-it only sees this error when consent is withdrawn while it runs.
-
-Calling `identify()` during SSR rejects with `FingerlyServerError` and a message
-saying what to do instead. Use `{ immediate: true }`, which already waits for
-the client.
+`TransportError` carries a `status` (`401` for an invalid key or disallowed
+origin, `402` when the organisation is not accepting traffic). `ConsentError`
+means consent is not `granted` (`code: 'consent_required'`). Calling
+`identify()` during SSR rejects with `FingerlyServerError`; use
+`{ immediate: true }`, which waits for the client.
 
 ## Running the demo
 
-`demo/` is this package's composables driving the real SDK (no mocks) with
-`useIdentify({ immediate: true })` in the root, showing `suspectScore` and `suspectLevel` beside the raw report, all sharing one
-identification.
-
-```
+```sh
 pnpm --filter @fingerly/vue demo   # http://localhost:4174
 ```
 
-That bundles `demo/main.ts` (the binding, the SDK and Vue's runtime in one
-file, because `demo/index.html` is a plain `<script>` tag) and serves it.
-
-It is served rather than opened from disk because several sources need a
-secure context and `file://` is not one; the storage probes are the clearest
-case, since they are not exposed outside one. It uses `submit: false`, so it
-sends nothing and no server answers: the raw report fills in, and the score
-and level read hidden.
+Serve it over `localhost` rather than opening from `file://`, as storage and
+worker probes require a secure context.

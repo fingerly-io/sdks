@@ -1,21 +1,24 @@
 # @fingerly/next
 
-Next.js integration. It wraps [`@fingerly/react`](../react/README.md) and adds
-the three things that are actually about Next: where the configuration comes
-from, where the client boundary sits, and how an identification reaches a
-Server Action.
+Next.js integration (`0.3.0`, single-pass `v: 3`). Wraps
+[`@fingerly/react`](../react/README.md) (`^0.3.0`) and adds the three things
+that are actually about Next: where the configuration comes from, where the
+client boundary sits, and how a `1-RTT` identification reaches a Server Action.
 
 Requires Next **15 or newer** and React **19** (App Router or Pages Router).
 Tested against Next 16.
 
-```
-pnpm add @fingerly/next
+```sh
+pnpm add @fingerly/next@^0.3.0
 ```
 
-**Not for apps.** This binding runs the browser SDK, which collects nothing
-inside an app's web view (Capacitor, Cordova, Ionic, React Native WebView,
-`WKWebView`, Android `WebView`, Electron). Use the Fingerly iOS or Android SDK
-in an app; see [docs/privacy.md §3.3](../../../docs/privacy.md).
+**Not for apps.** This binding runs `@fingerly/web-js`, which skips all
+device-fingerprinting collectors inside embedded app WebViews (`WKWebView`,
+Android `WebView`, Capacitor, Cordova, Ionic, React Native WebView, Flutter
+WebView, Electron) to preserve Apple DPLA §3.3.3(B) compliance, running only the
+non-identifying `EMBEDDED_SAFE_SOURCES` subset and returning `visitorId: ""`
+under Option B. Use the native Fingerly iOS or Android SDK (or the React Native,
+Flutter, or Lynx bridge) in an app; see [docs/privacy.md §3.3](../../../docs/privacy.md).
 
 ## Configure
 
@@ -57,7 +60,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html>
       <body>
         {/* consent="granted" only once you have consent (or know none is required here; see docs/privacy.md §4) */}
-        <FingerlyProvider apiKey={process.env.FINGERLY_API_KEY} consent="granted">
+        <FingerlyProvider
+          apiKey={process.env.FINGERLY_API_KEY}
+          consent="granted"
+          incognitoDetection="standard"
+        >
           {children}
         </FingerlyProvider>
       </body>
@@ -79,8 +86,9 @@ Consent defaults to `pending`, and nothing is collected or sent until it is
 ### Waiting for consent
 
 Consent defaults to `pending`. When identification needs the visitor's consent
-first, pass `consent` with what your consent tool says now. It is a prop rather than an environment
-variable, because it is the visitor's decision rather than the deployment's:
+first, pass `consent` with what your consent tool says now. It is a prop rather
+than an environment variable, because it is the visitor's decision rather than
+the deployment's:
 
 ```tsx
 'use client'
@@ -97,7 +105,7 @@ manual `identify()` fails with a `ConsentError`. Once it becomes `granted` the
 waiting identification runs, once. The details are in the
 [React binding's README](../react/README.md#waiting-for-consent).
 
-## Identify
+## Identify (single-pass `v: 3`, `<= 350 ms` budget)
 
 The hooks are `@fingerly/react`'s, re-exported so you install one package:
 
@@ -106,18 +114,26 @@ The hooks are `@fingerly/react`'s, re-exported so you install one package:
 import { useIdentify } from '@fingerly/next'
 
 export function Checkout() {
-  const { identify, isSuspicious, suspectLevel, isLoading } = useIdentify()
+  const { identify, visitorId, identifiable, isSuspicious, suspectLevel, isLoading } = useIdentify()
   …
 }
 ```
+
+`identify()` runs a single-pass `v: 3` collection (`<= 350 ms` default budget,
+Stage 1 Gecko `<= 3 ms` RFP canvas-prompt guard, CSP-safe `worker_realm`, and
+`incognitoDetection: 'standard' | 'extended'`) and posts once in **1 RTT** to
+`POST /api/v1/ingest`. Under **Option B**, `visitorId` is `""` (and
+`visitorIsNew` is `false`) whenever `identifiable === false`, inside an embedded
+WebView, or when an unmatched Web report is high-risk. To inspect the raw
+`SignalReport` locally without submitting, call `(await useFingerly().client()).collect()`.
 
 `useIdentify({ immediate: true })` is safe in a Next app for the reason it is
 safe anywhere: it runs in an effect, and effects do not run during a server
 render. The page renders on the server, collects after hydration, and every
 component that asks shares the one identification.
 
-The full surface (`immediate`, `suspend`, `tag`, `refresh`) is documented in
-the [React binding's README](../react/README.md).
+The full surface (`immediate`, `suspend`, `tag`, `incognitoDetection`, `refresh`)
+is documented in the [React binding's README](../react/README.md).
 
 ## Carry it into a Server Action
 
@@ -184,18 +200,14 @@ at runtime, which is the worst way to learn about a boundary. Hence the split.
 `demo/` is a real Next application: a Server Component layout, a client page,
 and a Server Action reading the field back:
 
-```
+```sh
 pnpm --filter @fingerly/next demo   # http://localhost:4178
 ```
 
-It collects and submits nothing until you give it somewhere to submit: put `FINGERLY_API_KEY`, `FINGERLY_ENDPOINT` and `FINGERLY_SUBMIT=true` in
-`demo/.env.local` (gitignored), with a key whose allowed origins include the
-port you are running it on. Then the identification produces a real
-`requestId`, the hidden field carries it, and the action prints the one it
-read.
-
-Open it twice, in an ordinary window and a private one, and watch the incognito
-card change.
+Put `FINGERLY_API_KEY` and `FINGERLY_ENDPOINT` in `demo/.env.local` (gitignored),
+with a key whose allowed origins include the port you are running it on. Then
+the identification produces a real `requestId`, the hidden field carries it, and
+the action prints the one it read.
 
 ## What this deliberately does not do
 
@@ -230,7 +242,7 @@ Pass the path as a string. An array works too, and is compared by its
 contents, so `endpoints={['/k7x2qm4a']}` does not start a new identification
 when the layout renders again.
 
-**It does not read events back.** It does not need to: `identify()` resolves
-with the server's answer (`visitorId`, and `suspectScore` and `suspectLevel`
-unless the key hides them), so there is nothing to fetch afterwards. Reading stored
-events for reporting is `@fingerly/node`'s job.
+**It does not read events back.** `identify()` resolves in **1 RTT** with the
+server's client-facing answer (`visitorId`, `identifiable`, and `suspectScore` /
+`suspectLevel` unless the key hides them). Reading full stored events and active
+risk signals on your backend is `@fingerly/node`'s job.
