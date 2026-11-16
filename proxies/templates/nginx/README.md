@@ -2,9 +2,9 @@
 
 A `location` block for the nginx server that already serves your site. It
 answers one path the Fingerly dashboard issued, on your own host, and forwards
-only the browser SDK's submissions to the Fingerly API. It is not an open
-proxy: the upstream is fixed in the configuration, and every other path and
-method is refused.
+single-pass browser and native SDK submissions as raw bytes to the Fingerly
+API. It is not an open proxy: the upstream is fixed in the configuration, and
+every other path and method is refused.
 
 ## Steps
 
@@ -26,9 +26,15 @@ method is refused.
 
    If `/etc/nginx` is in a repository, add `fingerly-proxy-key.conf` to its
    `.gitignore`. `fingerly-proxy-key.conf.example` shows the format.
-4. Include the snippet inside the `server` block for your site:
+4. Define the native SDK platform allowlist in `http` and include the snippet
+   inside the `server` block for your site:
 
    ```nginx
+   map $http_x_fingerly_sdk_platform $fingerly_platform {
+       default "";
+       "~^(ios|android|react-native|react-native-ios|react-native-android|flutter|flutter-ios|flutter-android|lynx-ios|lynx-android|capacitor|kotlin-multiplatform)$" $http_x_fingerly_sdk_platform;
+   }
+
    server {
        server_name www.example.com;
        include /etc/nginx/snippets/fingerly.conf;
@@ -84,19 +90,24 @@ on the left are ignored. Never trust `0.0.0.0/0`.
 ## What it sends and relays
 
 Upstream, to `https://api.fingerly.io/api/v1/ingest` only: `content-type`,
-`x-api-key`, `idempotency-key` when present, and the `x-fingerly-*` headers the
-proxy sets itself (the proxy key, the client address, the page origin, the
-user agent and `x-fingerly-proxy-version: nginx/1.0.0`, which the dashboard
-shows per proxy). `proxy_pass_request_headers off` makes this an allowlist:
-cookies, `Authorization` and any `x-fingerly-*` header a visitor forges never
-leave your server. Bodies over 1 MiB are refused with `413`, redirects are not
-followed, and a key that is not shaped like a proxy key answers `503`.
+`x-api-key`, `idempotency-key`, `user-agent`, `sec-fetch-*` and `sec-ch-ua*`
+when present, plus the `x-fingerly-*` headers the proxy sets itself (the proxy
+key, the client address, `x-fingerly-origin` from `Origin` when present,
+`x-fingerly-sdk-platform` when matched by the lowercase `$fingerly_platform`
+map, `x-fingerly-host`, the user agent and
+`x-fingerly-proxy-version: nginx/1.0.0`, which the dashboard shows per proxy).
+Requests missing both `Origin` and a valid `X-Fingerly-SDK-Platform` answer
+`400` (`missing_origin`) without synthesizing `x-fingerly-origin`.
+`proxy_pass_request_headers off` makes this an allowlist: cookies,
+`Authorization` and any `x-fingerly-*` header a visitor forges never leave your
+server. Bodies over 1 MiB are refused with `413`, redirects are not followed,
+and a key that is not shaped like a proxy key answers `503`.
 
-Back to the page: the API's status and body, with `Set-Cookie` dropped and
-`Cache-Control: no-store`. The API itself sends nothing naming Fingerly to
-proxied callers, and the server tests that, so dropping headers here is defense
-in depth.
+Back to the page: the API's status and body, with `Set-Cookie` and internal
+headers dropped and `Cache-Control: no-store`. The API itself sends nothing
+naming Fingerly to proxied callers, and the server tests that, so dropping
+headers here is defense in depth.
 
 Other methods answer `405` with `Allow: POST`. If you prefer nginx's
 `limit_except POST { deny all; }` over the `if` block, those requests answer
-`403` instead; either is fine for the browser SDK, which only posts.
+`403` instead; either is fine for the SDK, which only posts.

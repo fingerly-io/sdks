@@ -1,12 +1,5 @@
 /**
- * The Vue plugin, and the state every composable shares.
- *
- * The state lives on the app rather than in each `useIdentify()` call, and that
- * is the important decision in this file. Identification is a *page-level*
- * event: three components asking whether the visitor is suspicious should
- * produce one submission and one answer, not three. Per-call state would bill
- * the customer three times for one page load and give the three components
- * three different `requestId`s for the same visitor.
+ * The Vue plugin, and the state every composable shares (`0.3.0`, single-pass `v: 3`).
  */
 
 import {
@@ -14,7 +7,9 @@ import {
   type ConsentState,
   type FingerlyClient,
   type IdentifyResult,
+  type IncognitoDetection,
   type SignalReport,
+  type SuspectLevel,
 } from '@fingerly/web-js'
 import {
   readonly,
@@ -28,7 +23,7 @@ import {
   type ShallowRef,
 } from 'vue'
 
-/** Options for [[createFingerly]]. Everything `load()` takes, plus Vue's own. */
+/** Options for [[createFingerly]]. */
 export interface FingerlyVueOptions {
   /** The SDK key from the dashboard. A public key is safe in a page. */
   apiKey: string
@@ -38,29 +33,21 @@ export interface FingerlyVueOptions {
   endpoints?: string | readonly string[]
   fallbackToDefaultEndpoint?: boolean
   /**
-   * Collect without submitting anything.
-   *
-   * Everything the server decides comes back empty: no `requestId`, no
-   * `visitorId`, no `suspectScore`, no `suspectLevel`. That is the honest
-   * answer rather than a gap - nothing was sent, so nobody scored it, and
-   * this SDK decides nothing on its own.
+   * Controls whether opt-in extended incognito probes (`storage_durability`)
+   * execute (`'standard'` default or `'extended'`).
    */
-  submit?: boolean
-  /**
-   * Whether the visitor has agreed to be identified. Defaults to `pending`.
-   *
-   * Leave it `pending` while identification waits on a consent banner, then
-   * call [[FingerlyContext.setConsent]] when it is answered, or pass `granted`
-   * once you have consent (or know none is required here; see docs/privacy.md §4). Until then nothing is
-   * collected or sent: `useIdentify({ immediate: true })` waits, and a manual
-   * `identify()` fails with a `ConsentError` in `error`.
-   */
+  incognitoDetection?: IncognitoDetection
+  /** Whether the visitor has agreed to be identified. Defaults to `pending`. */
   consent?: ConsentState
 }
 
 /** The shared, reactive result of the app's one identification. */
 export interface FingerlyState {
   requestId: ShallowRef<string | null>
+  /**
+   * `null` before an identification has completed; afterwards `result.visitorId`
+   * (`""` when `identifiable === false` under Option B).
+   */
   visitorId: ShallowRef<string | null>
   visitorIsNew: ShallowRef<boolean>
   visitorConfidence: ShallowRef<number>
@@ -68,11 +55,10 @@ export interface FingerlyState {
   duplicate: ShallowRef<boolean>
   state: ShallowRef<string | null>
   suspectScore: ShallowRef<number | null>
-  suspectLevel: ShallowRef<string | null>
+  suspectLevel: ShallowRef<SuspectLevel | null>
   report: ShallowRef<SignalReport | null>
   error: ShallowRef<Error | null>
   isLoading: Ref<boolean>
-  /** As last set through the plugin or the client. Automatic identification waits for `granted`. */
   consent: ShallowRef<ConsentState>
 }
 
@@ -80,51 +66,31 @@ export interface FingerlyState {
 export interface FingerlyContext {
   readonly options: FingerlyVueOptions
   readonly state: FingerlyState
-  /** The underlying client, built on first use. */
   client(): Promise<FingerlyClient>
-  /**
-   * Record the visitor's consent, as the consent tool reports it.
-   *
-   * Usable before the client exists - during SSR, or before anything has
-   * identified - and forwarded to it once it does. Setting `granted` is what
-   * starts any `useIdentify({ immediate: true })` that was waiting for it.
-   * The client's own `setConsent()` does the same.
-   */
   setConsent(state: ConsentState): void
-  /**
-   * Identify, at most once unless asked otherwise.
-   *
-   * Concurrent callers share the in-flight promise; later callers get the
-   * result already in `state` without a second submission. `force` starts a
-   * fresh one, which is what a long-lived SPA wants before a second checkout.
-   */
-  identify(options?: { tag?: string; force?: boolean; automatic?: boolean }): Promise<IdentifyResult>
+  identify(options?: {
+    tag?: string
+    incognitoDetection?: IncognitoDetection
+    force?: boolean
+    automatic?: boolean
+  }): Promise<IdentifyResult>
 }
 
-/**
- * How long a failed identification holds off the next one.
- *
- * Without this a failure was forgotten at once, and every component mounting
- * with `immediate` started another identification - three requests per route
- * change while the API was answering 429. A `Retry-After` the server sent
- * holds every call, forced or not, until it passes. A transient failure
- * without one (a 5xx, a network error) holds automatic calls only, for 5 s
- * doubling per consecutive failure up to a minute; a click still tries at
- * once. Anything else holds nothing.
- */
-export function failureHold(error: unknown, consecutive: number, now: number): { until: number; automaticUntil: number } {
+export function failureHold(
+  error: unknown,
+  consecutive: number,
+  now: number,
+): { until: number; automaticUntil: number } {
   const failure = error as { retryAfterMs?: unknown; retryable?: unknown } | null
-  const retryAfter = typeof failure?.retryAfterMs === 'number' && failure.retryAfterMs > 0 ? failure.retryAfterMs : 0
-  const backoff = failure?.retryable === true ? Math.min(60_000, 5_000 * 2 ** Math.max(0, consecutive - 1)) : 0
+  const retryAfter =
+    typeof failure?.retryAfterMs === 'number' && failure.retryAfterMs > 0
+      ? failure.retryAfterMs
+      : 0
+  const backoff =
+    failure?.retryable === true ? Math.min(60_000, 5_000 * 2 ** Math.max(0, consecutive - 1)) : 0
   return { until: now + retryAfter, automaticUntil: now + Math.max(retryAfter, backoff) }
 }
 
-/**
- * The injection key.
- *
- * Exported so an advanced caller can `inject()` it directly, and typed with
- * `InjectionKey` so that doing so is type-safe rather than `unknown`.
- */
 export const fingerlyKey: InjectionKey<FingerlyContext> = Symbol('fingerly')
 
 /** Thrown when the SDK is asked to collect somewhere there is no browser. */
@@ -141,9 +107,6 @@ export class FingerlyServerError extends Error {
 
 function createState(consent: ConsentState): FingerlyState {
   return {
-    // shallowRef throughout: a SignalReport is a large frozen-in-practice
-    // object that is replaced wholesale, never edited field by field. Deep
-    // reactivity would walk every source on every assignment and buy nothing.
     requestId: shallowRef<string | null>(null),
     visitorId: shallowRef<string | null>(null),
     visitorIsNew: shallowRef(false),
@@ -152,7 +115,7 @@ function createState(consent: ConsentState): FingerlyState {
     duplicate: shallowRef(false),
     state: shallowRef<string | null>(null),
     suspectScore: shallowRef<number | null>(null),
-    suspectLevel: shallowRef<string | null>(null),
+    suspectLevel: shallowRef<SuspectLevel | null>(null),
     report: shallowRef<SignalReport | null>(null),
     error: shallowRef<Error | null>(null),
     isLoading: ref(false),
@@ -160,18 +123,6 @@ function createState(consent: ConsentState): FingerlyState {
   }
 }
 
-/**
- * Build the plugin.
- *
- * ```ts
- * app.use(createFingerly({ apiKey: 'fly_pk_production_…' }))
- * ```
- *
- * Nothing is collected here. Installing the plugin only makes the client
- * available - a plugin that fingerprinted on install would run before the app
- * has rendered and during SSR, and would take the choice of *when* away from
- * the page that knows.
- */
 export function createFingerly(options: FingerlyVueOptions): Plugin {
   const state = createState(options.consent ?? 'pending')
 
@@ -188,32 +139,29 @@ export function createFingerly(options: FingerlyVueOptions): Plugin {
 
   const client = (): Promise<FingerlyClient> => {
     if (typeof window === 'undefined') return Promise.reject(new FingerlyServerError())
-    // Built once and memoised. `load()` is cheap today but is the documented
-    // place for future warm-up work, and warming up per component would undo it.
-    // Through a promise even though load() returns one: a synchronous throw
-    // here would escape every caller's .catch and fail the app's mount.
-    clientPromise ??= Promise.resolve().then(() => load({
-      apiKey: options.apiKey,
-      ...(options.apiVersion === undefined ? {} : { apiVersion: options.apiVersion }),
-      ...(options.endpoints === undefined ? {} : { endpoints: options.endpoints }),
-      ...(options.fallbackToDefaultEndpoint === undefined ? {} : { fallbackToDefaultEndpoint: options.fallbackToDefaultEndpoint }),
-      consent: state.consent.value,
-    }).then((fingerly) => {
-      // Caught up before anything can identify through it: setConsent() may
-      // have been called while load() was settling.
-      if (fingerly.consent !== state.consent.value) fingerly.setConsent(state.consent.value)
-      // And followed from here on, so a consent tool holding the client itself
-      // moves this state - and whatever is waiting on it - as well.
-      fingerly.onConsentChange(mirrorConsent)
-      loaded = fingerly
-      return fingerly
-    }))
+    clientPromise ??= Promise.resolve().then(() =>
+      load({
+        apiKey: options.apiKey,
+        ...(options.apiVersion === undefined ? {} : { apiVersion: options.apiVersion }),
+        ...(options.endpoints === undefined ? {} : { endpoints: options.endpoints }),
+        ...(options.fallbackToDefaultEndpoint === undefined
+          ? {}
+          : { fallbackToDefaultEndpoint: options.fallbackToDefaultEndpoint }),
+        ...(options.incognitoDetection === undefined
+          ? {}
+          : { incognitoDetection: options.incognitoDetection }),
+        consent: state.consent.value,
+      }).then((fingerly) => {
+        if (fingerly.consent !== state.consent.value) fingerly.setConsent(state.consent.value)
+        fingerly.onConsentChange(mirrorConsent)
+        loaded = fingerly
+        return fingerly
+      }),
+    )
     return clientPromise
   }
 
   const setConsent: FingerlyContext['setConsent'] = (consent) => {
-    // The client first, so it validates the value and has it before a watcher
-    // reacting to the state below asks it to identify.
     loaded?.setConsent(consent)
     mirrorConsent(consent)
   }
@@ -223,22 +171,10 @@ export function createFingerly(options: FingerlyVueOptions): Plugin {
 
     if (inFlight && !identifyOptions.force) return inFlight
 
-    // An already-finished identification is reused rather than repeated. This
-    // is what makes it safe to call useIdentify({ immediate: true }) in as many
-    // components as want it.
-    //
-    // Keyed on the *report*, not on the requestId. Keying on the requestId
-    // looked equivalent and was not: under `submit: false` nothing is sent, so
-    // there is no requestId, so the cache never engaged and every caller
-    // re-collected the whole fingerprint. Having a report is what "already
-    // identified" means; a requestId is only what submitting adds to it.
     if (!identifyOptions.force && completed) {
-      // Keep the original object: deferred is a live completion promise and
-      // cannot be reconstructed from the view-oriented refs below.
       return Promise.resolve(completed)
     }
 
-    // Holding off after a failure; see failureHold.
     const now = Date.now()
     if (held && (now < held.until || (identifyOptions.automatic && now < held.automaticUntil))) {
       return Promise.reject(held.error)
@@ -247,20 +183,22 @@ export function createFingerly(options: FingerlyVueOptions): Plugin {
     state.isLoading.value = true
     state.error.value = null
 
+    const incognitoDetection = identifyOptions.incognitoDetection ?? options.incognitoDetection
+
     const run = client()
       .then((fingerly) =>
         fingerly.identify({
           ...(identifyOptions.tag === undefined ? {} : { tag: identifyOptions.tag }),
-          ...(options.submit === undefined ? {} : { submit: options.submit }),
+          ...(incognitoDetection === undefined ? {} : { incognitoDetection }),
         }),
       )
       .then((result) => {
         state.requestId.value = result.requestId === '' ? null : result.requestId
-        state.visitorId.value = result.visitorId === '' ? null : result.visitorId
+        state.visitorId.value = result.visitorId
         state.visitorIsNew.value = result.visitorIsNew
         state.visitorConfidence.value = result.visitorConfidence
         state.identifiable.value = result.identifiable
-        state.duplicate.value = result.duplicate
+        state.duplicate.value = result.duplicate ?? false
         state.state.value = result.state === '' ? null : result.state
         state.suspectScore.value = result.suspectScore ?? null
         state.suspectLevel.value = result.suspectLevel ?? null
@@ -275,9 +213,6 @@ export function createFingerly(options: FingerlyVueOptions): Plugin {
         state.error.value = error
         consecutiveFailures += 1
         held = { error, ...failureHold(error, consecutiveFailures, Date.now()) }
-        // Rethrown as well as stored. A caller that awaited identify() should
-        // be able to try/catch it; a template that only watches `error` should
-        // not have to.
         throw error
       })
       .finally(() => {
@@ -294,10 +229,6 @@ export function createFingerly(options: FingerlyVueOptions): Plugin {
   return {
     install(app: App) {
       app.provide(fingerlyKey, context)
-      // Also on globalProperties, so an Options-API component can reach it as
-      // `this.$fingerly` without a composable. Vue 3 apps are not all written in
-      // `<script setup>`, and a fraud check is exactly the kind of thing that
-      // gets retrofitted into an older component.
       app.config.globalProperties.$fingerly = context
     },
   }
@@ -313,7 +244,7 @@ export type ReadonlyState = {
   duplicate: Readonly<ShallowRef<boolean>>
   state: Readonly<ShallowRef<string | null>>
   suspectScore: Readonly<ShallowRef<number | null>>
-  suspectLevel: Readonly<ShallowRef<string | null>>
+  suspectLevel: Readonly<ShallowRef<SuspectLevel | null>>
   report: Readonly<ShallowRef<DeepReadonly<SignalReport> | null>>
   error: Readonly<ShallowRef<Error | null>>
   isLoading: Readonly<Ref<boolean>>

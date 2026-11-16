@@ -41,7 +41,9 @@ function apiResponse(): Response {
       'x-request-id': 'req_1',
       'ratelimit-limit': '100',
       'ratelimit-remaining': '99',
+      'retry-after': '1',
       'fingerly-balance-micros': '1250',
+      'fingerly-ratelimit-scope': 'org',
       'set-cookie': 'session=abc; Path=/',
       'cache-control': 'max-age=60',
       server: 'fingerly-api',
@@ -62,7 +64,7 @@ function stubUpstream(): void {
       url: String(input),
       method: init?.method ?? 'GET',
       headers: new Headers(init?.headers),
-      body: body == null ? null : Buffer.from(body as ArrayBuffer).toString(),
+      body: body == null ? null : Buffer.from(body as Uint8Array).toString(),
       redirect: init?.redirect,
     })
     if (upstreamFails) throw new TypeError('fetch failed')
@@ -209,7 +211,7 @@ const containerTarget = new NodeService('container', createContainerRelay, { FIN
  * request goes to the origin with the origin's custom header applied, and the
  * origin's answer passes through the viewer response event.
  */
-type CfValue = { value: string; attributes?: string }
+type CfValue = { value: string; attributes?: string; multiValue?: Array<{ value: string }> }
 type CfMap = Record<string, CfValue>
 const cloudFrontContext = vm.createContext({})
 vm.runInContext(readFileSync(`${ROOT}aws-cloudfront/function.js`, 'utf8'), cloudFrontContext, { filename: 'function.js' })
@@ -265,7 +267,12 @@ const cloudFrontTarget: Target = {
     }
     const result = await cloudFrontHandler(JSON.parse(JSON.stringify(viewerRequest)))
     if (typeof result.statusCode === 'number') {
-      return fromCf(result.statusCode, result.headers as CfMap, result.cookies as CfMap | undefined, '')
+      return fromCf(
+        result.statusCode,
+        result.headers as CfMap,
+        result.cookies as CfMap | undefined,
+        typeof result.body === 'string' ? result.body : '',
+      )
     }
 
     // CloudFront forwards the returned request to the origin, api.fingerly.io,
@@ -317,6 +324,12 @@ const visitor = {
   'idempotency-key': 'op-1',
   origin: 'https://shop.example',
   'user-agent': 'Mozilla/5.0 (conformance)',
+  'sec-fetch-site': 'same-origin',
+  'sec-fetch-mode': 'cors',
+  'sec-fetch-dest': 'empty',
+  'sec-ch-ua': '"Chromium";v="130"',
+  'sec-ch-ua-mobile': '?0',
+  'sec-ch-ua-platform': '"macOS"',
   cookie: 'session=1; other=2',
   authorization: 'Bearer secret',
   'x-forwarded-for': '6.6.6.6',
@@ -324,6 +337,8 @@ const visitor = {
   'x-fingerly-proxy-key': 'fly_px_production_forged',
   'x-fingerly-proxy-version': 'forged/9.9.9',
   'x-fingerly-origin': 'https://forged.example',
+  'x-fingerly-edge-tls-version': 'forged-tls',
+  'x-fingerly-sdk-platform': 'EvilOS',
   'x-fingerly-other': 'forged',
 }
 
@@ -336,8 +351,12 @@ describe.each(targets)('$kind template', (target) => {
   })
   beforeAll(() => stubUpstream())
 
-  it('answers exactly the issued path and nothing under or beside it', async () => {
-    for (const path of ['/k7x2qm4a/', '/k7x2qm4a//', '/K7X2QM4A', '/k7x2qm4a%2F', '/k7x2qm4a/admin', '/k7x2qm4a/api/v1/identify', '/k7x2qm4ab', '/other', '/']) {
+  it('answers exactly the issued path and nothing under or beside it, retiring /supplement', async () => {
+    for (const path of [
+      '/k7x2qm4a/', '/k7x2qm4a//', '/K7X2QM4A', '/k7x2qm4a%2F', '/k7x2qm4a/admin',
+      '/k7x2qm4a/api/v1/identify', '/k7x2qm4a/supplement', '/k7x2qm4a/events/evt_1/supplement',
+      '/k7x2qm4ab', '/other', '/',
+    ]) {
       const result = await target.call({ path, headers: visitor, ip: TRUSTED_IP })
       expect(result.status, path).toBe(404)
       expect(result.headers.get('cache-control')).toBe('no-store')
@@ -368,8 +387,9 @@ describe.each(targets)('$kind template', (target) => {
     expect(upstreamCalls).toHaveLength(0)
   })
 
-  it('forwards to the one ingest URL', async () => {
-    const result = await target.call({ headers: visitor, body: '{"a":1}', ip: TRUSTED_IP })
+  it('forwards to the one ingest URL, preserving raw body bytes and allowlisted client headers', async () => {
+    const rawBody = '{ "v": 3, "signals": { "amount": 142.50, "ratio": 1.00 } }'
+    const result = await target.call({ headers: visitor, body: rawBody, ip: TRUSTED_IP })
     expect(result.status).toBe(200)
     expect(upstreamCalls).toHaveLength(1)
     const sent = upstreamCalls[0]!
@@ -377,31 +397,86 @@ describe.each(targets)('$kind template', (target) => {
     expect(sent.method).toBe('POST')
     // CloudFront Functions cannot see bodies; the body passes through untouched.
     if (target.kind !== 'aws-cloudfront') {
-      expect(sent.body).toBe('{"a":1}')
+      expect(sent.body).toBe(rawBody)
       expect(sent.redirect).toBe('manual')
     }
     expect(sent.headers.get('content-type')).toBe('application/json')
     expect(sent.headers.get('x-api-key')).toBe('fly_pk_production_public')
     expect(sent.headers.get('idempotency-key')).toBe('op-1')
+    expect(sent.headers.get('sec-fetch-site')).toBe('same-origin')
+    expect(sent.headers.get('sec-fetch-mode')).toBe('cors')
+    expect(sent.headers.get('sec-fetch-dest')).toBe('empty')
+    expect(sent.headers.get('sec-ch-ua')).toBe('"Chromium";v="130"')
+    expect(sent.headers.get('sec-ch-ua-mobile')).toBe('?0')
+    expect(sent.headers.get('sec-ch-ua-platform')).toBe('"macOS"')
     expect(sent.headers.get('x-fingerly-origin')).toBe('https://shop.example')
     expect(sent.headers.get('x-fingerly-user-agent')).toBe('Mozilla/5.0 (conformance)')
   })
 
-  it('overwrites every x-fingerly-* header the visitor sent', async () => {
+  it('strips every incoming x-fingerly-* header and discards invalid x-fingerly-sdk-platform', async () => {
     await target.call({ headers: visitor, ip: TRUSTED_IP })
     const sent = upstreamCalls[0]!.headers
     expect(sent.get('x-fingerly-proxy-key')).toBe(KEY)
     expect(sent.get('x-fingerly-client-ip')).toBe(TRUSTED_IP)
     expect(sent.get('x-fingerly-origin')).toBe('https://shop.example')
     expect(sent.get('x-fingerly-proxy-version')).toBe(`${target.kind}/1.0.0`)
+    expect(sent.get('x-fingerly-sdk-platform')).toBeNull()
+    expect(sent.get('x-fingerly-edge-tls-version')).toBeNull()
     expect(sent.get('x-fingerly-other')).toBeNull()
-    const forged = [...sent].filter(([, value]) => /forged|6\.6\.6\.6/.test(value))
+    const forged = [...sent].filter(([, value]) => /forged|6\.6\.6\.6|EvilOS/.test(value))
     if (target.kind === 'aws-cloudfront') {
       // The origin request policy passes the visitor's x-forwarded-for through
       // untouched, as CloudFront does; the API reads x-fingerly-client-ip.
       expect(forged.map(([name]) => name)).toEqual(['x-forwarded-for'])
     } else {
       expect(forged).toEqual([])
+    }
+  })
+
+  it('rejects originless POST without valid x-fingerly-sdk-platform with 400 missing_origin and never synthesizes x-fingerly-origin', async () => {
+    const { origin: _origin, 'x-fingerly-sdk-platform': _platform, ...withoutOrigin } = visitor
+    const missing = await target.call({
+      headers: { ...withoutOrigin, referer: 'https://shop.example/checkout' },
+      ip: TRUSTED_IP,
+    })
+    expect(missing.status).toBe(400)
+    expect(missing.headers.get('cache-control')).toBe('no-store')
+    expect(JSON.parse(missing.body)).toEqual({
+      error: { code: 'missing_origin', message: 'Origin or X-Fingerly-SDK-Platform header is required' },
+    })
+
+    for (const invalid of ['EvilOS', 'iOS', 'IOS', 'Android', 'web', 'ios, android']) {
+      const rejected = await target.call({
+        headers: { ...withoutOrigin, 'x-fingerly-sdk-platform': invalid },
+        ip: TRUSTED_IP,
+      })
+      expect(rejected.status, invalid).toBe(400)
+      expect(rejected.headers.get('cache-control')).toBe('no-store')
+      expect((JSON.parse(rejected.body) as { error: { code: string } }).error.code).toBe('missing_origin')
+    }
+    expect(upstreamCalls).toHaveLength(0)
+  })
+
+  it('forwards valid native POST without Origin, restoring x-fingerly-sdk-platform and omitting x-fingerly-origin', async () => {
+    const { origin: _origin, ...withoutOrigin } = visitor
+    const validPlatforms = [
+      'ios', 'android', 'react-native', 'react-native-ios', 'react-native-android',
+      'flutter', 'flutter-ios', 'flutter-android', 'lynx-ios', 'lynx-android',
+      'capacitor', 'kotlin-multiplatform',
+    ]
+    for (const platform of validPlatforms) {
+      upstreamCalls = []
+      const result = await target.call({
+        headers: { ...withoutOrigin, 'x-fingerly-sdk-platform': platform },
+        ip: TRUSTED_IP,
+      })
+      expect(result.status, platform).toBe(200)
+      expect(upstreamCalls).toHaveLength(1)
+      const sent = upstreamCalls[0]!.headers
+      expect(sent.get('x-fingerly-sdk-platform'), platform).toBe(platform)
+      expect(sent.get('x-fingerly-origin'), platform).toBeNull()
+      expect(sent.get('x-fingerly-client-ip'), platform).toBe(TRUSTED_IP)
+      expect(sent.get('x-fingerly-edge-tls-version'), platform).toBeNull()
     }
   })
 
@@ -417,22 +492,16 @@ describe.each(targets)('$kind template', (target) => {
     expect(upstreamCalls[0]!.headers.get('x-fingerly-client-ip')).toBe('2001:db8::7')
   })
 
-  it("uses the page's own origin when the client sends none", async () => {
-    const { origin: _origin, ...withoutOrigin } = visitor
-    await target.call({ headers: withoutOrigin, ip: TRUSTED_IP })
-    const origin = upstreamCalls[0]!.headers.get('x-fingerly-origin')
-    // The Node services see the Host of their loopback address.
-    expect(origin).toBe(target instanceof NodeService ? `https://${new URL(target.base).host}` : 'https://shop.example')
-  })
-
-  it('relays only the allowlisted response headers, with no-store', async () => {
+  it('relays only the allowlisted response headers including retry-after, with no-store', async () => {
     const result = await target.call({ headers: visitor, ip: TRUSTED_IP })
     expect(result.headers.get('x-request-id')).toBe('req_1')
     expect(result.headers.get('ratelimit-limit')).toBe('100')
     expect(result.headers.get('ratelimit-remaining')).toBe('99')
+    expect(result.headers.get('retry-after')).toBe('1')
     expect(result.headers.get('content-type')).toBe('application/json')
     expect(result.headers.get('cache-control')).toBe('no-store')
     expect(result.headers.get('fingerly-balance-micros')).toBeNull()
+    expect(result.headers.get('fingerly-ratelimit-scope')).toBeNull()
     expect(result.headers.get('set-cookie')).toBeNull()
     expect(result.headers.get('server')).toBeNull()
     const relayed = [...result.headers].map(([name, value]) => `${name}: ${value}`).join('\n')
@@ -440,32 +509,38 @@ describe.each(targets)('$kind template', (target) => {
     expect(result.body).toBe('{"request_id":"req_1"}')
   })
 
-  it.skipIf(!target.bodyCap)('refuses a body over 1 MiB without forwarding it', async () => {
-    const over = await target.call({ headers: visitor, body: 'x'.repeat(1_048_577), ip: TRUSTED_IP })
-    expect(over.status).toBe(413)
-    expect(upstreamCalls).toHaveLength(0)
-    const at = await target.call({ headers: visitor, body: 'x'.repeat(1_048_576), ip: TRUSTED_IP })
-    expect(at.status).toBe(200)
-  })
+  if (target.bodyCap) {
+    it('refuses a body over 1 MiB without forwarding it', async () => {
+      const over = await target.call({ headers: visitor, body: 'x'.repeat(1_048_577), ip: TRUSTED_IP })
+      expect(over.status).toBe(413)
+      expect(upstreamCalls).toHaveLength(0)
+      const at = await target.call({ headers: visitor, body: 'x'.repeat(1_048_576), ip: TRUSTED_IP })
+      expect(at.status).toBe(200)
+    })
+  }
 
-  it.skipIf(!target.missingKey)('answers 503 rather than forwarding when the proxy key is missing or malformed', async () => {
-    for (const key of [undefined, '', 'fly_sk_production_secret', 'fly_px_sandbox_x']) {
-      target.setKey(key)
-      const result = await target.call({ headers: visitor, ip: TRUSTED_IP })
-      expect(result.status, String(key)).toBe(503)
-    }
-    expect(upstreamCalls).toHaveLength(0)
-  })
+  if (target.missingKey) {
+    it('answers 503 rather than forwarding when the proxy key is missing or malformed', async () => {
+      for (const key of [undefined, '', 'fly_sk_production_secret', 'fly_px_sandbox_x']) {
+        target.setKey(key)
+        const result = await target.call({ headers: visitor, ip: TRUSTED_IP })
+        expect(result.status, String(key)).toBe(503)
+      }
+      expect(upstreamCalls).toHaveLength(0)
+    })
+  }
 
-  it.skipIf(target.kind === 'aws-cloudfront')('answers 401 without a public key and 502 when the API is unreachable', async () => {
-    const { 'x-api-key': _key, ...withoutKey } = visitor
-    expect((await target.call({ headers: withoutKey, ip: TRUSTED_IP })).status).toBe(401)
-    expect(upstreamCalls).toHaveLength(0)
-    upstreamFails = true
-    const failed = await target.call({ headers: visitor, ip: TRUSTED_IP })
-    expect(failed.status).toBe(502)
-    expect(failed.headers.get('cache-control')).toBe('no-store')
-  })
+  if (target.kind !== 'aws-cloudfront') {
+    it('answers 401 without a public key and 502 when the API is unreachable', async () => {
+      const { 'x-api-key': _key, ...withoutKey } = visitor
+      expect((await target.call({ headers: withoutKey, ip: TRUSTED_IP })).status).toBe(401)
+      expect(upstreamCalls).toHaveLength(0)
+      upstreamFails = true
+      const failed = await target.call({ headers: visitor, ip: TRUSTED_IP })
+      expect(failed.status).toBe(502)
+      expect(failed.headers.get('cache-control')).toBe('no-store')
+    })
+  }
 })
 
 describe.each([vercelTarget, netlifyTarget, containerTarget, cloudRunTarget])('$kind template under upstream trouble', (target) => {
@@ -513,7 +588,7 @@ describe('a client IP source with no valid address', () => {
     const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     // Cloud Run's load balancer always writes the client entry, so an empty
     // one or a comma inside it cannot reach the second-to-last position.
-    const values = ['null', 'not-an-address', '999.1.1.1', '1.2.3.4 5.6.7.8', 'unknown', ...(target === cloudRunTarget ? [] : ['', '1.2.3.4, 5.6.7.8'])]
+    const values = ['null', 'not-an-address', '999.1.1.1', '1.2.3.4 5.6.7.8', 'unknown', 'fe80::1%en0', ...(target === cloudRunTarget ? [] : ['', '1.2.3.4, 5.6.7.8'])]
     for (const ip of values) {
       const call: Call = target === vercelTarget
         // Vercel's own header is wrong; a well-formed x-forwarded-for is no fallback.
@@ -538,7 +613,7 @@ describe('platform specifics', () => {
   it('vercel: reads x-real-ip, never the x-forwarded-for a visitor can write to', async () => {
     vercelTarget.setKey(KEY)
     const post = (headers: Record<string, string>) => vercel(new Request('https://shop.example/k7x2qm4a', {
-      method: 'POST', headers: { 'x-api-key': 'fly_pk_production_public', ...headers }, body: '{}',
+      method: 'POST', headers: { 'x-api-key': 'fly_pk_production_public', origin: 'https://shop.example', ...headers }, body: '{}',
     }))
     expect((await post({ 'x-real-ip': TRUSTED_IP, 'x-forwarded-for': `6.6.6.6, ${TRUSTED_IP}` })).status).toBe(200)
     const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined)
@@ -551,7 +626,7 @@ describe('platform specifics', () => {
   it('gcp-cloud-run: takes the second-to-last x-forwarded-for entry and nothing a visitor can forge', async () => {
     cloudRunTarget.setKey(KEY)
     const post = (xff: string) => realFetch(`${cloudRunTarget.base}/k7x2qm4a`, {
-      method: 'POST', headers: { 'x-api-key': 'fly_pk_production_public', 'x-forwarded-for': xff }, body: '{}',
+      method: 'POST', headers: { 'x-api-key': 'fly_pk_production_public', origin: 'https://shop.example', 'x-forwarded-for': xff }, body: '{}',
     })
     await post(`1.1.1.1, 6.6.6.6,${TRUSTED_IP},34.120.0.1`)
     await post(`${TRUSTED_IP},34.120.0.1`)
@@ -566,7 +641,7 @@ describe('platform specifics', () => {
     const server = createRelay(env)
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
     const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
-    const response = await realFetch(`${base}/k7x2qm4a`, { method: 'POST', headers: { 'x-api-key': 'k' }, body: '{}' })
+    const response = await realFetch(`${base}/k7x2qm4a`, { method: 'POST', headers: { 'x-api-key': 'k', origin: 'https://shop.example' }, body: '{}' })
     await new Promise<void>((resolve) => server.close(() => resolve()))
     expect(response.status).toBe(404)
   })
@@ -600,11 +675,41 @@ describe('platform specifics', () => {
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
     const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
     await realFetch(`${base}/k7x2qm4a`, {
-      method: 'POST', headers: { 'x-api-key': 'fly_pk_production_public', 'x-real-ip': '6.6.6.6', 'x-forwarded-for': '6.6.6.6' }, body: '{}',
+      method: 'POST',
+      headers: {
+        'x-api-key': 'fly_pk_production_public',
+        origin: 'https://shop.example',
+        'x-real-ip': '6.6.6.6',
+        'x-forwarded-for': '6.6.6.6',
+      },
+      body: '{}',
     })
     await new Promise<void>((resolve) => server.close(() => resolve()))
     expect(upstreamCalls[0]!.headers.get('x-fingerly-client-ip')).toBe('127.0.0.1')
     expect(upstreamCalls[0]!.headers.get('x-fingerly-proxy-version')).toBe('container/1.0.0')
+  })
+
+  it('aws-cloudfront: rejects multi-valued x-fingerly-sdk-platform when Origin is absent', async () => {
+    const result = await cloudFrontHandler({
+      version: '1.0',
+      context: { eventType: 'viewer-request' },
+      viewer: { ip: TRUSTED_IP },
+      request: {
+        method: 'POST',
+        uri: '/k7x2qm4a',
+        querystring: {},
+        headers: {
+          host: { value: 'shop.example' },
+          'x-api-key': { value: 'fly_pk_production_public' },
+          'x-fingerly-sdk-platform': { value: 'ios', multiValue: [{ value: 'ios' }, { value: 'EvilOS' }] },
+        },
+        cookies: {},
+      },
+    })
+    expect(result.statusCode).toBe(400)
+    expect(JSON.parse(String(result.body))).toEqual({
+      error: { code: 'missing_origin', message: 'Origin or X-Fingerly-SDK-Platform header is required' },
+    })
   })
 
   it('container and gcp-cloud-run ship the same server, differing only in PRESET', () => {

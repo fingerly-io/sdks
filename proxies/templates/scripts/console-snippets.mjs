@@ -81,9 +81,21 @@ export function build() {
         },
         {
           title: 'Include it in your site',
-          text: 'Inside the server block that serves your pages.',
+          text: 'Define the native SDK platform allowlist in http and include the snippet inside the server block that serves your pages.',
           label: 'nginx.conf',
-          code: 'server {\n    server_name www.example.com;\n    include /etc/nginx/snippets/fingerly.conf;\n    # ...\n}\n',
+          code: [
+            'map $http_x_fingerly_sdk_platform $fingerly_platform {',
+            '    default "";',
+            '    "~^(ios|android|react-native|react-native-ios|react-native-android|flutter|flutter-ios|flutter-android|lynx-ios|lynx-android|capacitor|kotlin-multiplatform)$" $http_x_fingerly_sdk_platform;',
+            '}',
+            '',
+            'server {',
+            '    server_name www.example.com;',
+            '    include /etc/nginx/snippets/fingerly.conf;',
+            '    # ...',
+            '}',
+            '',
+          ].join('\n'),
         },
         {
           title: 'Reload nginx',

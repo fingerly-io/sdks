@@ -75,10 +75,10 @@ const CANDIDATES = [
 
 export const fontsSource: Source<FontsSignal> = {
   id: SOURCE.fonts,
-  tier: 'deferred',
+  stage: 'collect',
   // Generous: this measures ~300 spans, and forcing layout on a busy page is
   // genuinely slow. Still bounded, which is the part that matters.
-  timeoutMs: 700,
+  timeoutMs: 250,
   run() {
     if (typeof document === 'undefined') throw new UnsupportedSignal('no-document')
 
@@ -143,7 +143,7 @@ export const fontsSource: Source<FontsSignal> = {
 
 export const fontPreferencesSource: Source<FontPreferencesSignal> = {
   id: SOURCE.fontPreferences,
-  tier: 'deferred',
+  stage: 'collect',
   timeoutMs: 250,
   run() {
     if (typeof document === 'undefined' || !document.body) {

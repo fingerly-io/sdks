@@ -71,8 +71,7 @@ const App = defineComponent({
 
 const app = createApp(App)
 
-// submit: false - the demo collects and sends nothing.
-app.use(createFingerly({ apiKey: 'pk_demo', submit: false }))
+app.use(createFingerly({ apiKey: 'pk_demo', consent: 'granted' }))
 app.mount('#app')
 
 // Read back by the browser check. The context carries the shared state, so a

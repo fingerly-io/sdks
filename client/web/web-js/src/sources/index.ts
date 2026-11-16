@@ -1,31 +1,22 @@
 /**
- * The browser source set.
- *
- * Order within a tier does not matter - the scheduler runs them concurrently up
- * to its cap - but the tier does. `fast` sources are cheap reads that a page
- * can afford to block a click on; `deferred` sources render, measure layout or
- * await hardware, and are worth having only because the budget bounds them.
+ * The single-pass two-stage browser source set (`prerequisite` -> `collect`).
  */
 
-import { UnsupportedSignal, type Source } from '@fingerly/core'
+import { EMBEDDED_SAFE_SOURCES, UnsupportedSignal, type Source } from '@fingerly/core'
 
 import { detectEmbedding } from '../embedding.js'
 
 import { audioLatencySource, audioSource } from './audio.js'
 import {
-  batterySource,
   hardwareSource,
   intlSource,
   mediaDevicesSource,
   networkSource,
-  sensorsSource,
-  speechSource,
-  touchSource,
   timezoneSource,
+  touchSource,
 } from './device.js'
 import { colorGamutSource, mediaQueriesSource, screenFrameSource, screenSource } from './display.js'
 import { storageDurabilitySource } from './durability.js'
-import { domBlockersSource } from './dom.js'
 import { engineSource, errorsSource, mathSource } from './engine.js'
 import {
   languagesSource,
@@ -39,33 +30,39 @@ import { automationSource, permissionsSource, timingSource } from './runtime.js'
 import { shieldsSource } from './shields.js'
 import { storageQuotaSource, storageSource } from './storage.js'
 import { fontPreferencesSource, fontsSource } from './text.js'
+import { workerRealmSource } from './worker_realm.js'
 
 /**
- * A source that reads nothing inside an app.
- *
- * `load()` already runs no source there. This is for a page that builds a
- * client from `browserSources` itself: each source checks before it reads, and
- * reports `unsupported` with the reason `embedded`.
+ * Guards direct `browserSources` callers inside detected embedded WebViews so
+ * device-fingerprinting collectors refuse with `UnsupportedSignal('embedded')`,
+ * while DPLA-safe non-identifying runtime/integrity sources (`F-01`) remain
+ * permitted.
  */
 function guarded(source: Source): Source {
+  const safeInEmbedded = source.embeddedSafe === true || EMBEDDED_SAFE_SOURCES.has(source.id)
   return {
     ...source,
     run: (ctx) => {
-      if (detectEmbedding()) throw new UnsupportedSignal('embedded')
+      if (!safeInEmbedded && detectEmbedding()) throw new UnsupportedSignal('embedded')
       return source.run(ctx)
     },
   }
 }
 
 const allBrowserSources: readonly Source[] = [
-  // fast
+  // Stage 1: prerequisite barrier (completes before shields & canvas run)
   engineSource,
+  timingSource,
+
+  // Stage 2: single-pass collect
   errorsSource,
   mathSource,
   navigatorSource,
   languagesSource,
   pluginsSource,
   vendorSource,
+  userAgentDataSource,
+  workerRealmSource,
   screenSource,
   screenFrameSource,
   mediaQueriesSource,
@@ -77,26 +74,18 @@ const allBrowserSources: readonly Source[] = [
   timezoneSource,
   storageSource,
   storageQuotaSource,
+  storageDurabilitySource,
   shieldsSource,
-  timingSource,
   permissionsSource,
   automationSource,
   webglSource,
-  mediaDevicesSource,
-
-  // deferred
-  canvasSource,
   webglExtensionsSource,
+  mediaDevicesSource,
+  canvasSource,
   audioSource,
   audioLatencySource,
   fontsSource,
   fontPreferencesSource,
-  batterySource,
-  speechSource,
-  sensorsSource,
-  userAgentDataSource,
-  domBlockersSource,
-  storageDurabilitySource,
 ]
 
 export const browserSources: readonly Source[] = allBrowserSources.map(guarded)
@@ -104,7 +93,6 @@ export const browserSources: readonly Source[] = allBrowserSources.map(guarded)
 export * from './audio.js'
 export * from './device.js'
 export * from './display.js'
-export * from './dom.js'
 export * from './durability.js'
 export * from './engine.js'
 export * from './navigator.js'
@@ -113,3 +101,4 @@ export * from './runtime.js'
 export * from './shields.js'
 export * from './storage.js'
 export * from './text.js'
+export * from './worker_realm.js'

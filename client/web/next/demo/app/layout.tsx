@@ -37,7 +37,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           {...(process.env.FINGERLY_ENDPOINT === undefined
             ? {}
             : { endpoints: process.env.FINGERLY_ENDPOINT })}
-          submit={process.env.FINGERLY_SUBMIT === 'true'}
+          consent="granted"
         >
           {children}
         </FingerlyProvider>

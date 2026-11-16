@@ -1,10 +1,10 @@
 # Fingerly first-party proxy for Caddy
 
 A `handle` block for the Caddy site that already serves your pages. It answers
-one path the Fingerly dashboard issued, on your own host, and forwards only the
-browser SDK's submissions to the Fingerly API. It is not an open proxy: the
-upstream is fixed in the configuration, and every other path and method is
-refused.
+one path the Fingerly dashboard issued, on your own host, and forwards
+single-pass browser and native SDK submissions as raw bytes to the Fingerly
+API. It is not an open proxy: the upstream is fixed in the configuration, and
+every other path and method is refused.
 
 ## Steps
 
@@ -88,14 +88,17 @@ visitor can write anything.
 
 Upstream, to `https://api.fingerly.io/api/v1/ingest` only: the request with
 `Cookie` and `Authorization` removed, every visitor-sent `X-Fingerly-*` header
-removed, and the `x-fingerly-*` headers the proxy sets itself (the proxy key,
-the client address, the page origin, the user agent and
-`x-fingerly-proxy-version: caddy/1.0.0`, which the dashboard shows per proxy).
-Bodies over 1 MiB are refused with `413`, redirects are not followed, and a
-missing or malformed key answers `503`. Other methods answer `405` with
-`Allow: POST`.
+stripped, validated lowercase `X-Fingerly-SDK-Platform` restored when present,
+and the `x-fingerly-*` headers the proxy sets itself (the proxy key, the client
+address, `X-Fingerly-Origin` only when `Origin` was sent, `X-Fingerly-Host`,
+the user agent and `x-fingerly-proxy-version: caddy/1.0.0`, which the dashboard
+shows per proxy). Requests missing both `Origin` and a valid
+`X-Fingerly-SDK-Platform` answer `400` (`missing_origin`) without synthesizing
+`X-Fingerly-Origin`. Bodies over 1 MiB are refused with `413`, redirects are
+not followed, and a missing or malformed key answers `503`. Other methods
+answer `405` with `Allow: POST`.
 
-Back to the page: the API's status and body, with `Set-Cookie` dropped and
-`Cache-Control: no-store`. The API itself sends nothing naming Fingerly to
-proxied callers, and the server tests that, so dropping headers here is defense
-in depth.
+Back to the page: the API's status and body, with `Set-Cookie` and internal
+headers dropped and `Cache-Control: no-store`. The API itself sends nothing
+naming Fingerly to proxied callers, and the server tests that, so dropping
+headers here is defense in depth.

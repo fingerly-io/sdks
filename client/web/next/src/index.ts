@@ -33,8 +33,11 @@ export type {
   FingerlyStore,
   Confidence,
   ConsentState,
+  IdentifyOptions,
   IdentifyResult,
+  IncognitoDetection,
   SignalReport,
+  SuspectLevel,
   UseIdentifyOptions,
   UseIdentifyReturn,
 } from '@fingerly/react'

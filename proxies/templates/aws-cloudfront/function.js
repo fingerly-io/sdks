@@ -9,11 +9,13 @@
 // The path the dashboard issued. Keep it equal to the cache behavior's path pattern.
 var PATH = '/k7x2qm4a';
 var VERSION = '1.0.0';
-// Where the origin (api.fingerly.io) receives both of the browser SDK's calls;
-// the API tells them apart by their bodies.
+// Where the origin (api.fingerly.io) receives single-pass browser and native SDK submissions.
 var UPSTREAM_URI = '/api/v1/ingest';
 
-// The response headers relayed to the page. A blocker can match a response
+// Exact lowercase platform names accepted on the native SDK channel.
+var SDK_PLATFORM = /^(ios|android|react-native|react-native-ios|react-native-android|flutter|flutter-ios|flutter-android|lynx-ios|lynx-android|capacitor|kotlin-multiplatform)$/;
+
+// The response headers relayed to the caller. A blocker can match a response
 // header by name, so an allowlist is what guarantees nothing on the way back
 // names Fingerly, whatever the API sends in future.
 var RELAYED_HEADERS = {
@@ -39,13 +41,25 @@ var IPV4 = /^(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])(\.(25[0-5]|2[0-4][0-9
 var IPV6 = /^[0-9A-Fa-f:.]{2,45}$/;
 
 function isIpLiteral(value) {
-  return typeof value === 'string' && (IPV4.test(value) || (IPV6.test(value) && value.indexOf(':') !== -1));
+  return typeof value === 'string' && value.indexOf('%') === -1 && (IPV4.test(value) || (IPV6.test(value) && value.indexOf(':') !== -1));
 }
 
 function plain(statusCode, statusDescription, extra) {
   var headers = { 'cache-control': { value: 'no-store' } };
   for (var name in extra) headers[name] = extra[name];
   return { statusCode: statusCode, statusDescription: statusDescription, headers: headers };
+}
+
+function jsonError(statusCode, statusDescription, code, message) {
+  return {
+    statusCode: statusCode,
+    statusDescription: statusDescription,
+    headers: {
+      'content-type': { value: 'application/json' },
+      'cache-control': { value: 'no-store' }
+    },
+    body: '{"error":{"code":"' + code + '","message":"' + message + '"}}'
+  };
 }
 
 function relayResponse(response) {
@@ -67,12 +81,26 @@ async function handler(event) {
   if (request.method !== 'POST') return plain(405, 'Method Not Allowed', { 'allow': { value: 'POST' } });
 
   var headers = request.headers;
-  // Forged x-fingerly-* headers go; the origin custom header adds the proxy
-  // key back after this function runs.
+  // 1. Capture incoming x-fingerly-sdk-platform only if single-valued and matching exact lowercase allowlist.
+  var rawPlatform = headers['x-fingerly-sdk-platform'];
+  var sdkPlatform = rawPlatform && (!rawPlatform.multiValue || rawPlatform.multiValue.length === 1) && SDK_PLATFORM.test(rawPlatform.value)
+    ? rawPlatform.value
+    : '';
+
+  // 2. Strip all incoming x-fingerly-* headers, authorization, and cookies.
   for (var name in headers) {
-    if (name.indexOf('x-fingerly-') === 0 || name === 'authorization') delete headers[name];
+    if (name.indexOf('x-fingerly-') === 0 || name === 'authorization' || name === 'cookie') delete headers[name];
   }
   for (var cookie in request.cookies) delete request.cookies[cookie];
+
+  // 3. Restore validated x-fingerly-sdk-platform when matched.
+  if (sdkPlatform) headers['x-fingerly-sdk-platform'] = { value: sdkPlatform };
+
+  // 4. Reject with 400 missing_origin iff both Origin and validated sdkPlatform are empty.
+  var origin = headers.origin && headers.origin.value ? headers.origin.value : '';
+  if (!origin && !sdkPlatform) {
+    return jsonError(400, 'Bad Request', 'missing_origin', 'Origin or X-Fingerly-SDK-Platform header is required');
+  }
 
   // The address CloudFront accepted the connection from, not a header.
   // CloudFront always sets it; anything else forwards nothing.
@@ -80,7 +108,8 @@ async function handler(event) {
     return plain(500, 'The client IP callback returned no valid address', {});
   }
   headers['x-fingerly-client-ip'] = { value: event.viewer.ip };
-  headers['x-fingerly-origin'] = { value: headers.origin ? headers.origin.value : 'https://' + headers.host.value };
+  if (origin) headers['x-fingerly-origin'] = { value: origin };
+  if (headers.host && headers.host.value) headers['x-fingerly-host'] = { value: headers.host.value };
   if (headers['user-agent']) headers['x-fingerly-user-agent'] = { value: headers['user-agent'].value };
   headers['x-fingerly-proxy-version'] = { value: 'aws-cloudfront/' + VERSION };
 

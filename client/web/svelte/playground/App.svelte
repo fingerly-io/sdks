@@ -2,9 +2,7 @@
   import { setupFingerly, useIdentify } from '../src/index.js'
   import Score from './Score.svelte'
 
-  // submit: false - the playground collects and sends nothing, so no server
-  // answers: the raw report fills in and the score and level read hidden.
-  setupFingerly({ apiKey: 'pk_demo', submit: false })
+  setupFingerly({ apiKey: 'pk_demo', consent: 'granted' })
 
   const fingerly = useIdentify({ immediate: true, tag: 'svelte-playground' })
 </script>

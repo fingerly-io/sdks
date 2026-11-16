@@ -19,7 +19,7 @@ Every proxy implementation must process incoming headers in this exact logical s
 1. **Capture Validated `x-fingerly-sdk-platform`**:
    Read the incoming `x-fingerly-sdk-platform` header (case-insensitive header name) and retain its value **if and only if** it matches the exact lowercase pattern:
    ```regex
-   ^(ios|android|react-native|flutter|capacitor|kotlin-multiplatform)$
+   ^(ios|android|react-native|react-native-ios|react-native-android|flutter|flutter-ios|flutter-android|lynx-ios|lynx-android|capacitor|kotlin-multiplatform)$
    ```
    Any non-matching value (whitespace, uppercase, unknown string, or multiple comma-separated values) is discarded as empty (`""`).
 2. **Strip All Incoming `x-fingerly-*` Headers**:
@@ -45,7 +45,7 @@ Every proxy implementation must process incoming headers in this exact logical s
 | `X-Fingerly-Client-IP` (`X-Fingerly-Forwarded-For`) | Trusted visitor IP address | Single validated IPv4 or IPv6 literal (no port, no IPv6 zone ID, no comma-separated XFF list) extracted from the platform's trusted edge socket/header. |
 | `X-Fingerly-Origin` | Browser page origin | Exact incoming `Origin` header when present. Omitted (not synthesized) when `Origin` is absent on validated `X-Fingerly-SDK-Platform` requests. |
 | `X-Fingerly-Host` | Proxy ingress host | Incoming `Host` header observed at the customer proxy edge (when available), distinct from the upstream `Host: api.fingerly.io` target. |
-| `X-Fingerly-SDK-Platform` | Restored native platform | Set only when Step 1 matched `^(ios|android|react-native|flutter|capacitor|kotlin-multiplatform)$`. |
+| `X-Fingerly-SDK-Platform` | Restored native platform | Set only when Step 1 matched `^(ios|android|react-native|react-native-ios|react-native-android|flutter|flutter-ios|flutter-android|lynx-ios|lynx-android|capacitor|kotlin-multiplatform)$`. |
 | `X-Fingerly-Proxy-Version` | Proxy runtime telemetry | Static `<impl>/<version>` identifier (for example `cloudflare-worker/0.3.0`, `nginx/1.0.0`, `node/0.3.0`). |
 | `X-Fingerly-Edge-TLS-Version` (`X-Fingerly-Edge-TLS-*`) | Edge TLS protocol | Terminated visitor TLS version (for example `TLSv1.3`) injected by edge runtimes that expose TLS metadata (such as Cloudflare Workers `request.cf.tlsVersion`). |
 | `X-Fingerly-Edge-TLS-Cipher` (`X-Fingerly-Edge-TLS-*`) | Edge TLS cipher suite | Terminated visitor TLS cipher (for example `AEAD-AES128-GCM-SHA256`) injected by edge runtimes (`request.cf.tlsCipher`). |

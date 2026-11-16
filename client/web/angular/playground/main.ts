@@ -93,7 +93,6 @@ export class Playground {
   }
 }
 
-// submit: false - the playground collects and sends nothing.
 void bootstrapApplication(Playground, {
-  providers: [provideFingerly({ apiKey: 'pk_demo', submit: false })],
+  providers: [provideFingerly({ apiKey: 'pk_demo', consent: 'granted' })],
 })

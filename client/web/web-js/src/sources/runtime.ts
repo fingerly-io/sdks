@@ -1,13 +1,6 @@
 /**
- * How the runtime itself behaves: clock precision, permissions, and the direct
- * automation tells.
- *
- * The clock probe is the most valuable thing in this file. `performance.now()`
- * resolution is clamped by policy rather than by hardware, and the clamps are
- * distinctive: Tor and Firefox's resistFingerprinting round to 100ms, ordinary
- * Firefox to 1ms, Safari to 1ms, Chromium to 5µs (100µs when cross-origin
- * isolated). A resolution of 100ms is not a slow machine - it is a setting, and
- * it is the strongest single Tor tell available to a page.
+ * Runtime behaviour: Gecko-only `<= 3ms` RFP timer probe, permissions state,
+ * and direct automation artefacts.
  */
 
 import {
@@ -16,90 +9,142 @@ import {
   type AutomationSignal,
   type PermissionsSignal,
   type Source,
+  type SourceContext,
   type TimingSignal,
 } from '@fingerly/core'
 
 import { attempt, compact, requireWindow } from '../util.js'
+import { isGeckoEngine } from './engine.js'
+
+const RFP_SHARED_KEY = 'rfpCanvasBlocked'
+
+/** Bounded wall-clock ceiling (`<= 3.0ms`) for the single-tick Gecko probe. */
+const GECKO_PROBE_MAX_MS = 2.8
+const GECKO_SPIN_GUARD = 250_000
+
+/** Clamped resolution reported when `performance.now()` did not advance within `~3ms`. */
+const CLAMPED_STALL_RESOLUTION_MS = 16.67
+
+function roundResolution(ms: number): number {
+  return Math.round(ms * 1e6) / 1e6
+}
 
 /**
- * The smallest non-zero gap between two consecutive `now()` readings.
+ * Bounded `2.5ms–3.0ms` single-tick `performance.now()` clamping probe run ONLY
+ * on Gecko (`engine === 'gecko'`).
  *
- * Sampled in a tight loop rather than timed against anything, because the
- * quantity wanted is the granularity of the clock and not the speed of the
- * machine. A busy loop is the only way to see the granularity: two calls close
- * enough together return the same value until the clock ticks.
+ * - Standard Firefox (`1ms` timer): `0 < delta <= 1.2` -> `rfpBlocked = false`.
+ * - Firefox `resistFingerprinting` / Tor Browser (`16.67ms` or `100ms` clamp, or
+ *   `0ms` stalled within `3.0ms`): `delta === 0` or `delta >= 1.5` (or outside
+ *   `(0, 1.2]`) -> `rfpBlocked = true`.
  */
-function clockResolution(now: () => number): number | undefined {
-  const deltas: number[] = []
-  const deadline = Date.now() + 12
+export function probeGeckoRfp(now: () => number): {
+  resolution: number
+  rfpBlocked: boolean
+} {
+  const wallDeadline = Date.now() + GECKO_PROBE_MAX_MS
+  const start = now()
+  let end = now()
+  let guard = 0
 
-  while (deltas.length < 25 && Date.now() < deadline) {
-    const start = now()
-    let end = now()
-    // Spin until the value actually changes. Bounded by the deadline above so
-    // a clock that never ticks cannot hang the source - which is exactly what
-    // a 100ms-clamped clock does inside a 12ms window.
-    let guard = 0
-    while (end === start && guard++ < 100_000 && Date.now() < deadline) end = now()
-    if (end !== start) deltas.push(end - start)
+  while (end === start && guard++ < GECKO_SPIN_GUARD && Date.now() < wallDeadline) {
+    end = now()
   }
 
-  if (deltas.length === 0) {
-    // Every reading was identical inside the window. That means the tick is
-    // longer than the window, which is itself the finding - and 100ms clamping
-    // is precisely how that happens.
-    return 100
+  const delta = end - start
+  if (delta === 0) {
+    return { resolution: CLAMPED_STALL_RESOLUTION_MS, rfpBlocked: true }
+  }
+  if (delta >= 1.5 || !(delta > 0 && delta <= 1.2)) {
+    return {
+      resolution: delta > 0 ? roundResolution(delta) : CLAMPED_STALL_RESOLUTION_MS,
+      rfpBlocked: true,
+    }
+  }
+  return { resolution: roundResolution(delta), rfpBlocked: false }
+}
+
+/**
+ * Zero-wait (`0.0ms`) clock sample on non-Gecko engines (Blink/Chromium and
+ * WebKit/Safari never show a canvas permission doorhanger).
+ */
+function sampleNonGeckoClock(now: () => number): number {
+  const first = now()
+  const second = now()
+  return second > first ? roundResolution(second - first) : 0
+}
+
+/**
+ * Shared gate consulted by BOTH `shieldsSource` and `canvasSource` before
+ * touching `<canvas>` or invoking any pixel-readback API.
+ */
+export function isRfpCanvasBlocked(ctx?: SourceContext): boolean {
+  const cached = ctx?.shared?.get(RFP_SHARED_KEY)
+  if (typeof cached === 'boolean') return cached
+
+  const timing = ctx?.completed?.(SOURCE.timing)
+  if (timing?.status === 'ok') {
+    const val = timing.value as TimingSignal | undefined
+    if (val?.rfp_canvas_blocked === true) return true
+    if (typeof val?.now_resolution === 'number' && val.now_resolution >= 1.5) return true
+    if (typeof val?.rfp_canvas_blocked === 'boolean') return val.rfp_canvas_blocked
+    if (typeof val?.now_resolution === 'number') return false
   }
 
-  // Rounded, because the raw figure is floating-point noise: Chromium's 100µs
-  // clamp measures as 0.09999996423721313, and a value that differs in the
-  // twelfth decimal on every visit is a fingerprint of the arithmetic rather
-  // than of the browser. Six places is far finer than any clamp in use and
-  // coarse enough to be identical across visits.
-  return Math.round(Math.min(...deltas) * 1e6) / 1e6
+  if (isGeckoEngine(ctx)) {
+    const w = typeof window === 'undefined' ? undefined : window
+    if (typeof w?.performance?.now !== 'function') return true
+    const probed = probeGeckoRfp(() => w.performance.now())
+    ctx?.shared?.set(RFP_SHARED_KEY, probed.rfpBlocked)
+    return probed.rfpBlocked
+  }
+
+  return false
 }
 
 export const timingSource: Source<TimingSignal> = {
   id: SOURCE.timing,
-  tier: 'fast',
-  timeoutMs: 150,
-  run() {
+  stage: 'prerequisite',
+  embeddedSafe: true,
+  timeoutMs: 50,
+  run(ctx) {
     const w = requireWindow()
     const perf = w.performance
 
     if (typeof perf?.now !== 'function') {
-      return compact<TimingSignal>({ has_performance: false })
+      const gecko = isGeckoEngine(ctx)
+      ctx?.shared?.set(RFP_SHARED_KEY, gecko)
+      return compact<TimingSignal>({
+        has_performance: false,
+        rfp_canvas_blocked: gecko,
+      })
     }
 
-    // No scheduling-jitter measurement here, deliberately.
-    //
-    // The obvious one - time five `setTimeout(0)` round trips - measures how
-    // busy the main thread is, and the main thread is busy because this SDK's
-    // own canvas, font and audio sources are running on it. Measured live it
-    // reported ~15ms of "device jitter" that was entirely self-inflicted, and
-    // it moved with the scheduler's concurrency setting rather than with the
-    // device. A signal that measures the collector is worse than no signal.
-    //
-    // `now_resolution` has no such problem: it is a busy-spin against the
-    // clock's own granularity, so contention cannot change the answer.
+    if (!isGeckoEngine(ctx)) {
+      ctx?.shared?.set(RFP_SHARED_KEY, false)
+      return compact<TimingSignal>({
+        has_performance: true,
+        now_resolution: sampleNonGeckoClock(() => perf.now()),
+        rfp_canvas_blocked: false,
+      })
+    }
+
+    const probed = probeGeckoRfp(() => perf.now())
+    ctx?.shared?.set(RFP_SHARED_KEY, probed.rfpBlocked)
     return compact<TimingSignal>({
       has_performance: true,
-      now_resolution: clockResolution(() => perf.now()),
+      now_resolution: probed.resolution,
+      rfp_canvas_blocked: probed.rfpBlocked,
     })
   },
 }
 
-/**
- * One `PermissionStatus` per name per window, queried once and read live.
- *
- * Chromium keeps every `PermissionStatus` alive for the life of the page, so
- * querying on each identification leaked two objects per call in a long
- * single-page session. Its `state` follows the permission as it changes, so
- * reusing the object loses nothing.
- */
 const permissionStatuses = new WeakMap<object, Map<string, Promise<PermissionStatus>>>()
 
-function permissionStatus(w: Window & typeof globalThis, name: PermissionName): Promise<PermissionStatus> {
+function permissionStatus(
+  w: Window & typeof globalThis,
+  name: PermissionName,
+): Promise<PermissionStatus> {
   let byName = permissionStatuses.get(w.navigator)
   if (!byName) {
     byName = new Map()
@@ -113,19 +158,11 @@ function permissionStatus(w: Window & typeof globalThis, name: PermissionName): 
   return status
 }
 
-/**
- * The notification permission, read two ways.
- *
- * `Notification.permission` is the legacy synchronous reading and
- * `permissions.query({name:'notifications'})` is the modern one. They should
- * agree: headless Chrome auto-denies without recording a decision, so the
- * legacy property says `denied` while the query still says `prompt`. Both are
- * reported as read, and the server compares them.
- */
 export const permissionsSource: Source<PermissionsSignal> = {
   id: SOURCE.permissions,
-  tier: 'fast',
-  timeoutMs: 200,
+  stage: 'collect',
+  embeddedSafe: true,
+  timeoutMs: 150,
   async run() {
     const w = requireWindow()
     if (!w.navigator.permissions?.query) throw new UnsupportedSignal('no-permissions-api')
@@ -134,13 +171,14 @@ export const permissionsSource: Source<PermissionsSignal> = {
       try {
         return (await permissionStatus(w, name)).state
       } catch {
-        // A name this browser does not know. Not an error worth failing over.
         return undefined
       }
     }
 
     const notification = await query('notifications' as PermissionName)
-    const legacy = attempt(() => (w as Window & { Notification?: { permission: string } }).Notification?.permission)
+    const legacy = attempt(
+      () => (w as Window & { Notification?: { permission: string } }).Notification?.permission,
+    )
 
     return compact<PermissionsSignal>({
       notification,
@@ -174,27 +212,49 @@ const AUTOMATION_GLOBALS = [
   'domAutomationController',
   '__lastWatirAlert',
   '__playwright',
+  '__playwright__binding__',
+  '__pwInitScripts',
   '__puppeteer',
   '__pw_manual',
 ] as const
 
+const CDC_PATTERN = /^cdc_|^\$cdc_/
+
+function collectCdcMarkers(w: Window & typeof globalThis): string[] {
+  const found = new Set<string>()
+  const windowProps = attempt(() => Object.getOwnPropertyNames(w))
+  if (windowProps) {
+    for (const name of windowProps) {
+      if (CDC_PATTERN.test(name)) found.add(name)
+    }
+  }
+  const doc = attempt(() => w.document)
+  if (doc) {
+    const docProps = attempt(() => Object.getOwnPropertyNames(doc))
+    if (docProps) {
+      for (const name of docProps) {
+        if (CDC_PATTERN.test(name)) found.add(name)
+      }
+    }
+  }
+  return [...found]
+}
+
 export const automationSource: Source<AutomationSignal> = {
   id: SOURCE.automation,
-  tier: 'fast',
+  stage: 'collect',
+  embeddedSafe: true,
   run() {
     const w = requireWindow()
 
-    const present = AUTOMATION_GLOBALS.filter((name) => attempt(() => name in w) === true)
-
-    // ChromeDriver injects properties named `cdc_<random>_...` onto window and
-    // onto document. The prefix is the stable part; the middle is per-build.
-    const cdp = attempt(() =>
-      Object.getOwnPropertyNames(w).filter((name) => /^cdc_|^\$cdc_/.test(name)),
+    const present = AUTOMATION_GLOBALS.filter(
+      (name) => attempt(() => name in w || (w.document != null && name in w.document)) === true,
     )
+    const cdp = collectCdcMarkers(w)
 
     return compact<AutomationSignal>({
       webdriver: attempt(() => navigator.webdriver),
-      cdp_artifacts: cdp && cdp.length > 0 ? cdp : undefined,
+      cdp_artifacts: cdp.length > 0 ? cdp : undefined,
       distinctive_properties: present.length > 0 ? [...present] : undefined,
       chrome_object: attempt(() => 'chrome' in w),
       window_external: attempt(() => {

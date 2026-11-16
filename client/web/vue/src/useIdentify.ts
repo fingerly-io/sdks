@@ -2,7 +2,11 @@
  * `useIdentify()` - the composable a page actually uses.
  */
 
-import { isSuspiciousLevel, type IdentifyResult } from '@fingerly/web-js'
+import {
+  isSuspiciousLevel,
+  type IdentifyResult,
+  type IncognitoDetection,
+} from '@fingerly/web-js'
 import {
   computed,
   onMounted,
@@ -16,72 +20,48 @@ import { toReadonly, type ReadonlyState } from './plugin.js'
 import { useFingerly } from './useFingerly.js'
 
 export interface UseIdentifyOptions {
-  /**
-   * Identify as soon as the component mounts.
-   *
-   * Safe to pass in every component that wants it: the plugin holds one shared
-   * result, so the second and third callers get the first one's answer rather
-   * than starting their own submission.
-   *
-   * It runs in `onMounted`, which is what makes it server-safe - the hook does
-   * not run during SSR, so a Nuxt page using this renders on the server and
-   * collects on the client without a guard of its own.
-   *
-   * It waits for consent. While `consent` is `pending` or `denied` nothing is
-   * started, and the identification begins once it becomes `granted`.
-   */
+  /** Identify as soon as the component mounts (after consent is `'granted'`). */
   immediate?: boolean
-  /**
-   * The customer's own correlation value, echoed back on the finished event.
-   *
-   * Accepts a ref or a getter as well as a string, so it can be `() =>
-   * route.params.orderId` and be read at the moment of submission rather than
-   * at the moment the component set itself up.
-   */
+  /** Opaque correlation label echoed on the event. */
   tag?: MaybeRefOrGetter<string | undefined>
+  /** Opt-in extended incognito probe control (`'standard'` or `'extended'`). */
+  incognitoDetection?: MaybeRefOrGetter<IncognitoDetection | undefined>
 }
 
 export interface UseIdentifyReturn extends ReadonlyState {
   /** True once an identification has completed, successfully or not. */
   isReady: ComputedRef<boolean>
-  /**
-   * True when the server scored this `medium` or `high` under the weights you
-   * set: the "should I even look?" flag, and not a policy. `null` when no
-   * server has answered or the level is absent (not identified yet, `submit:
-   * false`, unscored, or hidden by the key), which is not a clean result.
-   * Anything more nuanced reads `suspectLevel`, or your backend reads the signals.
-   */
+  /** True when the server scored this `medium` or `high`; `null` when absent. */
   isSuspicious: ComputedRef<boolean | null>
-  /** Collect, score and submit. Reuses a completed run unless `force`. */
-  identify: (options?: { tag?: string; force?: boolean }) => Promise<IdentifyResult>
+  /** Collect and submit. Reuses a completed run unless `force`. */
+  identify: (options?: {
+    tag?: string
+    incognitoDetection?: IncognitoDetection
+    force?: boolean
+  }) => Promise<IdentifyResult>
   /** Identify again from scratch, ignoring any previous result. */
-  refresh: (options?: { tag?: string }) => Promise<IdentifyResult>
+  refresh: (options?: {
+    tag?: string
+    incognitoDetection?: IncognitoDetection
+  }) => Promise<IdentifyResult>
 }
 
-/**
- * Identify this visitor.
- *
- * ```vue
- * <script setup lang="ts">
- * const { suspectScore, suspectLevel, isSuspicious, isLoading, identify } = useIdentify()
- * </script>
- * ```
- *
- * Every field returned is readonly. The state is shared across the app, so a
- * component that could assign to it would be changing what every other
- * component sees.
- */
 export function useIdentify(options: UseIdentifyOptions = {}): UseIdentifyReturn {
   const fingerly = useFingerly()
   const state = toReadonly(fingerly.state)
 
   const resolveTag = (override?: string): string | undefined =>
     override ?? toValue(options.tag)
+  const resolveIncognito = (
+    override?: IncognitoDetection,
+  ): IncognitoDetection | undefined => override ?? toValue(options.incognitoDetection)
 
   const identify: UseIdentifyReturn['identify'] = (callOptions = {}) => {
     const tag = resolveTag(callOptions.tag)
+    const incognitoDetection = resolveIncognito(callOptions.incognitoDetection)
     return fingerly.identify({
       ...(tag === undefined ? {} : { tag }),
+      ...(incognitoDetection === undefined ? {} : { incognitoDetection }),
       ...(callOptions.force === undefined ? {} : { force: callOptions.force }),
     })
   }
@@ -91,24 +71,19 @@ export function useIdentify(options: UseIdentifyOptions = {}): UseIdentifyReturn
 
   if (options.immediate) {
     onMounted(() => {
-      // Watched rather than read once, so a banner accepted after mount starts
-      // the identification that was waiting for it. Once: the plugin reuses a
-      // finished run, so consent flipping back and forth afterwards submits
-      // nothing more. Created inside the hook, so it belongs to this component
-      // and stops when it unmounts.
       watch(
         () => fingerly.state.consent.value === 'granted',
         (consented) => {
           if (!consented) return
-          // The rejection is deliberately swallowed here rather than left to
-          // become an unhandled rejection: the failure is already in
-          // `state.error`, which is where a component that opted into
-          // `immediate` will look for it. A caller who wants to await the
-          // outcome calls identify() themselves.
-          // Marked automatic, so a failure's hold applies: a remount while
-          // the API is refusing must not send another identification.
           const tag = resolveTag()
-          void fingerly.identify({ ...(tag === undefined ? {} : { tag }), automatic: true }).catch(() => undefined)
+          const incognitoDetection = resolveIncognito()
+          void fingerly
+            .identify({
+              ...(tag === undefined ? {} : { tag }),
+              ...(incognitoDetection === undefined ? {} : { incognitoDetection }),
+              automatic: true,
+            })
+            .catch(() => undefined)
         },
         { immediate: true },
       )

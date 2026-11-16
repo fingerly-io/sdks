@@ -182,50 +182,36 @@
           const options = { apiKey: $('apikey').value || 'demo', consent: 'granted' }
           if ($('endpoint').value) options.endpoints = $('endpoint').value
 
-          // Xcode's simulator can be heavily throttled while the local Docker
-          // stack is running. `?slow=1` is a probe-bench mode: give collection
-          // room to finish and submit the complete report in one request. The
-          // normal demo still exercises the production fast/deferred flow.
           const slowMode = new URLSearchParams(location.search).get('slow') === '1'
           if (slowMode) options.schedule = { budgetMs: 5000 }
 
           const fingerly = await Fingerly.load(options)
-          const result = await fingerly.identify(
-            slowMode ? { submit, tiers: ['fast', 'deferred'] } : { submit },
-          )
-
-          renderStats(result.report, result.requestId)
-          renderAnswer(result)
-          renderIntegrity(result.report.integrity)
-          renderSources(result.report.sources)
-          $('raw').textContent = JSON.stringify(
-            { sdk: { platform: 'web', version: '0.1.0' }, signals: result.report },
-            null,
-            2,
-          )
-          // Read back by the browser-automation check.
-          window.__fingerly = result
-          console.log('[fingerly] done', result)
-
-          // A submitted identification returns after the fast tier, then the
-          // tracked deferred promise supplies the complete local report. Keep
-          // the fast result visible immediately, and refresh the report once the
-          // second tier finishes. A deferred report is never scored, so the
-          // server answer above stays as it is.
           if (submit) {
-            const deferred = await result.deferred
-            window.__fingerlyDeferred = deferred
-            if (deferred.status === 'submitted') {
-              renderStats(deferred.combinedReport, result.requestId)
-              renderIntegrity(deferred.combinedReport.integrity)
-              renderSources(deferred.combinedReport.sources)
-              $('raw').textContent = JSON.stringify(
-                { sdk: { platform: 'web', version: '0.1.0' }, signals: deferred.combinedReport },
-                null,
-                2,
-              )
-              console.log('[fingerly] deferred done', deferred)
-            }
+            const result = await fingerly.identify()
+            renderStats(result.report, result.requestId)
+            renderAnswer(result)
+            renderIntegrity(result.report.integrity)
+            renderSources(result.report.sources)
+            $('raw').textContent = JSON.stringify(
+              { v: 3, sdk: { platform: 'web', version: '0.3.0' }, consent: 'granted', signals: result.report },
+              null,
+              2,
+            )
+            window.__fingerly = result
+            console.log('[fingerly] done', result)
+          } else {
+            const report = await fingerly.collect()
+            renderStats(report, '')
+            renderAnswer({ suspectScore: null, suspectLevel: null })
+            renderIntegrity(report.integrity)
+            renderSources(report.sources)
+            $('raw').textContent = JSON.stringify(
+              { v: 3, sdk: { platform: 'web', version: '0.3.0' }, consent: 'granted', signals: report },
+              null,
+              2,
+            )
+            window.__fingerly = { report }
+            console.log('[fingerly] collected', report)
           }
         } catch (error) {
           $('raw').textContent = String(error && error.stack ? error.stack : error)

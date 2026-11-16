@@ -32,7 +32,13 @@
     "ios",
     "android",
     "react-native",
+    "react-native-ios",
+    "react-native-android",
     "flutter",
+    "flutter-ios",
+    "flutter-android",
+    "lynx-ios",
+    "lynx-android",
     "capacitor",
     "kotlin-multiplatform"
   ],

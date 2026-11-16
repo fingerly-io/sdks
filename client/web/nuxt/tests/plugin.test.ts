@@ -133,17 +133,25 @@ describe('the runtime plugin', () => {
     expect(identifyMock).toHaveBeenCalledTimes(1)
   })
 
-  it('passes submit through, so an app can score without sending', async () => {
-    __setRuntimeConfig({ fingerly: { apiKey: 'pk_runtime', submit: false } })
-    // What the client returns when it sent nothing, and what the composable
-    // has to turn back into null - there is no receipt to fetch later.
-    identifyMock.mockResolvedValue({ ...RESULT, requestId: '' })
+  it('passes incognitoDetection through and preserves visitorId "" on Option B answers', async () => {
+    __setRuntimeConfig({
+      fingerly: { apiKey: 'pk_runtime', consent: 'granted', incognitoDetection: 'extended' },
+    })
+    identifyMock.mockResolvedValue({
+      ...RESULT,
+      requestId: 'req_opt_b',
+      visitorId: '',
+      visitorIsNew: false,
+      visitorConfidence: 0,
+      identifiable: false,
+    })
 
-    const { identify, requestId } = mountWithPlugin(() => useIdentify())
+    const { identify, visitorId, requestId } = mountWithPlugin(() => useIdentify())
     await identify()
 
-    expect(identifyMock).toHaveBeenCalledWith({ submit: false })
-    expect(requestId.value).toBeNull()
+    expect(identifyMock).toHaveBeenCalledWith({ incognitoDetection: 'extended' })
+    expect(requestId.value).toBe('req_opt_b')
+    expect(visitorId.value).toBe('')
   })
 
   it('shares one identification across the app, as the Vue plugin does', async () => {

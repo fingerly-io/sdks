@@ -75,8 +75,7 @@ function App() {
   return (
     <>
       <h1>Fingerly — React binding</h1>
-      {/* submit: false - the demo collects and sends nothing. */}
-      <FingerlyProvider apiKey="pk_demo" submit={false}>
+      <FingerlyProvider apiKey="pk_demo" consent="granted">
         <Suspense fallback={<p className="status">collecting…</p>}>
           <Report />
         </Suspense>

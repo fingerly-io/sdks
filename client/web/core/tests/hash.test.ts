@@ -53,4 +53,9 @@ describe('hash64', () => {
     const text = 'utf8 ✓ multibyte'
     expect(hash64(new TextEncoder().encode(text))).toBe(hash64(text))
   })
+
+  it('hashes Uint8ClampedArray raw pixel bytes identically to Uint8Array', () => {
+    const rgba = new Uint8ClampedArray([255, 128, 64, 255, 0, 12, 34, 255])
+    expect(hash64(rgba)).toBe(hash64(new Uint8Array(rgba.buffer)))
+  })
 })

@@ -1,10 +1,5 @@
 /**
  * The module, as Nuxt calls it.
- *
- * `@nuxt/kit` is mocked down to the four functions used, and `setup()` is
- * called with a Nuxt-shaped object. What is under test is what the module does
- * to that object - the runtime config it publishes, the plugin it registers,
- * the composables it auto-imports - not whether kit works.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -13,7 +8,6 @@ const addPlugin = vi.fn()
 const addImports = vi.fn()
 
 vi.mock('@nuxt/kit', () => ({
-  // Handed straight back, so the test can call `setup()` itself.
   defineNuxtModule: (definition: unknown) => definition,
   createResolver: () => ({ resolve: (path: string) => `/modules/fingerly/${path}` }),
   addPlugin: (...args: unknown[]) => addPlugin(...args),
@@ -49,14 +43,14 @@ describe('the module', () => {
 
   it('publishes its options to the public runtime config', () => {
     const nuxt = nuxtWith()
-    module_.setup({ apiKey: 'pk_from_config', submit: false }, nuxt)
+    module_.setup({ apiKey: 'pk_from_config', incognitoDetection: 'extended' }, nuxt)
 
     expect(fingerlyConfig(nuxt)).toEqual({
       apiKey: 'pk_from_config',
       apiVersion: 'v1',
       endpoints: [],
       fallbackToDefaultEndpoint: false,
-      submit: false,
+      incognitoDetection: 'extended',
       consent: 'pending',
     })
   })
@@ -65,14 +59,16 @@ describe('the module', () => {
     const nuxt = nuxtWith()
     expect(() => module_.setup({ apiKey: 'pk' }, nuxt)).not.toThrow()
     expect(fingerlyConfig(nuxt)).toEqual({
-      apiKey: 'pk', apiVersion: 'v1', endpoints: [], fallbackToDefaultEndpoint: false, submit: true, consent: 'pending',
+      apiKey: 'pk',
+      apiVersion: 'v1',
+      endpoints: [],
+      fallbackToDefaultEndpoint: false,
+      incognitoDetection: 'standard',
+      consent: 'pending',
     })
   })
 
   it('lets the runtime config win, because that is what the environment sets', () => {
-    // NUXT_PUBLIC_FINGERLY_API_KEY lands here, and it is read when the server
-    // starts rather than when the bundle is built. One build, promoted through
-    // staging and production, keyed differently in each.
     const nuxt = nuxtWith({ fingerly: { apiKey: 'pk_from_environment' } })
     module_.setup({ apiKey: 'pk_from_config' }, nuxt)
 
@@ -81,14 +77,12 @@ describe('the module', () => {
       apiVersion: 'v1',
       endpoints: [],
       fallbackToDefaultEndpoint: false,
-      submit: true,
+      incognitoDetection: 'standard',
       consent: 'pending',
     })
   })
 
   it('treats an empty environment value as absent', () => {
-    // Nuxt fills the key with an empty string when the variable is unset, so
-    // "present but empty" is the ordinary case rather than a strange one.
     const nuxt = nuxtWith({ fingerly: { apiKey: '' } })
     module_.setup({ apiKey: 'pk_from_config' }, nuxt)
 
@@ -97,20 +91,22 @@ describe('the module', () => {
       apiVersion: 'v1',
       endpoints: [],
       fallbackToDefaultEndpoint: false,
-      submit: true,
+      incognitoDetection: 'standard',
       consent: 'pending',
     })
   })
 
   it('publishes every key, so each one is overridable from the environment', () => {
-    // Nuxt only overrides runtime config keys that already exist, so an
-    // omitted `submit` is a NUXT_PUBLIC_FINGERLY_SUBMIT that silently does
-    // nothing. Present-and-empty is how "not set" is spelled.
     const nuxt = nuxtWith()
     module_.setup({ apiKey: 'pk' }, nuxt)
 
     expect(Object.keys(fingerlyConfig(nuxt) as object).sort()).toEqual([
-      'apiKey', 'apiVersion', 'consent', 'endpoints', 'fallbackToDefaultEndpoint', 'submit',
+      'apiKey',
+      'apiVersion',
+      'consent',
+      'endpoints',
+      'fallbackToDefaultEndpoint',
+      'incognitoDetection',
     ])
   })
 
@@ -125,13 +121,16 @@ describe('the module', () => {
   })
 
   it('does not fail the build when no key is configured anywhere', () => {
-    // The key can legitimately arrive later, from the deployment environment.
-    // The runtime plugin is what says something about an empty one.
     const nuxt = nuxtWith()
     module_.setup({}, nuxt)
 
     expect(fingerlyConfig(nuxt)).toEqual({
-      apiKey: '', apiVersion: 'v1', endpoints: [], fallbackToDefaultEndpoint: false, submit: true, consent: 'pending',
+      apiKey: '',
+      apiVersion: 'v1',
+      endpoints: [],
+      fallbackToDefaultEndpoint: false,
+      incognitoDetection: 'standard',
+      consent: 'pending',
     })
   })
 

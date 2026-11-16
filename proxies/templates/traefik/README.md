@@ -4,7 +4,8 @@ Traefik's configuration alone cannot copy the visitor's address into a header
 (the headers middleware only sets fixed values), so this template routes the
 one path the Fingerly dashboard issued to the `container` template, which does
 the forwarding. The router answers exactly that path, on your own host; the
-container forwards only the browser SDK's submissions to the Fingerly API.
+container forwards single-pass browser and native SDK submissions as raw bytes
+to the Fingerly API.
 
 - `docker-compose.yml`: the container as a compose service, with the router in
   its labels, for Traefik's Docker provider.
@@ -107,10 +108,14 @@ forge it. This is the default, with no trusted IPs configured.
 ## What it sends and relays
 
 The container sends, to `https://api.fingerly.io/api/v1/ingest` only:
-`content-type`, `x-api-key`, `idempotency-key` when present, and the
-`x-fingerly-*` headers it sets itself (the proxy key, the client address, the
-page origin, the user agent and `x-fingerly-proxy-version: container/1.0.0`,
-which the dashboard shows per proxy). Cookies, `Authorization` and any
+`content-type`, `x-api-key`, `idempotency-key`, `user-agent`, `sec-fetch-*` and
+`sec-ch-ua*` when present, validated lowercase `x-fingerly-sdk-platform` when
+matched, and the `x-fingerly-*` headers it sets itself (the proxy key, the
+client address, `x-fingerly-origin` only when `Origin` is present,
+`x-fingerly-host`, the user agent and `x-fingerly-proxy-version: container/1.0.0`,
+which the dashboard shows per proxy). Requests missing both `Origin` and a
+valid `x-fingerly-sdk-platform` answer `400` (`missing_origin`) without
+synthesizing `x-fingerly-origin`. Cookies, `Authorization` and any
 `x-fingerly-*` header a visitor forges never leave. Bodies over 1 MiB are
 refused with `413`, other methods answer `405` with `Allow: POST`, redirects
 are not followed, and a missing or malformed key answers `503`.

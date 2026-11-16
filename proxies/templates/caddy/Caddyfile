@@ -1,7 +1,7 @@
 # Fingerly first-party proxy for Caddy, version 1.0.0.
 #
 # Put the `@fingerly` matcher and the `handle` block first in the site block
-# that serves your pages, so the browser SDK posts to your own host.
+# that serves your pages, so SDKs post to your own host.
 # `/k7x2qm4a` is the path the Fingerly dashboard issued for this proxy; the
 # block answers exactly that path, nothing under or beside it. The proxy key
 # comes from the FINGERLY_PROXY_KEY environment variable of the Caddy process,
@@ -15,55 +15,73 @@ www.example.com {
 	# characters.
 	@fingerly vars_regexp {http.request.orig_uri} ^/k7x2qm4a(?:[?].*)?$
 	handle @fingerly {
-		# Deferred, so it replaces whatever the API sends and also covers the
-		# responses Caddy writes itself.
-		header >Cache-Control no-store
+		route {
+			# Deferred, so it replaces whatever the API sends and also covers the
+			# responses Caddy writes itself.
+			header >Cache-Control no-store
 
-		@notpost not method POST
-		header @notpost Allow POST
-		respond @notpost 405
+			@notpost not method POST
+			header @notpost Allow POST
+			respond @notpost 405
 
-		# A key that is not shaped like a proxy key answers 503 rather than
-		# forwarding anything.
-		@nokey not vars_regexp {env.FINGERLY_PROXY_KEY} ^fly_px_(production|staging|development)_[A-Za-z0-9_-]+$
-		respond @nokey 503
+			# A key that is not shaped like a proxy key answers 503 rather than
+			# forwarding anything.
+			@nokey not vars_regexp {env.FINGERLY_PROXY_KEY} ^fly_px_(production|staging|development)_[A-Za-z0-9_-]+$
+			respond @nokey 503
 
-		request_body {
-			max_size 1MiB
-		}
+			# 1. Capture validated lowercase X-Fingerly-SDK-Platform; anything else becomes "".
+			vars fingerly_platform ""
+			@validplatform vars_regexp {http.request.header.X-Fingerly-SDK-Platform} ^(ios|android|react-native|react-native-ios|react-native-android|flutter|flutter-ios|flutter-android|lynx-ios|lynx-android|capacitor|kotlin-multiplatform)$
+			vars @validplatform fingerly_platform {http.request.header.X-Fingerly-SDK-Platform}
 
-		# Visitor-sent X-Fingerly-* headers never reach the API; the ones below
-		# are set by this proxy alone.
-		request_header -X-Fingerly-*
+			# 2-3. Strip all incoming X-Fingerly-* headers, then restore validated X-Fingerly-SDK-Platform.
+			request_header -X-Fingerly-*
+			@hasplatform not vars {http.vars.fingerly_platform} ""
+			request_header @hasplatform X-Fingerly-SDK-Platform {http.vars.fingerly_platform}
 
-		# Browsers send Origin with every POST. The page's own origin stands in
-		# when a client leaves it out.
-		@noorigin not header Origin *
-		request_header @noorigin Origin {scheme}://{hostport}
+			# 4. Reject with 400 missing_origin iff both Origin and validated platform are empty.
+			@missingorigin {
+				not header_regexp Origin .
+				vars {http.vars.fingerly_platform} ""
+			}
+			header @missingorigin Content-Type application/json
+			respond @missingorigin `{"error":{"code":"missing_origin","message":"Origin or X-Fingerly-SDK-Platform header is required"}}` 400
 
-		# The one URL this block can reach. Both of the browser SDK's calls go
-		# here; the API tells them apart by their bodies.
-		rewrite * /api/v1/ingest
-		reverse_proxy https://api.fingerly.io {
-			header_up Host {upstream_hostport}
-			header_up -Cookie
-			header_up -Authorization
-			header_up X-Fingerly-Proxy-Key {env.FINGERLY_PROXY_KEY}
-			# The visitor's address. Behind a load balancer, set trusted_proxies
-			# (and trusted_proxies_strict) so this is the visitor, not the load
-			# balancer. See the README.
-			header_up X-Fingerly-Client-Ip {client_ip}
-			header_up X-Fingerly-Origin {http.request.header.Origin}
-			header_up X-Fingerly-User-Agent {http.request.header.User-Agent}
-			header_up X-Fingerly-Proxy-Version caddy/1.0.0
+			# Forward X-Fingerly-Origin only when Origin was sent; never synthesize from Host.
+			@hasorigin header_regexp Origin .
+			request_header @hasorigin X-Fingerly-Origin {http.request.header.Origin}
 
-			# The API sends nothing naming Fingerly to proxied callers; dropping
-			# cookies is defense in depth.
-			header_down -Set-Cookie
+			request_body {
+				max_size 1MiB
+			}
 
-			transport http {
-				dial_timeout 5s
-				response_header_timeout 5s
+			# The one URL this block can reach. Single-pass browser and native SDK
+			# submissions go here as raw bytes.
+			rewrite * /api/v1/ingest
+			reverse_proxy https://api.fingerly.io {
+				header_up Host {upstream_hostport}
+				header_up -Cookie
+				header_up -Authorization
+				header_up X-Fingerly-Proxy-Key {env.FINGERLY_PROXY_KEY}
+				# The visitor's address. Behind a load balancer, set trusted_proxies
+				# (and trusted_proxies_strict) so this is the visitor, not the load
+				# balancer. See the README.
+				header_up X-Fingerly-Client-Ip {client_ip}
+				header_up X-Fingerly-Host {hostport}
+				header_up X-Fingerly-User-Agent {http.request.header.User-Agent}
+				header_up X-Fingerly-Proxy-Version caddy/1.0.0
+
+				# Drop cookies and internal headers as defense in depth.
+				header_down -Set-Cookie
+				header_down -Server
+				header_down -Fingerly-Balance-Micros
+				header_down -Fingerly-RateLimit-Scope
+				header_down -X-Fingerly-Proxy-Version
+
+				transport http {
+					dial_timeout 5s
+					response_header_timeout 5s
+				}
 			}
 		}
 	}

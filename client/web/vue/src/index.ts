@@ -1,11 +1,8 @@
 /**
- * @fingerly/vue - Vue 3 bindings for the Fingerly SDK.
- *
- * A plugin that holds one client and one shared result, and composables that
- * read it. See the README for the whole surface with examples.
+ * @fingerly/vue - Vue 3 bindings for the Fingerly SDK (`0.3.0`, single-pass `v: 3`).
  */
 
-export { fingerlyKey, FingerlyServerError, createFingerly } from './plugin.js'
+export { createFingerly, fingerlyKey, FingerlyServerError } from './plugin.js'
 export type {
   FingerlyContext,
   FingerlyState,
@@ -17,17 +14,19 @@ export { useFingerly } from './useFingerly.js'
 export { useIdentify } from './useIdentify.js'
 export type { UseIdentifyOptions, UseIdentifyReturn } from './useIdentify.js'
 
-// Re-exported so a component can name what it receives without also declaring a
-// dependency on the browser SDK.
 export type {
-  FingerlyWebEvent,
+  CollectOptions,
   Confidence,
   ConsentState,
+  FingerlyWebEvent,
+  IdentifyOptions,
   IdentifyResult,
+  IncognitoDetection,
   IntegrityReport,
   Lie,
   SignalOutcome,
   SignalReport,
   SignalStatus,
+  SuspectLevel,
 } from '@fingerly/web-js'
 export { ConsentError, TransportError } from '@fingerly/web-js'

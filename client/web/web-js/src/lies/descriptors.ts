@@ -1,30 +1,21 @@
 /**
- * Properties that have been redefined.
- *
- * The usual way to spoof `navigator.webdriver` is not to patch a function but
- * to redefine a property - `Object.defineProperty(navigator, 'webdriver', {get:
- * () => false})`. That leaves two traces: the accessor is now an own property
- * of the instance rather than living on the prototype where the platform put
- * it, and its getter is no longer native.
- *
- * Neither trace can be removed without removing the spoof.
+ * Hardened property-descriptor, getter-header, prototype-chain, and WebIDL
+ * receiver-brand inspection (`F-11`).
  */
 
 import type { Lie } from '@fingerly/core'
 
 import { attempt } from '../util.js'
+import {
+  createRealmStringifier,
+  INITIAL_GET_OWN_PROP_DESC,
+  INITIAL_GET_PROTOTYPE_OF,
+  isNativeFunctionSource,
+  passesWebIdlBrandCheck,
+  type RealmStringifier,
+} from './natives.js'
 
-const NATIVE_PATTERN = /\{\s*\[native code\]\s*\}\s*$/
-
-/**
- * Properties the platform defines on a prototype, never on the instance.
- *
- * If one of these is an own property of `navigator` or `screen`, something put
- * it there. The list is limited to the ones spoofers actually target, because
- * every entry is a claim about where a browser puts a property and a wrong
- * claim is a false positive on every visitor.
- */
-const INSTANCE_SHOULD_NOT_OWN: [holder: 'navigator' | 'screen', property: string][] = [
+const INSTANCE_SHOULD_NOT_OWN: readonly [holder: 'navigator' | 'screen', property: string][] = [
   ['navigator', 'webdriver'],
   ['navigator', 'userAgent'],
   ['navigator', 'platform'],
@@ -45,18 +36,20 @@ const INSTANCE_SHOULD_NOT_OWN: [holder: 'navigator' | 'screen', property: string
   ['screen', 'colorDepth'],
 ]
 
-export function findRedefinedProperties(w: Window & typeof globalThis): Lie[] {
+const EMPTY_BRAND_ARGS: readonly (readonly unknown[])[] = [[]]
+
+export function findRedefinedProperties(
+  w: Window & typeof globalThis,
+  stringify: RealmStringifier = createRealmStringifier(),
+): Lie[] {
   const lies: Lie[] = []
 
   for (const [holderName, property] of INSTANCE_SHOULD_NOT_OWN) {
     const holder = holderName === 'navigator' ? w.navigator : w.screen
     if (!holder) continue
 
-    const own = attempt(() => Object.getOwnPropertyDescriptor(holder, property))
-
+    const own = attempt(() => INITIAL_GET_OWN_PROP_DESC(holder, property))
     if (own) {
-      // The platform puts these on Navigator.prototype / Screen.prototype. An
-      // own descriptor means the instance was written to directly.
       lies.push({
         id: `${holderName}.${property}`,
         kind: 'descriptor',
@@ -65,31 +58,54 @@ export function findRedefinedProperties(w: Window & typeof globalThis): Lie[] {
       continue
     }
 
-    // Even on the prototype, the getter must still be native.
-    const proto = attempt(() => Object.getPrototypeOf(holder) as object | null)
+    const proto = attempt(() => INITIAL_GET_PROTOTYPE_OF(holder) as object | null)
     if (!proto) continue
 
-    const inherited = attempt(() => Object.getOwnPropertyDescriptor(proto, property))
-    if (!inherited?.get) continue
+    const inherited = attempt(() => INITIAL_GET_OWN_PROP_DESC(proto, property))
+    if (!inherited) continue
 
-    const source = attempt(() => Function.prototype.toString.call(inherited.get))
-    if (source !== undefined && !NATIVE_PATTERN.test(source)) {
+    const getterId = `${holderName}.${property}.getter`
+    if ('value' in inherited && inherited.get === undefined) {
       lies.push({
-        id: `${holderName}.${property}.getter`,
+        id: getterId,
+        kind: 'descriptor',
+        detail: 'data-property-replaces-getter',
+      })
+      continue
+    }
+
+    const getter = inherited.get
+    if (typeof getter !== 'function') continue
+
+    const stringified = stringify(getter)
+    if (!stringified.ok) {
+      lies.push({
+        id: getterId,
+        kind: 'to-string-threw',
+      })
+    } else if (!isNativeFunctionSource(getter, stringified.source, property, true)) {
+      lies.push({
+        id: getterId,
         kind: 'descriptor',
         detail: 'getter-is-not-native',
       })
     }
+
+    if (!passesWebIdlBrandCheck(getter as (...args: unknown[]) => unknown, EMPTY_BRAND_ARGS)) {
+      lies.push({
+        id: getterId,
+        kind: 'brand',
+        detail: 'getter-accepted-invalid-receiver',
+      })
+    }
   }
 
-  // The prototype chain itself. `navigator` must be a Navigator; a Proxy or a
-  // hand-built stand-in is not, and several anti-detect browsers ship one.
-  const navigatorProto = attempt(() => Object.getPrototypeOf(w.navigator))
+  const navigatorProto = attempt(() => INITIAL_GET_PROTOTYPE_OF(w.navigator))
   if (w.Navigator && navigatorProto !== undefined && navigatorProto !== w.Navigator.prototype) {
     lies.push({ id: 'navigator', kind: 'prototype', detail: 'not-Navigator.prototype' })
   }
 
-  const screenProto = attempt(() => Object.getPrototypeOf(w.screen))
+  const screenProto = attempt(() => INITIAL_GET_PROTOTYPE_OF(w.screen))
   if (w.Screen && screenProto !== undefined && screenProto !== w.Screen.prototype) {
     lies.push({ id: 'screen', kind: 'prototype', detail: 'not-Screen.prototype' })
   }

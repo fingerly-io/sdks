@@ -345,4 +345,33 @@ describe('a public response', () => {
     expect(seen.identify).not.toHaveProperty('triggers')
     expect(seen.identify).not.toHaveProperty('verdicts')
   })
+
+  it('forwards incognitoDetection and exposes visitorId "" on Option B unidentifiable answers', async () => {
+    await answering({ visitor_id: '', identifiable: false, suspect_score: 40, suspect_level: 'high' })
+    environment.NEXT_PUBLIC_FINGERLY_API_KEY = 'pk_from_env'
+    let seen!: ReturnType<typeof useIdentify>
+    const Probe = () => {
+      seen = useIdentify({ immediate: true })
+      return null
+    }
+
+    await act(async () => {
+      render(
+        <FingerlyProvider consent="granted" incognitoDetection="extended">
+          <Probe />
+        </FingerlyProvider>,
+      )
+    })
+    await vi.waitFor(() => expect(seen.isReady).toBe(true))
+
+    expect(loadMock).toHaveBeenCalledWith({
+      apiKey: 'pk_from_env',
+      consent: 'granted',
+      incognitoDetection: 'extended',
+    })
+    expect(seen.visitorId).toBe('')
+    expect(seen.visitorIsNew).toBe(false)
+    expect(seen.identifiable).toBe(false)
+    expect(seen.suspectLevel).toBe('high')
+  })
 })

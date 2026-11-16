@@ -217,14 +217,12 @@ describe('injectIdentify', () => {
     expect(fingerly.isSuspicious()).toBeNull()
   })
 
-  it('reports an unscored check as null, not zero', async () => {
-    // Null and zero are different answers. Zero is "we scored it and found
-    // nothing"; null is "nobody scored it". A binding that collapsed them
-    // would make an unsubmitted page look clean.
+  it('reports an unscored Option B check with null scores and visitorId ""', async () => {
     identifyMock.mockResolvedValueOnce({
       ...RESULT,
-      requestId: '',
+      requestId: 'req_opt_b',
       visitorId: '',
+      visitorIsNew: false,
       identifiable: false,
       suspectScore: null,
       suspectLevel: null,
@@ -236,7 +234,7 @@ describe('injectIdentify', () => {
 
     expect(fingerly.suspectScore()).toBeNull()
     expect(fingerly.suspectLevel()).toBeNull()
-    expect(fingerly.visitorId()).toBeNull()
+    expect(fingerly.visitorId()).toBe('')
     expect(fingerly.identifiable()).toBe(false)
   })
 
@@ -370,17 +368,22 @@ describe('injectIdentify', () => {
     }
   })
 
-  it('leaves requestId null when submit is off, and still shares the run', async () => {
-    identifyMock.mockResolvedValue({ ...RESULT, requestId: '' })
-    application({ apiKey: 'fly_pk_development_test', consent: 'granted', submit: false })
+  it('forwards incognitoDetection="extended", leaves empty requestId null, and shares one run', async () => {
+    identifyMock.mockResolvedValue({ ...RESULT, requestId: '', visitorId: '', identifiable: false })
+    application({
+      apiKey: 'fly_pk_development_test',
+      consent: 'granted',
+      incognitoDetection: 'extended',
+    })
 
     const first = TestBed.runInInjectionContext(() => injectIdentify({ immediate: true }))
     const second = TestBed.runInInjectionContext(() => injectIdentify({ immediate: true }))
     await render()
 
     expect(identifyMock).toHaveBeenCalledTimes(1)
-    expect(identifyMock).toHaveBeenCalledWith({ submit: false })
+    expect(identifyMock).toHaveBeenCalledWith({ incognitoDetection: 'extended' })
     expect(first.requestId()).toBeNull()
+    expect(first.visitorId()).toBe('')
     expect(second.report()).not.toBeNull()
   })
 })

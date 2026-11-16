@@ -1,9 +1,10 @@
 # Fingerly first-party proxy templates
 
-Ready-made first-party proxies for sites that run neither the Cloudflare
-Worker (`../cloudflare`) nor one of the server SDKs. Each one answers the one
-path the Fingerly dashboard issued, on your own host, and forwards only the
-browser SDK's submissions to `https://api.fingerly.io/api/v1/ingest`.
+Ready-made first-party proxies for sites and apps that run neither the
+Cloudflare Worker (`../cloudflare`) nor one of the server SDKs. Each one
+answers the one path the Fingerly dashboard issued, on your own host, and
+forwards single-pass browser and native SDK submissions as raw bytes to
+`https://api.fingerly.io/api/v1/ingest`.
 
 | Template | Kind | Files |
 | --- | --- | --- |
@@ -26,21 +27,30 @@ to the container.
 ## What every template does
 
 - Answers exactly the issued path (`/k7x2qm4a` in the examples), nothing under
-  or beside it, and only `POST` (`405` with `Allow: POST` otherwise). The raw
-  request target is compared, so a doubled slash, a dot segment such as
-  `/x/../k7x2qm4a`, an encoded slash or character, or another case is not
-  forwarded; a query string is ignored. Two platforms clean the path before
-  the template sees it: Traefik resolves dot segments, doubled slashes and
-  encoded characters before routing, and on Vercel and Netlify the request URL
-  arrives with dot segments already resolved. Those forms reach the API as the
-  issued path itself.
-- Forwards to the one constant upstream, never anywhere else, and follows no
-  redirects.
-- Sends `content-type`, `x-api-key`, `idempotency-key` when present, and sets
-  `x-fingerly-proxy-key`, `x-fingerly-client-ip` (from the platform's trusted
-  source, never the left-most `X-Forwarded-For`), `x-fingerly-origin`,
-  `x-fingerly-user-agent` and `x-fingerly-proxy-version` itself, overwriting
-  anything the visitor sent under those names.
+  or beside it (including retired `/supplement` subpaths, which return `404`),
+  and only `POST` (`405` with `Allow: POST` otherwise). The raw request target
+  is compared, so a doubled slash, a dot segment such as `/x/../k7x2qm4a`, an
+  encoded slash or character, or another case is not forwarded; a query string
+  is ignored. Two platforms clean the path before the template sees it: Traefik
+  resolves dot segments, doubled slashes and encoded characters before routing,
+  and on Vercel and Netlify the request URL arrives with dot segments already
+  resolved. Those forms reach the API as the issued path itself.
+- Forwards raw request body bytes untouched to the one constant upstream, never
+  anywhere else, and follows no redirects.
+- Applies the sanitize-and-restore header sequence: captures incoming
+  `x-fingerly-sdk-platform` only when it matches the exact lowercase native SDK
+  allowlist, strips every incoming `x-fingerly-*` header alongside `Cookie` and
+  `Authorization`, restores validated `x-fingerly-sdk-platform` when matched,
+  and rejects immediately with `400` (`missing_origin`, marked `no-store`) when
+  both `Origin` and validated `x-fingerly-sdk-platform` are absent (never
+  synthesizing `x-fingerly-origin` from `Host` or the request URL).
+- Sends `content-type`, `x-api-key`, `idempotency-key`, `sec-fetch-*` and
+  `sec-ch-ua*` when present, and sets `x-fingerly-proxy-key`,
+  `x-fingerly-client-ip` (from the platform's trusted source, never the
+  left-most `X-Forwarded-For`), `x-fingerly-origin` (only when `Origin` is
+  present), `x-fingerly-host`, `x-fingerly-user-agent` and
+  `x-fingerly-proxy-version` itself, overwriting anything the visitor sent
+  under those names.
 - Forwards nothing and answers `500` ("The client IP callback returned no
   valid address") when the trusted source does not hold exactly one IPv4 or
   IPv6 address, and logs that once rather than per request. Vercel reads only
@@ -59,8 +69,9 @@ to the container.
   `504` and `502` with their own timeouts.
 - Relays only `content-type`, `x-request-id`, `ratelimit-limit`,
   `ratelimit-remaining` and `retry-after`, plus `cache-control: no-store`.
-  nginx and Caddy drop `Set-Cookie` and pin `no-store`; the API sends nothing
-  naming Fingerly to proxied callers, so that is defense in depth.
+  nginx and Caddy drop `Set-Cookie` and internal headers and pin `no-store`;
+  the API sends nothing naming Fingerly to proxied callers, so that is defense
+  in depth.
 - Keeps the proxy key out of shipped files: an environment variable, a secret
   store, a root-only include file or a `NoEcho` parameter. The nginx, Caddy,
   Vercel, Netlify, CloudFront, container and Traefik steps never put it on a

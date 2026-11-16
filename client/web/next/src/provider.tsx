@@ -4,7 +4,11 @@
  * The provider, configured the way a Next app configures things.
  */
 
-import { FingerlyProvider as ReactFingerlyProvider, type ConsentState } from '@fingerly/react'
+import {
+  FingerlyProvider as ReactFingerlyProvider,
+  type ConsentState,
+  type IncognitoDetection,
+} from '@fingerly/react'
 import type { ReactNode } from 'react'
 
 /**
@@ -25,8 +29,8 @@ export interface FingerlyNextProviderProps {
   endpoints?: string | readonly string[]
   /** Opt into the Fingerly API after custom endpoints fail. */
   fallbackToDefaultEndpoint?: boolean
-  /** Collect and score without submitting anything. */
-  submit?: boolean
+  /** Opt-in extended incognito probe control (`'standard'` or `'extended'`). */
+  incognitoDetection?: IncognitoDetection
   /**
    * Whether the visitor has agreed to be identified. Defaults to `pending`.
    *
@@ -150,7 +154,7 @@ export function FingerlyProvider(props: FingerlyNextProviderProps): ReactNode {
       {...(props.apiVersion === undefined ? {} : { apiVersion: props.apiVersion })}
       {...(endpoints === undefined ? {} : { endpoints })}
       {...(props.fallbackToDefaultEndpoint === undefined ? {} : { fallbackToDefaultEndpoint: props.fallbackToDefaultEndpoint })}
-      {...(props.submit === undefined ? {} : { submit: props.submit })}
+      {...(props.incognitoDetection === undefined ? {} : { incognitoDetection: props.incognitoDetection })}
       {...(props.consent === undefined ? {} : { consent: props.consent })}
     >
       {props.children}

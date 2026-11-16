@@ -155,14 +155,14 @@ describe('createFingerly', () => {
     await vi.waitFor(() => expect(level).toBe('medium'))
   })
 
-  it('still shares one identification when submit is off', async () => {
-    // Regression. The cache used to key on requestId, which is empty under
-    // `submit: false` - so the cache never engaged and every component
-    // re-collected the entire fingerprint. Found in a browser, not here,
-    // because the mock returns a requestId by default.
-    identifyMock.mockResolvedValue({ ...RESULT, requestId: '' })
+  it('shares one identification even when requestId is empty and forwards incognitoDetection', async () => {
+    identifyMock.mockResolvedValue({ ...RESULT, requestId: '', visitorId: '', identifiable: false })
 
-    const plugin = createFingerly({ apiKey: 'fly_pk_development_test', consent: 'granted', submit: false })
+    const plugin = createFingerly({
+      apiKey: 'fly_pk_development_test',
+      consent: 'granted',
+      incognitoDetection: 'extended',
+    })
     const a = withSetup(() => useIdentify(), plugin).result
     const b = withSetup(() => useIdentify(), plugin).result
 
@@ -171,22 +171,26 @@ describe('createFingerly', () => {
     await a.identify()
 
     expect(identifyMock).toHaveBeenCalledTimes(1)
+    expect(identifyMock).toHaveBeenCalledWith({ incognitoDetection: 'extended' })
   })
 
-  it('leaves requestId null when submit is off', async () => {
-    // The client reports an empty requestId when nothing was sent. Surfacing
-    // that as `null` rather than `''` is the honest answer: there is nothing to
-    // fetch later, and an empty string reads like an identifier.
-    identifyMock.mockResolvedValueOnce({ ...RESULT, requestId: '' })
+  it('exposes visitorId "" on Option B unidentifiable answers and null requestId when empty', async () => {
+    identifyMock.mockResolvedValueOnce({
+      ...RESULT,
+      requestId: '',
+      visitorId: '',
+      visitorIsNew: false,
+      identifiable: false,
+    })
 
     const { result } = withSetup(
       () => useIdentify(),
-      createFingerly({ apiKey: 'fly_pk_development_test', consent: 'granted', submit: false }),
+      createFingerly({ apiKey: 'fly_pk_development_test', consent: 'granted' }),
     )
     await result.identify()
 
-    expect(identifyMock).toHaveBeenCalledWith({ submit: false })
     expect(result.requestId.value).toBeNull()
+    expect(result.visitorId.value).toBe('')
     expect(result.report.value).not.toBeNull()
   })
 })
@@ -304,14 +308,12 @@ describe('useIdentify', () => {
     expect(result).not.toHaveProperty('reason')
   })
 
-  it('reports an unscored check as null, not zero', async () => {
-    // Null and zero are different answers. Zero is "we scored it and found
-    // nothing"; null is "nobody scored it". A binding that collapsed them
-    // would make an unsubmitted page look clean.
+  it('reports an unscored Option B check as null scores and visitorId ""', async () => {
     identifyMock.mockResolvedValueOnce({
       ...RESULT,
-      requestId: '',
+      requestId: 'req_opt_b',
       visitorId: '',
+      visitorIsNew: false,
       identifiable: false,
       suspectScore: null,
       suspectLevel: null,
@@ -322,7 +324,7 @@ describe('useIdentify', () => {
 
     expect(result.suspectScore.value).toBeNull()
     expect(result.suspectLevel.value).toBeNull()
-    expect(result.visitorId.value).toBeNull()
+    expect(result.visitorId.value).toBe('')
     expect(result.identifiable.value).toBe(false)
   })
 

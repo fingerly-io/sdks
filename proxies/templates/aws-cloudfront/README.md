@@ -2,10 +2,10 @@
 
 A CloudFront Function and a cache behavior for the distribution that already
 serves your site. The behavior answers one path the Fingerly dashboard issued,
-on your own domain, and sends only the browser SDK's submissions to the
-Fingerly API as its origin. It is not an open proxy: the origin is
-`api.fingerly.io`, the function rewrites every request to one URL on it, and
-every other method is refused.
+on your own domain, and sends single-pass browser and native SDK submissions as
+raw bytes to the Fingerly API as its origin. It is not an open proxy: the
+origin is `api.fingerly.io`, the function rewrites every request to one URL on
+it, and every other method is refused.
 
 - `function.js`: the function (runtime `cloudfront-js-2.0`), associated with
   both the viewer request and the viewer response event of the behavior.
@@ -89,11 +89,14 @@ sets it; should it ever not be one IPv4 or IPv6 address, the function answers
 
 Upstream, to `https://api.fingerly.io/api/v1/ingest` only: the viewer's request
 with every cookie, `Authorization` and any visitor-sent `x-fingerly-*` header
-removed, plus the `x-fingerly-*` headers the function sets (the client
-address, the page origin, the user agent and
-`x-fingerly-proxy-version: aws-cloudfront/1.0.0`, which the dashboard shows per
-proxy) and the proxy key from the origin's custom header. Other methods answer
-`405` with `Allow: POST`.
+stripped, validated lowercase `x-fingerly-sdk-platform` restored when matched,
+plus the `x-fingerly-*` headers the function sets (the client address,
+`x-fingerly-origin` only when `Origin` is present, `x-fingerly-host`, the user
+agent and `x-fingerly-proxy-version: aws-cloudfront/1.0.0`, which the dashboard
+shows per proxy) and the proxy key from the origin's custom header. Requests
+missing both `Origin` and a valid `x-fingerly-sdk-platform` answer `400`
+(`missing_origin`) without synthesizing `x-fingerly-origin`. Other methods
+answer `405` with `Allow: POST`.
 
 CloudFront Functions cannot read request bodies, so the body passes through
 unchanged and CloudFront's own request limits apply rather than a 1 MiB cap.

@@ -93,8 +93,8 @@ async function render(ctx: SourceContext): Promise<number> {
 
 export const audioSource: Source<AudioSignal> = {
   id: SOURCE.audio,
-  tier: 'deferred',
-  timeoutMs: 500,
+  stage: 'collect',
+  timeoutMs: 250,
   async run(ctx) {
     const first = await render(ctx)
 
@@ -122,7 +122,7 @@ export const audioSource: Source<AudioSignal> = {
  */
 export const audioLatencySource: Source<AudioSignal> = {
   id: SOURCE.audioLatency,
-  tier: 'deferred',
+  stage: 'collect',
   timeoutMs: 200,
   run() {
     const w = globalThis as unknown as {

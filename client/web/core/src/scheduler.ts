@@ -1,40 +1,10 @@
 /**
- * The budgeted source runner.
+ * The budgeted single-pass two-stage source runner.
  *
- * Every source runs under a deadline. Wrapping each source in a promise with
- * no timeout means a source that hangs hangs identification forever, and the
- * caller has no upper bound on how long identification takes. That is fine for an analytics beacon and not fine for
- * a login form, which is the difference this file is here to make.
- *
- * Three guarantees:
- *
- *  1. `collect` resolves within the budget, or very close to it. Not "usually".
- *  2. Every source appears in the result, whatever happened to it.
- *  3. No source can take another one down, or the run as a whole.
- *
- * # The limit of guarantee 1, stated honestly
- *
- * A `timeoutMs` is a target, not a promise, because it is enforced with
- * `setTimeout` and `setTimeout` is not reliable in the two cases that matter.
- *
- * **Background tabs.** Browsers throttle timers in a hidden tab. Measured in
- * Chrome, a bare `setTimeout(..., 100)` took 233ms on one call and 794ms on
- * another in the same session. A source with a 150ms timeout can therefore run
- * for the better part of a second, because the timer meant to stop it is
- * throttled by the same policy. Anything whose cost is *waiting* rather than
- * computing pays this; see the note in `sensorsSource` for what to do about it.
- *
- * **A blocked main thread.** `setTimeout` cannot preempt synchronous work, only
- * queue behind it. A source that blocks runs to completion whatever its timeout
- * says.
- *
- * The budget is the guarantee that survives both, because it is checked before
- * each source is started rather than relying on a timer to fire.
- *
- * The consequence for source authors: a `timeoutMs` must be short enough that
- * the *throttled* version of it is still affordable, a source should not wait
- * on a clock when it can avoid it, and a source that can block the thread for
- * an unbounded time does not belong in the set at any timeout.
+ * Stage 1 (`'prerequisite'`) runs to completion as a barrier before Stage 2
+ * (`'collect'`) starts, passing Stage 1 outcomes (`engine` + Gecko RFP timer
+ * probe) and a per-run shared scratchpad into Stage 2 so `shields` and `canvas`
+ * never race the Gecko timer gate.
  */
 
 import {
@@ -45,64 +15,49 @@ import {
   type Source,
   type SourceContext,
 } from './source.js'
-import type { SignalOutcome, SignalStatus, SourceTier } from './types.js'
+import type { IncognitoDetection, SignalOutcome, SignalStatus, SourceStage } from './types.js'
 
-/** A monotonic clock where one exists, and a wall clock where it does not. */
-const clock: () => number =
-  typeof globalThis.performance?.now === 'function'
-    ? () => globalThis.performance.now()
-    : () => Date.now()
+/** Wall-clock millisecond source for budget accounting (immune to `performance.now` clamping/mocks). */
+const clock: () => number = () => Date.now()
+
+export const DEFAULT_BUDGET_MS = 350
 
 export interface ScheduleOptions {
   /**
-   * The wall-clock ceiling for the whole run.
-   *
-   * The default is chosen to be survivable on a page that is doing something
-   * else: a submission on a checkout button should not be the reason a click
-   * feels slow. Sources that cannot fit belong in the `deferred` tier.
+   * Total wall-clock ceiling for the two-stage single-pass run. Defaults to `350`ms.
    */
   budgetMs?: number
   /** Applied to any source that does not set its own `timeoutMs`. */
   defaultSourceTimeoutMs?: number
-  /**
-   * How many sources may be in flight at once.
-   *
-   * Not unbounded: several of the browser sources contend for the main thread
-   * (canvas, font measurement, anything that forces layout), and running all
-   * of them together makes each one's duration a measure of the others rather
-   * than of the device. A cap keeps the timings comparable between visits.
-   */
+  /** Maximum number of sources in flight concurrently within one stage. */
   concurrency?: number
-  /** Which tiers to run. Defaults to both. */
-  tiers?: SourceTier[]
+  /** Stages to execute in barrier order. Defaults to `['prerequisite', 'collect']`. */
+  stages?: readonly SourceStage[]
+  /** Controls opt-in extended incognito sources (`optIn: 'extended-incognito'`). */
+  incognitoDetection?: IncognitoDetection
+  /** Optional predicate to select a source subset (e.g. DPLA-safe embedded subset). */
+  filter?: (source: Source) => boolean
   /** Cancels the whole run from outside. */
   signal?: AbortSignal
-  /** Outcomes from an earlier phase, visible through SourceContext but not returned. */
+  /** Pre-populated outcomes visible through `SourceContext.completed`. */
   completed?: Readonly<Record<string, SignalOutcome>>
 }
 
 export interface ScheduleResult {
   outcomes: Record<string, SignalOutcome>
   elapsedMs: number
-  /** True when the budget expired with sources still unfinished or unstarted. */
+  /** True when the budget expired or a source timed out. */
   truncated: boolean
 }
 
 const DEFAULTS = {
-  budgetMs: 1200,
-  defaultSourceTimeoutMs: 300,
+  budgetMs: DEFAULT_BUDGET_MS,
+  defaultSourceTimeoutMs: 250,
   concurrency: 6,
 } as const
 
-/**
- * Durations are rounded to a whole millisecond before they leave this file.
- *
- * `performance.now()` offers sub-microsecond resolution in a secure context,
- * and shipping that would hand anyone reading the report a high-precision
- * timer oracle for the visitor's machine - and would make every report differ
- * from every other in the noise, which is the opposite of what a stable
- * fingerprint needs. Whole milliseconds carry the signal without the jitter.
- */
+const ALL_STAGES: readonly SourceStage[] = ['prerequisite', 'collect']
+
 function roundMs(ms: number): number {
   return Math.max(0, Math.round(ms))
 }
@@ -114,28 +69,27 @@ function statusFor(error: unknown): SignalStatus {
   return 'error'
 }
 
-/**
- * Run one source under its own timeout and the run's deadline, whichever comes
- * first, and translate whatever happens into an outcome.
- *
- * This function does not throw. That is the point of it: a source is untrusted
- * code as far as the scheduler is concerned - much of it pokes at browser APIs
- * specifically to see how they misbehave - and one that throws synchronously,
- * returns a rejected promise, or never settles at all must all end the same way.
- */
+function isEnabled(source: Source, options: ScheduleOptions): boolean {
+  if (source.optIn === 'extended-incognito' && options.incognitoDetection !== 'extended') {
+    return false
+  }
+  if (options.filter && !options.filter(source)) {
+    return false
+  }
+  return true
+}
+
 async function runSource(
   source: Source,
   deadline: number,
   defaultTimeoutMs: number,
   outerSignal: AbortSignal | undefined,
   completed: Readonly<Record<string, SignalOutcome>>,
+  shared: Map<string, unknown>,
 ): Promise<SignalOutcome> {
   const started = clock()
   const budgetLeft = deadline - started
 
-  // Already out of time. Recorded as a timeout that cost nothing, rather than
-  // omitted: "we never got to this" is a different fact from "this failed",
-  // and a report full of zero-millisecond timeouts is a legible symptom.
   if (budgetLeft <= 0) {
     return { status: 'timeout', ms: 0, reason: 'budget-exhausted' }
   }
@@ -152,14 +106,11 @@ async function runSource(
     signal: controller.signal,
     budgetRemainingMs: () => Math.max(0, deadline - clock()),
     completed: (id) => completed[id],
+    shared,
   }
 
   try {
     const value = await Promise.race([
-      // `Promise.resolve` rather than `await source.run(ctx)` so that a source
-      // throwing synchronously is caught by this same try, on the same path as
-      // one that rejects. A source author should never have to know which of
-      // the two they wrote.
       (async () => source.run(ctx))(),
       new Promise<never>((_, reject) => {
         controller.signal.addEventListener(
@@ -174,9 +125,6 @@ async function runSource(
   } catch (error) {
     const status = statusFor(error)
     const reason = reasonOf(error)
-    // Building the object conditionally: `exactOptionalPropertyTypes` is on, so
-    // `reason: undefined` is not the same as an absent `reason`, and an absent
-    // one is what should reach the server.
     return reason === undefined
       ? { status, ms: roundMs(clock() - started) }
       : { status, ms: roundMs(clock() - started), reason }
@@ -187,28 +135,7 @@ async function runSource(
 }
 
 /**
- * Collect every source, tier by tier, inside the budget.
- *
- * Each tier is a barrier: every `fast` source has finished before the first
- * `deferred` one starts. That is not just ordering - it is what makes
- * [[SourceContext.completed]] dependable, and a deferred source needs it.
- *
- * The motivating case is canvas. Reading pixels back triggers a *permission
- * doorhanger* in Tor Browser, and this SDK must never make a browser ask its
- * user anything. Whether resistFingerprinting is active is established by the
- * `timing` source in the fast tier, so canvas - deferred - can look for Tor's
- * measured coarse clock profiles and decline to touch the API at all. Without
- * the barrier that lookup would be a race, and losing the race means prompting
- * a user.
- *
- * The barrier is affordable because the tiers are defined by cost: the fast
- * tier is cheap reads, measured at well under 30ms in total, so gating on its
- * slowest member costs almost nothing.
- *
- * When the budget runs out the remaining sources are not started - they are
- * recorded as budget-exhausted timeouts, which keeps the source set in the
- * report constant regardless of how the run went. A report whose *keys* vary
- * with load would be a fingerprint of the load.
+ * Collect every enabled source across `prerequisite` -> `collect` inside `budgetMs`.
  */
 export async function collect(
   sources: readonly Source[],
@@ -217,21 +144,26 @@ export async function collect(
   const budgetMs = options.budgetMs ?? DEFAULTS.budgetMs
   const defaultSourceTimeoutMs = options.defaultSourceTimeoutMs ?? DEFAULTS.defaultSourceTimeoutMs
   const concurrency = Math.max(1, options.concurrency ?? DEFAULTS.concurrency)
-  const tiers: SourceTier[] = options.tiers ?? ['fast', 'deferred']
+  const stages = options.stages ?? ALL_STAGES
 
   const started = clock()
   const deadline = started + budgetMs
   const outcomes: Record<string, SignalOutcome> = {}
   const completed: Record<string, SignalOutcome> = { ...(options.completed ?? {}) }
+  const shared = new Map<string, unknown>()
 
   let truncated = false
 
-  // One tier at a time, awaiting each before the next begins. See the note
-  // above for why the barrier is worth its cost.
-  for (const tier of tiers) {
-    const queue = sources.filter((source) => source.tier === tier)
+  for (const stage of stages) {
+    const queue = sources.filter(
+      (source) => (source.stage ?? 'collect') === stage && isEnabled(source, options),
+    )
     if (queue.length === 0) continue
 
+    // Snapshot completed outcomes before starting this stage so siblings in the
+    // same stage never race on each other, while Stage 2 sees all of Stage 1.
+    const stageSnapshot: Readonly<Record<string, SignalOutcome>> = { ...completed }
+    const stageOutcomes: Record<string, SignalOutcome> = {}
     let next = 0
 
     const worker = async (): Promise<void> => {
@@ -241,7 +173,7 @@ export async function collect(
 
         if (clock() >= deadline || options.signal?.aborted) {
           truncated = true
-          outcomes[source.id] = { status: 'timeout', ms: 0, reason: 'budget-exhausted' }
+          stageOutcomes[source.id] = { status: 'timeout', ms: 0, reason: 'budget-exhausted' }
           continue
         }
 
@@ -250,18 +182,17 @@ export async function collect(
           deadline,
           defaultSourceTimeoutMs,
           options.signal,
-          // The outcomes so far. Everything from earlier tiers is complete;
-          // sources within a tier run together, so a source must not depend on
-          // a sibling in its own tier.
-          completed,
+          stageSnapshot,
+          shared,
         )
         if (outcome.status === 'timeout') truncated = true
-        outcomes[source.id] = outcome
-        completed[source.id] = outcome
+        stageOutcomes[source.id] = outcome
       }
     }
 
     await Promise.all(Array.from({ length: Math.min(concurrency, queue.length) }, worker))
+    Object.assign(outcomes, stageOutcomes)
+    Object.assign(completed, stageOutcomes)
   }
 
   return { outcomes, elapsedMs: roundMs(clock() - started), truncated }
