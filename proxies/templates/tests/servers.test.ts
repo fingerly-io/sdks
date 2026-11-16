@@ -74,6 +74,10 @@ class StubApi {
         'set-cookie': 'session=abc; Path=/',
         'cache-control': 'max-age=60',
         server: 'fingerly-api',
+        // Headers outside the relay list, as a future API might add them.
+        'x-new-internal': '1',
+        'x-powered-by': 'api-stack',
+        via: '1.1 api-internal',
       })
       res.end('{"request_id":"req_stub"}')
     })
@@ -279,6 +283,8 @@ const TRAEFIK_RESOLVES = ['/x/../k7x2qm4a', '/./k7x2qm4a', '/k7x2qm4a/.', '/k7x2
 
 const relayReady = { path: '/k7x2qm4a', when: (response: Response) => response.status === 405 }
 
+const NGINX_LOAD_MODULE = 'load_module modules/ngx_http_js_module.so;'
+
 const NGINX_PLATFORM_MAP = [
   'map $http_x_fingerly_sdk_platform $fingerly_platform {',
   '    default "";',
@@ -316,8 +322,22 @@ const templates: Template[] = [
       writeFileSync(join(dir, `fingerly-${n}.conf`), shipped.replace(SHIPPED_UPSTREAM_NGINX, `proxy_pass http://host.docker.internal:${stubPort}/api/v1/ingest;`))
       writeFileSync(join(dir, `key-${n}.conf`), `set $fingerly_proxy_key "${key}";\n`)
       writeFileSync(join(dir, `site-${n}.conf`), `${NGINX_PLATFORM_MAP}server {\n    listen 8080;\n    include /etc/nginx/snippets/fingerly.conf;\n    location / { return 200 "site"; }\n}\n`)
+      // The image's own main configuration, plus the load_module line the README adds.
+      writeFileSync(join(dir, `nginx-${n}.conf`), [
+        NGINX_LOAD_MODULE,
+        'user nginx;',
+        'worker_processes 1;',
+        'events {}',
+        'http {',
+        '    include /etc/nginx/mime.types;',
+        '    include /etc/nginx/conf.d/*.conf;',
+        '}',
+        '',
+      ].join('\n'))
       return new Stack([{
         args: [
+          '-v', `${join(dir, `nginx-${n}.conf`)}:/etc/nginx/nginx.conf:ro`,
+          '-v', `${join(ROOT, 'nginx/fingerly.js')}:/etc/nginx/fingerly.js:ro`,
           '-v', `${join(dir, `site-${n}.conf`)}:/etc/nginx/conf.d/default.conf:ro`,
           '-v', `${join(dir, `fingerly-${n}.conf`)}:/etc/nginx/snippets/fingerly.conf:ro`,
           '-v', `${join(dir, `key-${n}.conf`)}:/etc/nginx/fingerly-proxy-key.conf:ro`,
@@ -452,6 +472,24 @@ const visitorHeaders = {
   'x-fingerly-other': 'forged',
 }
 
+/** Headers outside the contract a page, a wrapper or a forger can add to a same-origin POST. */
+const UNLISTED_REQUEST = {
+  referer: 'https://shop.example/reset?token=secret-token',
+  'x-custom-token': 'app-header',
+  forwarded: 'for=203.0.113.9',
+  'x-forwarded-host': 'forged.example',
+  'accept-language': 'tr-TR,tr;q=0.9',
+  'x-requested-with': 'wrapper',
+}
+/** Names the contract (sdks/contract/proxy.md section 3) lets a proxy send upstream. */
+const CONTRACT_REQUEST = /^(x-api-key|content-type|idempotency-key|user-agent|sec-fetch-(site|mode|dest)|sec-ch-ua(-mobile|-platform)?|x-fingerly-[a-z-]+)$/
+/** Framing headers, which are not a forwarding decision. */
+const TRANSPORT_REQUEST = /^(host|content-length|connection|accept-encoding|transfer-encoding)$/
+/** The response headers the contract relays (section 4), plus the pinned Cache-Control. */
+const RELAYED_RESPONSE = /^(x-request-id|ratelimit-limit|ratelimit-remaining|retry-after|content-type|cache-control)$/
+/** Framing headers and the front server's own name. */
+const TRANSPORT_RESPONSE = /^(content-length|connection|transfer-encoding|date|keep-alive|server)$/
+
 /**
  * Request targets that are not the issued path but that URL parsing, path
  * cleaning or percent-decoding would turn into it. fetch() normalises these
@@ -558,6 +596,31 @@ describe.skipIf(!docker).each(templates)('$kind template', (template) => {
     expect(response.headers.get('fingerly-ratelimit-scope')).toBeNull()
     expect(response.headers.get('cache-control')).toBe('no-store')
     expect(await response.text()).toBe('{"request_id":"req_stub"}')
+  })
+
+  it('forwards only the contract request headers, whatever else the visitor sends', async () => {
+    stub.seen = []
+    const response = await fetch(`${proxy!.base}/k7x2qm4a`, { method: 'POST', headers: { ...visitorHeaders, ...UNLISTED_REQUEST }, body: '{}' })
+    expect(response.status, proxy!.logs()).toBe(200)
+    const seen = stub.seen[0]!
+    const outside = Object.keys(seen.headers).filter((name) => !CONTRACT_REQUEST.test(name) && !TRANSPORT_REQUEST.test(name))
+    // The Node relays' own HTTP client adds `accept` and `accept-language: *`;
+    // neither carries a visitor value.
+    const runtime = template.kind === 'nginx' || template.kind === 'caddy' ? [] : ['accept', 'accept-language']
+    expect(outside.filter((name) => !runtime.includes(name)), JSON.stringify(seen.headers)).toEqual([])
+    expect(seen.headers['accept-language']).not.toBe(UNLISTED_REQUEST['accept-language'])
+    expect(seen.headers.origin).toBeUndefined()
+    expect(seen.headers['x-fingerly-origin']).toBe('https://shop.example')
+    expect(seen.headers['x-fingerly-client-ip']).not.toBe('6.6.6.6')
+  })
+
+  it('relays only the allowlisted response headers, whatever the API adds', async () => {
+    const response = await fetch(`${proxy!.base}/k7x2qm4a`, { method: 'POST', headers: visitorHeaders, body: '{}' })
+    expect(response.status, proxy!.logs()).toBe(200)
+    const outside = [...response.headers.keys()].filter((name) => !RELAYED_RESPONSE.test(name) && !TRANSPORT_RESPONSE.test(name))
+    expect(outside, JSON.stringify([...response.headers])).toEqual([])
+    // A front server may name itself, but never relays the API's value or a version.
+    expect(response.headers.get('server') ?? '').not.toMatch(/fingerly|api|\d/)
   })
 
   it('rejects originless POST without valid x-fingerly-sdk-platform with 400 missing_origin and never synthesizes x-fingerly-origin', async () => {

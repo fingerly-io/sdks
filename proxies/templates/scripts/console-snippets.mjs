@@ -69,6 +69,12 @@ export function build() {
           code: read('nginx/fingerly.conf'),
         },
         {
+          title: 'Add the response filter',
+          text: 'Save this as /etc/nginx/fingerly.js. The location runs it with the njs module, so only the relayed response headers reach the page.',
+          label: '/etc/nginx/fingerly.js',
+          code: read('nginx/fingerly.js'),
+        },
+        {
           title: 'Store the proxy key',
           text: `In its own file, readable only by root. Keep it out of version control. ${PROMPT}`,
           label: 'Terminal',
@@ -81,9 +87,13 @@ export function build() {
         },
         {
           title: 'Include it in your site',
-          text: 'Define the native SDK platform allowlist in http and include the snippet inside the server block that serves your pages.',
+          text: 'Load the njs module in the main context, define the native SDK platform allowlist in http and include the snippet inside the server block that serves your pages.',
           label: 'nginx.conf',
           code: [
+            '# Main context, beside the other load_module lines.',
+            'load_module modules/ngx_http_js_module.so;',
+            '',
+            '# In http:',
             'map $http_x_fingerly_sdk_platform $fingerly_platform {',
             '    default "";',
             '    "~^(ios|android|react-native|react-native-ios|react-native-android|flutter|flutter-ios|flutter-android|lynx-ios|lynx-android|capacitor|kotlin-multiplatform)$" $http_x_fingerly_sdk_platform;',

@@ -87,24 +87,30 @@ sets it; should it ever not be one IPv4 or IPv6 address, the function answers
 
 ## What it sends and relays
 
-Upstream, to `https://api.fingerly.io/api/v1/ingest` only: the viewer's request
-with every cookie, `Authorization` and any visitor-sent `x-fingerly-*` header
-stripped, validated lowercase `x-fingerly-sdk-platform` restored when matched,
-plus the `x-fingerly-*` headers the function sets (the client address,
-`x-fingerly-origin` only when `Origin` is present, `x-fingerly-host`, the user
-agent and `x-fingerly-proxy-version: aws-cloudfront/1.0.0`, which the dashboard
-shows per proxy) and the proxy key from the origin's custom header. Requests
-missing both `Origin` and a valid `x-fingerly-sdk-platform` answer `400`
-(`missing_origin`) without synthesizing `x-fingerly-origin`. Other methods
-answer `405` with `Allow: POST`.
+Upstream, to `https://api.fingerly.io/api/v1/ingest` only: an allowlist of
+the viewer's headers (`Content-Type`, `X-Api-Key`, `Idempotency-Key`,
+`User-Agent`, `Sec-Fetch-Site`, `Sec-Fetch-Mode`, `Sec-Fetch-Dest`,
+`Sec-CH-UA`, `Sec-CH-UA-Mobile`, `Sec-CH-UA-Platform`); the function deletes
+every other viewer header, so cookies, `Authorization`, `Referer`, forwarding
+headers, application headers and any visitor-sent `x-fingerly-*` header never
+reach the API. Validated lowercase `x-fingerly-sdk-platform` is restored when
+matched, plus the `x-fingerly-*` headers the function sets (the client
+address, `x-fingerly-origin` only when `Origin` is present, `x-fingerly-host`,
+the user agent and `x-fingerly-proxy-version: aws-cloudfront/1.0.0`, which the
+dashboard shows per proxy) and the proxy key from the origin's custom header.
+CloudFront itself adds its own `X-Forwarded-For`, `Via` and `X-Amz-Cf-Id` to
+every origin request; the API does not read them. Requests missing both
+`Origin` and a valid `x-fingerly-sdk-platform` answer `400` (`missing_origin`)
+without synthesizing `x-fingerly-origin`. Other methods answer `405` with
+`Allow: POST`.
 
 CloudFront Functions cannot read request bodies, so the body passes through
 unchanged and CloudFront's own request limits apply rather than a 1 MiB cap.
-The API enforces its own limit. The key lives in the origin configuration, so
-unlike the code templates there is no key check in the function. Without the
-origin header the API refuses every call with `401 proxy_key_missing`, because
-the function still sends the visitor headers and only a proxy key may. Add it
-before routing traffic.
+The API enforces its own limit. The proxy key lives in the origin
+configuration, so unlike the code templates there is no proxy key check in the
+function. Without the origin header the API refuses every call with
+`401 proxy_key_missing`, because the function still sends the visitor headers
+and only a proxy key may. Add it before routing traffic.
 
 Back to the page: the viewer response event keeps only `content-type`,
 `x-request-id`, `ratelimit-limit`, `ratelimit-remaining` and `retry-after`

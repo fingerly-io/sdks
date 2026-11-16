@@ -47,6 +47,9 @@ function apiResponse(): Response {
       'set-cookie': 'session=abc; Path=/',
       'cache-control': 'max-age=60',
       server: 'fingerly-api',
+      // Headers outside the relay list, as a future API might add them.
+      'x-new-internal': '1',
+      'x-powered-by': 'api-stack',
     },
   })
 }
@@ -342,6 +345,17 @@ const visitor = {
   'x-fingerly-other': 'forged',
 }
 
+/** Headers outside the contract a page, a wrapper or a forger can add to a same-origin POST. */
+const unlisted = {
+  referer: 'https://shop.example/reset?token=secret-token',
+  'x-custom-token': 'app-header',
+  forwarded: 'for=203.0.113.9',
+  'x-forwarded-host': 'forged.example',
+  'accept-language': 'tr-TR,tr;q=0.9',
+  'x-requested-with': 'wrapper',
+}
+/** Names the contract (sdks/contract/proxy.md section 3) lets a proxy send upstream. */
+const CONTRACT_REQUEST = /^(x-api-key|content-type|idempotency-key|user-agent|sec-fetch-(site|mode|dest)|sec-ch-ua(-mobile|-platform)?|x-fingerly-[a-z-]+)$/
 describe.each(targets)('$kind template', (target) => {
   beforeAll(() => target.setKey(KEY))
   afterEach(() => {
@@ -424,13 +438,7 @@ describe.each(targets)('$kind template', (target) => {
     expect(sent.get('x-fingerly-edge-tls-version')).toBeNull()
     expect(sent.get('x-fingerly-other')).toBeNull()
     const forged = [...sent].filter(([, value]) => /forged|6\.6\.6\.6|EvilOS/.test(value))
-    if (target.kind === 'aws-cloudfront') {
-      // The origin request policy passes the visitor's x-forwarded-for through
-      // untouched, as CloudFront does; the API reads x-fingerly-client-ip.
-      expect(forged.map(([name]) => name)).toEqual(['x-forwarded-for'])
-    } else {
-      expect(forged).toEqual([])
-    }
+    expect(forged).toEqual([])
   })
 
   it('rejects originless POST without valid x-fingerly-sdk-platform with 400 missing_origin and never synthesizes x-fingerly-origin', async () => {
@@ -507,6 +515,24 @@ describe.each(targets)('$kind template', (target) => {
     const relayed = [...result.headers].map(([name, value]) => `${name}: ${value}`).join('\n')
     expect(relayed).not.toMatch(/fingerly/i)
     expect(result.body).toBe('{"request_id":"req_1"}')
+  })
+
+  it('forwards only the contract request headers, whatever else the visitor sends', async () => {
+    const result = await target.call({ headers: { ...visitor, ...unlisted }, ip: TRUSTED_IP })
+    expect(result.status).toBe(200)
+    const sent = upstreamCalls[0]!.headers
+    // CloudFront reads Host itself; the origin request policy never sends it on.
+    const outside = [...sent.keys()].filter((name) => !CONTRACT_REQUEST.test(name) && !(target.kind === 'aws-cloudfront' && name === 'host'))
+    expect(outside).toEqual([])
+    expect(sent.get('x-fingerly-origin')).toBe('https://shop.example')
+    expect(sent.get('x-fingerly-client-ip')).toBe(TRUSTED_IP)
+  })
+
+  it('relays no response header outside the allowlist, whatever the API adds', async () => {
+    const result = await target.call({ headers: visitor, ip: TRUSTED_IP })
+    // Framing headers Node's own HTTP server adds are not relayed values.
+    const outside = [...result.headers.keys()].filter((name) => !/^(x-request-id|ratelimit-limit|ratelimit-remaining|retry-after|content-type|cache-control)$/.test(name))
+    expect(outside.filter((name) => !/^(connection|date|keep-alive|transfer-encoding|content-length)$/.test(name))).toEqual([])
   })
 
   if (target.bodyCap) {

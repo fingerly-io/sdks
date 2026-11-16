@@ -12,6 +12,25 @@ var VERSION = '1.0.0';
 // Where the origin (api.fingerly.io) receives single-pass browser and native SDK submissions.
 var UPSTREAM_URI = '/api/v1/ingest';
 
+// The viewer request headers forwarded upstream, and nothing else: the
+// contract's client allowlist (proxy.md section 3.2). `Origin` goes on only
+// as `x-fingerly-origin`. Everything not named here (cookies, `Authorization`,
+// `Referer`, forwarding headers, application headers) is deleted.
+var FORWARDED_HEADERS = {
+  'content-type': true,
+  'x-api-key': true,
+  'idempotency-key': true,
+  'user-agent': true,
+  'sec-fetch-site': true,
+  'sec-fetch-mode': true,
+  'sec-fetch-dest': true,
+  'sec-ch-ua': true,
+  'sec-ch-ua-mobile': true,
+  'sec-ch-ua-platform': true,
+  // Read only by CloudFront; the origin request policy never sends it on.
+  'host': true
+};
+
 // Exact lowercase platform names accepted on the native SDK channel.
 var SDK_PLATFORM = /^(ios|android|react-native|react-native-ios|react-native-android|flutter|flutter-ios|flutter-android|lynx-ios|lynx-android|capacitor|kotlin-multiplatform)$/;
 
@@ -87,9 +106,12 @@ async function handler(event) {
     ? rawPlatform.value
     : '';
 
-  // 2. Strip all incoming x-fingerly-* headers, authorization, and cookies.
+  var origin = headers.origin && headers.origin.value ? headers.origin.value : '';
+
+  // 2. Keep only the allowlisted viewer headers: every x-fingerly-* header,
+  // authorization, cookies and anything else the viewer sent is dropped.
   for (var name in headers) {
-    if (name.indexOf('x-fingerly-') === 0 || name === 'authorization' || name === 'cookie') delete headers[name];
+    if (!FORWARDED_HEADERS[name]) delete headers[name];
   }
   for (var cookie in request.cookies) delete request.cookies[cookie];
 
@@ -97,7 +119,6 @@ async function handler(event) {
   if (sdkPlatform) headers['x-fingerly-sdk-platform'] = { value: sdkPlatform };
 
   // 4. Reject with 400 missing_origin iff both Origin and validated sdkPlatform are empty.
-  var origin = headers.origin && headers.origin.value ? headers.origin.value : '';
   if (!origin && !sdkPlatform) {
     return jsonError(400, 'Bad Request', 'missing_origin', 'Origin or X-Fingerly-SDK-Platform header is required');
   }

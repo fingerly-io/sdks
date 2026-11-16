@@ -44,8 +44,10 @@ to the container.
   and rejects immediately with `400` (`missing_origin`, marked `no-store`) when
   both `Origin` and validated `x-fingerly-sdk-platform` are absent (never
   synthesizing `x-fingerly-origin` from `Host` or the request URL).
-- Sends `content-type`, `x-api-key`, `idempotency-key`, `sec-fetch-*` and
-  `sec-ch-ua*` when present, and sets `x-fingerly-proxy-key`,
+- Sends only `content-type`, `x-api-key`, `idempotency-key`, `user-agent`,
+  `sec-fetch-*` and `sec-ch-ua*` when present, and nothing else the visitor
+  sent (no `Referer`, `Origin`, forwarding or application headers), and
+  sets `x-fingerly-proxy-key`,
   `x-fingerly-client-ip` (from the platform's trusted source, never the
   left-most `X-Forwarded-For`), `x-fingerly-origin` (only when `Origin` is
   present), `x-fingerly-host`, `x-fingerly-user-agent` and
@@ -68,10 +70,9 @@ to the container.
   Vercel, Netlify, container and Cloud Run templates; nginx and Caddy answer
   `504` and `502` with their own timeouts.
 - Relays only `content-type`, `x-request-id`, `ratelimit-limit`,
-  `ratelimit-remaining` and `retry-after`, plus `cache-control: no-store`.
-  nginx and Caddy drop `Set-Cookie` and internal headers and pin `no-store`;
-  the API sends nothing naming Fingerly to proxied callers, so that is defense
-  in depth.
+  `ratelimit-remaining` and `retry-after`, plus `cache-control: no-store`,
+  whatever the API sends: every template drops all other upstream headers
+  (nginx through the njs filter in `fingerly.js`).
 - Keeps the proxy key out of shipped files: an environment variable, a secret
   store, a root-only include file or a `NoEcho` parameter. The nginx, Caddy,
   Vercel, Netlify, CloudFront, container and Traefik steps never put it on a

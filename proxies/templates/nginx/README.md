@@ -26,10 +26,18 @@ every other path and method is refused.
 
    If `/etc/nginx` is in a repository, add `fingerly-proxy-key.conf` to its
    `.gitignore`. `fingerly-proxy-key.conf.example` shows the format.
-4. Define the native SDK platform allowlist in `http` and include the snippet
-   inside the `server` block for your site:
+4. Copy `fingerly.js` to `/etc/nginx/fingerly.js`. It is the response header
+   allowlist, run by the njs module (`ngx_http_js_module`), which ships with
+   the nginx packages and images from nginx.org.
+5. Load the njs module in the main context of `nginx.conf`, define the native
+   SDK platform allowlist in `http` and include the snippet inside the
+   `server` block for your site:
 
    ```nginx
+   # Main context, beside the other load_module lines.
+   load_module modules/ngx_http_js_module.so;
+
+   # In http:
    map $http_x_fingerly_sdk_platform $fingerly_platform {
        default "";
        "~^(ios|android|react-native|react-native-ios|react-native-android|flutter|flutter-ios|flutter-android|lynx-ios|lynx-android|capacitor|kotlin-multiplatform)$" $http_x_fingerly_sdk_platform;
@@ -42,8 +50,10 @@ every other path and method is refused.
    }
    ```
 
-5. Check and reload: `sudo nginx -t && sudo systemctl reload nginx`.
-6. Point the browser SDK at the path:
+6. Check and reload: `sudo nginx -t && sudo systemctl reload nginx`. Without
+   the njs module `nginx -t` fails on `js_import`, so nothing is served
+   without the response allowlist.
+7. Point the browser SDK at the path:
 
    ```ts
    await load({
@@ -103,10 +113,12 @@ Requests missing both `Origin` and a valid `X-Fingerly-SDK-Platform` answer
 server. Bodies over 1 MiB are refused with `413`, redirects are not followed,
 and a key that is not shaped like a proxy key answers `503`.
 
-Back to the page: the API's status and body, with `Set-Cookie` and internal
-headers dropped and `Cache-Control: no-store`. The API itself sends nothing
-naming Fingerly to proxied callers, and the server tests that, so dropping
-headers here is defense in depth.
+Back to the page: the API's status and body with only `content-type`,
+`x-request-id`, `ratelimit-limit`, `ratelimit-remaining` and `retry-after`,
+plus `Cache-Control: no-store`. `fingerly.js` removes every other upstream
+header, so a header the API adds later never reaches the page. nginx adds its
+own `Date`, framing headers and `Server: nginx`, without the version
+(`server_tokens off`).
 
 Other methods answer `405` with `Allow: POST`. If you prefer nginx's
 `limit_except POST { deny all; }` over the `if` block, those requests answer

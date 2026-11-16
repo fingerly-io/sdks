@@ -86,19 +86,25 @@ visitor can write anything.
 
 ## What it sends and relays
 
-Upstream, to `https://api.fingerly.io/api/v1/ingest` only: the request with
-`Cookie` and `Authorization` removed, every visitor-sent `X-Fingerly-*` header
-stripped, validated lowercase `X-Fingerly-SDK-Platform` restored when present,
-and the `x-fingerly-*` headers the proxy sets itself (the proxy key, the client
-address, `X-Fingerly-Origin` only when `Origin` was sent, `X-Fingerly-Host`,
-the user agent and `x-fingerly-proxy-version: caddy/1.0.0`, which the dashboard
-shows per proxy). Requests missing both `Origin` and a valid
+Upstream, to `https://api.fingerly.io/api/v1/ingest` only: an allowlist of
+the visitor's headers (`Content-Type`, `X-Api-Key`, `Idempotency-Key`,
+`User-Agent`, `Sec-Fetch-Site`, `Sec-Fetch-Mode`, `Sec-Fetch-Dest`,
+`Sec-CH-UA`, `Sec-CH-UA-Mobile`, `Sec-CH-UA-Platform`, each only when sent).
+Every other incoming header is removed first, so cookies, `Authorization`,
+`Referer`, forwarding headers, application headers and any visitor-sent
+`X-Fingerly-*` header never reach the API, and Caddy's own
+`X-Forwarded-*` and `Via` are removed too. Validated lowercase
+`X-Fingerly-SDK-Platform` is restored when present, plus the `x-fingerly-*`
+headers the proxy sets itself (the proxy key, the client address,
+`X-Fingerly-Origin` only when `Origin` was sent, `X-Fingerly-Host`, the user
+agent and `x-fingerly-proxy-version: caddy/1.0.0`, which the dashboard shows
+per proxy). Requests missing both `Origin` and a valid
 `X-Fingerly-SDK-Platform` answer `400` (`missing_origin`) without synthesizing
 `X-Fingerly-Origin`. Bodies over 1 MiB are refused with `413`, redirects are
-not followed, and a missing or malformed key answers `503`. Other methods
-answer `405` with `Allow: POST`.
+not followed, and a missing or malformed proxy key answers `503`. Other methods answer `405` with `Allow: POST`.
 
-Back to the page: the API's status and body, with `Set-Cookie` and internal
-headers dropped and `Cache-Control: no-store`. The API itself sends nothing
-naming Fingerly to proxied callers, and the server tests that, so dropping
-headers here is defense in depth.
+Back to the page: the API's status and body with only `Content-Type`,
+`X-Request-Id`, `RateLimit-Limit`, `RateLimit-Remaining` and `Retry-After`,
+plus `Cache-Control: no-store`. Every other upstream header is removed
+(`header_down -*`) and only those five are set again, so a header the API adds
+later never reaches the page.

@@ -41,6 +41,25 @@ Resources:
         // Where the origin (api.fingerly.io) receives single-pass browser and native SDK submissions.
         var UPSTREAM_URI = '/api/v1/ingest';
 
+        // The viewer request headers forwarded upstream, and nothing else: the
+        // contract's client allowlist (proxy.md section 3.2). `Origin` goes on only
+        // as `x-fingerly-origin`. Everything not named here (cookies, `Authorization`,
+        // `Referer`, forwarding headers, application headers) is deleted.
+        var FORWARDED_HEADERS = {
+          'content-type': true,
+          'x-api-key': true,
+          'idempotency-key': true,
+          'user-agent': true,
+          'sec-fetch-site': true,
+          'sec-fetch-mode': true,
+          'sec-fetch-dest': true,
+          'sec-ch-ua': true,
+          'sec-ch-ua-mobile': true,
+          'sec-ch-ua-platform': true,
+          // Read only by CloudFront; the origin request policy never sends it on.
+          'host': true
+        };
+
         // Exact lowercase platform names accepted on the native SDK channel.
         var SDK_PLATFORM = /^(ios|android|react-native|react-native-ios|react-native-android|flutter|flutter-ios|flutter-android|lynx-ios|lynx-android|capacitor|kotlin-multiplatform)$/;
 
@@ -116,9 +135,12 @@ Resources:
             ? rawPlatform.value
             : '';
 
-          // 2. Strip all incoming x-fingerly-* headers, authorization, and cookies.
+          var origin = headers.origin && headers.origin.value ? headers.origin.value : '';
+
+          // 2. Keep only the allowlisted viewer headers: every x-fingerly-* header,
+          // authorization, cookies and anything else the viewer sent is dropped.
           for (var name in headers) {
-            if (name.indexOf('x-fingerly-') === 0 || name === 'authorization' || name === 'cookie') delete headers[name];
+            if (!FORWARDED_HEADERS[name]) delete headers[name];
           }
           for (var cookie in request.cookies) delete request.cookies[cookie];
 
@@ -126,7 +148,6 @@ Resources:
           if (sdkPlatform) headers['x-fingerly-sdk-platform'] = { value: sdkPlatform };
 
           // 4. Reject with 400 missing_origin iff both Origin and validated sdkPlatform are empty.
-          var origin = headers.origin && headers.origin.value ? headers.origin.value : '';
           if (!origin && !sdkPlatform) {
             return jsonError(400, 'Bad Request', 'missing_origin', 'Origin or X-Fingerly-SDK-Platform header is required');
           }
@@ -174,7 +195,12 @@ Resources:
             # Managed policy CachingDisabled.
             CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
             # Managed policy AllViewerExceptHostHeader: the API receives its own
-            # host name, and the function above decides which viewer values go on.
+            # host name. The viewer request function above is the header
+            # allowlist: it deletes every viewer header outside the contract
+            # list before CloudFront builds the origin request, so this policy
+            # forwards only what the function kept and set. A custom policy
+            # naming the same 16 headers would exceed CloudFront's default
+            # quota of 10 headers per origin request policy.
             OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
             FunctionAssociations:
               - EventType: viewer-request
