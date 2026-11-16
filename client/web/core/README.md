@@ -27,6 +27,12 @@ browser SDKs:
   request never blocks or fails `identify()`: the report goes without one.
   Tickets are never written to storage. A custom `Transport` opts in by
   implementing `ticket()`.
+- **Ticket proof of work:** when an SDK key asks for it, a ticket arrives with
+  `pow_bits`, and the SDK finds the smallest decimal nonce `n` such that
+  `SHA256(ticket + ":" + n)` starts with that many zero bits, sending it as
+  `ticket_pow`. Solving starts as soon as the ticket arrives, runs in a Worker
+  when the page allows one (in short time slices otherwise), and stops after
+  1500 ms, in which case the report goes without `ticket_pow`.
 
 It contains no DOM code of its own and decides nothing: scoring lives on the
 server.

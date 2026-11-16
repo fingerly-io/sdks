@@ -5,6 +5,7 @@
 import { assertConsentState, ConsentError } from './consent.js'
 import { collect, DEFAULT_BUDGET_MS, type ScheduleOptions } from './scheduler.js'
 import { own, ownCopy } from './own.js'
+import { solvePow } from './pow.js'
 import { EMBEDDED_SAFE_SOURCES, SOURCE } from './signals.js'
 import type { Source } from './source.js'
 import {
@@ -149,11 +150,41 @@ export const TICKET_GRACE_MS = 250
 interface HeldTicket {
   ticket: string
   expiresAtMs: number
+  /** The proof of work, solving since the ticket arrived; never rejects. */
+  pow?: Promise<string | undefined>
 }
 
+/**
+ * A ticket as it arrives. When it asks for proof of work, solving starts
+ * here, at once, so it runs beside collection.
+ */
 function heldTicket(value: unknown): HeldTicket | undefined {
   const read = readTicket(value)
-  return read ? { ticket: read.ticket, expiresAtMs: Date.parse(read.expires_at) } : undefined
+  if (!read) return undefined
+  const held: HeldTicket = { ticket: read.ticket, expiresAtMs: Date.parse(read.expires_at) }
+  const bits = read.pow_bits
+  if (bits !== undefined) {
+    held.pow = Promise.resolve()
+      .then(() => solvePow(read.ticket, bits))
+      .catch(() => undefined)
+  }
+  return held
+}
+
+/** The proof of work, or `undefined` as soon as the report is cancelled. */
+function powUnlessAborted(
+  pow: Promise<string | undefined>,
+  signal: AbortSignal,
+): Promise<string | undefined> {
+  if (signal.aborted) return Promise.resolve(undefined)
+  return new Promise((resolve) => {
+    const abort = () => resolve(undefined)
+    signal.addEventListener('abort', abort, { once: true })
+    void pow.then((value) => {
+      signal.removeEventListener('abort', abort)
+      resolve(value)
+    })
+  })
 }
 
 function lateBy<T>(ms: number, value: T): { promise: Promise<T>; cancel(): void } {
@@ -282,6 +313,7 @@ export class FingerlyClient {
     // The ticket request runs beside collection, so it adds no round trip.
     const pendingTicket = this.ticketFor(signal)
     let sentTicket: HeldTicket | undefined
+    let ticketPow: string | undefined
     let report: SignalReport
     try {
       report = await this.collectReport(incognitoDetection, signal)
@@ -289,6 +321,9 @@ export class FingerlyClient {
       const grace = lateBy<HeldTicket | undefined>(TICKET_GRACE_MS, undefined)
       sentTicket = await Promise.race([pendingTicket, grace.promise])
       grace.cancel()
+      // Solving started when the ticket arrived and ends by its own budget.
+      if (sentTicket?.pow) ticketPow = await powUnlessAborted(sentTicket.pow, signal)
+      this.requireConsent()
     } finally {
       // A ticket this report did not send (it came too late, or collection
       // failed) is still unused, so it is kept for the next report.
@@ -304,6 +339,7 @@ export class FingerlyClient {
       signals: report,
       ...(typeof options.tag === 'string' && options.tag !== '' ? { tag: options.tag } : {}),
       ...(sentTicket === undefined ? {} : { ticket: sentTicket.ticket }),
+      ...(sentTicket === undefined || ticketPow === undefined ? {} : { ticket_pow: ticketPow }),
     }
 
     let response: SubmitResponse

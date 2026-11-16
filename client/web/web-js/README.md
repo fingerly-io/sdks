@@ -66,6 +66,9 @@ freshness ticket from the server, so a recorded report cannot be replayed. The
 ticket for the next report comes back with each answer and is held in memory
 only; when none is held, a small ticket request to the same path runs in
 parallel with collection, and if it fails the report is sent without a ticket.
+When the SDK key asks for proof of work, the SDK solves it in a Worker (or in
+short time slices when the page's Content Security Policy refuses `blob:`
+workers) within 1500 ms, starting as soon as the ticket arrives.
 Under **Option B**,
 `visitorId === ""` and `visitorIsNew === false` whenever `identifiable === false`,
 when the report came from an embedded WebView, or when an unmatched Web report

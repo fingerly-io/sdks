@@ -75,7 +75,10 @@ export function readTicket(value: unknown): FreshnessTicket | undefined {
   if (ticket.length === 0 || ticket.length > MAX_TICKET_CHARS) return undefined
   if (!/^[A-Za-z0-9_-]+$/.test(ticket)) return undefined
   if (!Number.isFinite(Date.parse(expiresAt))) return undefined
-  return { ticket, expires_at: expiresAt }
+  // A work factor outside 1..22 is not one this SDK solves; the ticket still goes.
+  const powBits = own(candidate, 'pow_bits')
+  const solvable = typeof powBits === 'number' && Number.isInteger(powBits) && powBits >= 1 && powBits <= 22
+  return { ticket, expires_at: expiresAt, ...(solvable ? { pow_bits: powBits } : {}) }
 }
 
 export class TransportError extends Error {
