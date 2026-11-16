@@ -1,40 +1,30 @@
+// @vitest-environment happy-dom
+
 /**
- * The SDK must never make the browser ask its user anything.
- *
- * This is enforced by a test rather than by review because it is the kind of
- * rule that survives exactly as long as everyone remembers it. A permission
- * dialog on a checkout page has destroyed the thing the fraud check was
- * protecting, and a visitor who is asked has been told they are being measured.
- *
- * The test reads the shipped source rather than mocking a browser: mocking
- * would only prove that the mocked APIs were not called, whereas a spelling of
- * `getUserMedia` anywhere in the tree is a defect regardless of which branch
- * reaches it.
+ * Rule #1 Compliance Suite:
+ * The SDK must NEVER make the browser ask its user anything — neither via a
+ * permission prompt nor via Firefox/Tor `resistFingerprinting` canvas readback
+ * doorhangers.
  */
 
 import { readdirSync, readFileSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { BlockedSignal, SOURCE, type SourceContext } from '@fingerly/core'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { load } from '../src/index.js'
 import { canvasSource } from '../src/sources/render.js'
+import { shieldsSource } from '../src/sources/shields.js'
 
-const SRC = join(fileURLToPath(new URL('.', import.meta.url)), '..', 'src')
+const HERE = dirname(fileURLToPath(import.meta.url))
+const SRC = join(HERE, '..', 'src')
 
-/**
- * APIs that put a dialog, a doorhanger, or a picker in front of the user.
- *
- * Deliberately not a list of "APIs behind a permission" - reading a permission's
- * state prompts nobody. `permissions.query()` is specified never to prompt and
- * `enumerateDevices()` returns unlabelled devices rather than asking, so both
- * are used freely. Requesting is what is banned.
- */
 const FORBIDDEN: [pattern: RegExp, what: string][] = [
   [/\bgetUserMedia\b/, 'camera/microphone prompt'],
   [/\bgetDisplayMedia\b/, 'screen-share prompt'],
-  [/\brequestPermission\b/, 'Notification/DeviceMotion permission prompt'],
+  [/\brequestPermission\s*\(/, 'Notification/DeviceMotion permission prompt invocation'],
   [/\bgetCurrentPosition\b|\bwatchPosition\b/, 'geolocation prompt'],
   [/storage\s*\.\s*persist\b/, 'persistent-storage prompt'],
   [/\brequestStorageAccess\b/, 'storage-access prompt'],
@@ -47,6 +37,7 @@ const FORBIDDEN: [pattern: RegExp, what: string][] = [
   [/wakeLock\s*\.\s*request\b/, 'wake-lock request'],
   [/\bIdleDetector\b/, 'idle-detection prompt'],
   [/clipboard\s*\.\s*(read|write)/, 'clipboard prompt'],
+  [/\bqueryLocalFonts\b/, 'Local Font Access prompt'],
   [/\bshare\s*\(/, 'web-share sheet'],
   [/\balert\s*\(|\bconfirm\s*\(|\bprompt\s*\(/, 'blocking dialog'],
 ]
@@ -59,18 +50,11 @@ function sourceFiles(directory: string): string[] {
   })
 }
 
-/**
- * Strip comments before matching.
- *
- * The rule is documented in prose beside the code it governs - `source.ts`
- * names every banned API in its doc comment - and a test that could not tell
- * documentation from a call site would forbid explaining itself.
- */
 function code(text: string): string {
   return text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
 }
 
-describe('no source may prompt the user', () => {
+describe('no source may prompt the user (static scanner)', () => {
   const files = sourceFiles(SRC)
 
   it('finds the source tree', () => {
@@ -81,38 +65,19 @@ describe('no source may prompt the user', () => {
     const offenders = files.filter((file) => pattern.test(code(readFileSync(file, 'utf8'))))
     expect(offenders, `${what} reachable from: ${offenders.join(', ')}`).toEqual([])
   })
+
+  it('rejects a synthetic requestPermission() call while permitting structural typeof checks', () => {
+    const reqPermRegex = /\brequestPermission\s*\(/
+    expect(
+      reqPermRegex.test(
+        "typeof (DeviceMotionEvent as { requestPermission?: unknown }).requestPermission === 'function'",
+      ),
+    ).toBe(false)
+    expect(reqPermRegex.test('DeviceMotionEvent.requestPermission()')).toBe(true)
+    expect(reqPermRegex.test('Notification.requestPermission ()')).toBe(true)
+  })
 })
 
-/**
- * Canvas is the API that prompts on one browser and not the others.
- *
- * Tor Browser raises a doorhanger on `toDataURL()`; everyone else answers
- * silently. The blanket rule above cannot catch it, because the call is
- * legitimate - it is the *unguarded* call that is the defect.
- *
- * Asserted behaviourally rather than by reading the file. The readback lives in
- * helpers declared above the guard, so source order says nothing about call
- * order; what matters is whether a canvas is ever created. `createElement` is
- * therefore booby-trapped: if the guard works, it is never reached.
- */
-/**
- * The probe bench is pointed at real browsers too.
- *
- * `demo/shields.html` exists to answer "what did this browser actually do",
- * which means it is run, by hand, in an ordinary window and a private one, on
- * whatever machine is nearest. It is not shipped - so the rule above, which
- * reads the source tree, never saw it - and an EME probe added there raised a
- * Widevine install prompt in Brave at someone who had not asked for one.
- *
- * Hence a second, narrower rule. Narrower in two ways, both deliberate:
- *
- *  - it matches *calls* rather than mentions, because the bench reads
- *    `typeof navigator.requestMIDIAccess` to report whether the interface is
- *    there, and reporting that an API exists prompts nobody;
- *  - it permits the clipboard, because the demo pages copy their output from a
- *    button the developer clicked, which is a user gesture rather than a
- *    measurement taken behind one.
- */
 const PROMPTS_WHEN_CALLED = [
   'getUserMedia',
   'getDisplayMedia',
@@ -129,14 +94,14 @@ const PROMPTS_WHEN_CALLED = [
   'requestMediaKeySystemAccess',
   'requestFullscreen',
   'requestPointerLock',
-  // `persisted()` only reads the answer; `persist()` asks for it.
+  'queryLocalFonts',
   'persist',
   'alert',
   'confirm',
 ]
 
 describe('no demo page may prompt the user', () => {
-  const DEMO = join(fileURLToPath(new URL('.', import.meta.url)), '..', 'demo')
+  const DEMO = join(HERE, '..', 'demo')
   const pages = readdirSync(DEMO).filter((entry) => entry.endsWith('.html'))
 
   it('finds the demo pages', () => {
@@ -152,25 +117,28 @@ describe('no demo page may prompt the user', () => {
   })
 })
 
-describe('canvas readback under resistFingerprinting', () => {
-  const withFakeDom = async (nowResolution: number) => {
+describe('canvas & shields readback under resistFingerprinting (unit guard)', () => {
+  const withFakeDom = async (
+    targetSource: typeof canvasSource | typeof shieldsSource,
+    nowResolution: number,
+  ) => {
     let createdElement = false
 
-    const document = {
+    const fakeDoc = {
       createElement: () => {
         createdElement = true
-        throw new Error('the canvas source touched the DOM')
+        throw new Error('collector touched the DOM under RFP')
       },
     }
 
     const globals = globalThis as Record<string, unknown>
     const saved = { window: globals.window, document: globals.document }
-    globals.window = { document }
-    globals.document = document
+    globals.window = { document: fakeDoc }
+    globals.document = fakeDoc
 
     const ctx: SourceContext = {
       signal: new AbortController().signal,
-      budgetRemainingMs: () => 1000,
+      budgetRemainingMs: () => 350,
       completed: (id) =>
         id === SOURCE.timing
           ? { status: 'ok', ms: 1, value: { has_performance: true, now_resolution: nowResolution } }
@@ -179,7 +147,7 @@ describe('canvas readback under resistFingerprinting', () => {
 
     try {
       const thrown = await Promise.resolve()
-        .then(() => canvasSource.run(ctx))
+        .then(() => targetSource.run(ctx))
         .then(
           () => undefined,
           (error: unknown) => error,
@@ -192,23 +160,345 @@ describe('canvas readback under resistFingerprinting', () => {
   }
 
   it.each([16.667, 100])(
-    'declines without touching the canvas when the clock is clamped to %sms',
+    'canvasSource and shieldsSource both decline without touching DOM when clock is clamped to %sms',
     async (nowResolution) => {
-      const { thrown, createdElement } = await withFakeDom(nowResolution)
-
-      expect(thrown).toBeInstanceOf(BlockedSignal)
-      expect((thrown as BlockedSignal).reason).toBe('rfp-canvas-prompt-avoided')
-
-      // The point of the whole test: no canvas was created, so no doorhanger
-      // could have been raised.
-      expect(createdElement).toBe(false)
+      for (const src of [canvasSource, shieldsSource]) {
+        const { thrown, createdElement } = await withFakeDom(src, nowResolution)
+        expect(thrown).toBeInstanceOf(BlockedSignal)
+        expect((thrown as BlockedSignal).reason).toBe('rfp-canvas-prompt-avoided')
+        expect(createdElement).toBe(false)
+      }
     },
   )
 
-  it('still collects on an ordinary browser, proving the guard is not blanket', async () => {
-    // 0.1ms is Chromium's clamp. The source must get as far as the DOM here -
-    // the booby trap firing is the pass condition.
-    const { createdElement } = await withFakeDom(0.1)
+  it('still reaches the DOM on an ordinary unclamped browser', async () => {
+    const { createdElement } = await withFakeDom(canvasSource, 0.1)
     expect(createdElement).toBe(true)
+  })
+})
+
+interface InstalledPromptAndPixelSpies {
+  promptSpies: Record<string, ReturnType<typeof vi.fn>>
+  pixelReadbackSpies: Record<string, ReturnType<typeof vi.fn>>
+  enumerateDevicesSpy: ReturnType<typeof vi.fn>
+  restore: () => void
+}
+
+function installRuntimePromptAndPixelSpies(): InstalledPromptAndPixelSpies {
+  const restorers: (() => void)[] = []
+  const globals = globalThis as Record<string, unknown>
+
+  const setTemp = (holder: Record<string, unknown>, key: string, value: unknown) => {
+    const hadOwn = Object.prototype.hasOwnProperty.call(holder, key)
+    const prev = Object.getOwnPropertyDescriptor(holder, key)
+    Object.defineProperty(holder, key, {
+      value,
+      configurable: true,
+      writable: true,
+    })
+    restorers.push(() => {
+      if (hadOwn && prev) {
+        Object.defineProperty(holder, key, prev)
+      } else {
+        delete holder[key]
+      }
+    })
+  }
+
+  // Ensure prototype constructors exist so every spy is wired onto the live chain.
+  const ensureProto = (name: string): Record<string, unknown> => {
+    const existing = globals[name] as { prototype?: Record<string, unknown> } | undefined
+    if (existing?.prototype) return existing.prototype
+    class SyntheticWebIDL {}
+    setTemp(globals, name, SyntheticWebIDL)
+    setTemp(window as unknown as Record<string, unknown>, name, SyntheticWebIDL)
+    return SyntheticWebIDL.prototype as unknown as Record<string, unknown>
+  }
+
+  const htmlCanvasProto = ensureProto('HTMLCanvasElement')
+  const ctx2dProto = ensureProto('CanvasRenderingContext2D')
+  const offscreenCanvasProto = ensureProto('OffscreenCanvas')
+  const offscreenCtx2dProto = ensureProto('OffscreenCanvasRenderingContext2D')
+  const webgl1Proto = ensureProto('WebGLRenderingContext')
+  const webgl2Proto = ensureProto('WebGL2RenderingContext')
+
+  const spyProtoMethod = (
+    proto: Record<string, unknown>,
+    method: string,
+    impl: (...args: unknown[]) => unknown = () => undefined,
+  ) => {
+    const spy = vi.fn(impl)
+    setTemp(proto, method, spy)
+    return spy
+  }
+
+  const pixelReadbackSpies = {
+    'HTMLCanvasElement.prototype.toDataURL': spyProtoMethod(
+      htmlCanvasProto,
+      'toDataURL',
+      () => 'data:image/png;base64,',
+    ),
+    'HTMLCanvasElement.prototype.toBlob': spyProtoMethod(htmlCanvasProto, 'toBlob'),
+    'OffscreenCanvas.prototype.convertToBlob': spyProtoMethod(
+      offscreenCanvasProto,
+      'convertToBlob',
+      async () => new Blob(),
+    ),
+    'CanvasRenderingContext2D.prototype.getImageData': spyProtoMethod(
+      ctx2dProto,
+      'getImageData',
+      (_x, _y, w, h) => ({ data: new Uint8ClampedArray(Number(w || 1) * Number(h || 1) * 4) }),
+    ),
+    'OffscreenCanvasRenderingContext2D.prototype.getImageData': spyProtoMethod(
+      offscreenCtx2dProto,
+      'getImageData',
+      (_x, _y, w, h) => ({ data: new Uint8ClampedArray(Number(w || 1) * Number(h || 1) * 4) }),
+    ),
+    'WebGLRenderingContext.prototype.readPixels': spyProtoMethod(webgl1Proto, 'readPixels'),
+    'WebGL2RenderingContext.prototype.readPixels': spyProtoMethod(webgl2Proto, 'readPixels'),
+  }
+
+  // Notification.requestPermission + DeviceMotionEvent.requestPermission
+  const notificationRequestPermission = vi.fn(async () => 'denied' as NotificationPermission)
+  setTemp(globals, 'Notification', {
+    permission: 'default',
+    requestPermission: notificationRequestPermission,
+  })
+  setTemp(window as unknown as Record<string, unknown>, 'Notification', globals.Notification)
+
+  const motionRequestPermission = vi.fn(async () => 'denied')
+  class FakeDeviceMotionEvent {}
+  ;(FakeDeviceMotionEvent as unknown as Record<string, unknown>).requestPermission =
+    motionRequestPermission
+  setTemp(globals, 'DeviceMotionEvent', FakeDeviceMotionEvent)
+  setTemp(window as unknown as Record<string, unknown>, 'DeviceMotionEvent', FakeDeviceMotionEvent)
+
+  // navigator.geolocation, navigator.mediaDevices (preserving enumerateDevices!), navigator.clipboard
+  const getCurrentPosition = vi.fn()
+  const watchPosition = vi.fn()
+  setTemp(navigator as unknown as Record<string, unknown>, 'geolocation', {
+    getCurrentPosition,
+    watchPosition,
+  })
+
+  const getUserMedia = vi.fn(async () => ({}))
+  const getDisplayMedia = vi.fn(async () => ({}))
+  const enumerateDevicesSpy = vi.fn(async () => [
+    { kind: 'audiooutput', label: '', deviceId: '', groupId: '', toJSON: () => ({}) },
+  ])
+  setTemp(navigator as unknown as Record<string, unknown>, 'mediaDevices', {
+    getUserMedia,
+    getDisplayMedia,
+    enumerateDevices: enumerateDevicesSpy,
+  })
+
+  const clipboardReadText = vi.fn(async () => '')
+  const clipboardRead = vi.fn(async () => [])
+  setTemp(navigator as unknown as Record<string, unknown>, 'clipboard', {
+    readText: clipboardReadText,
+    read: clipboardRead,
+  })
+
+  const queryLocalFonts = vi.fn(async () => [])
+  setTemp(window as unknown as Record<string, unknown>, 'queryLocalFonts', queryLocalFonts)
+  setTemp(globals, 'queryLocalFonts', queryLocalFonts)
+
+  const promptSpies = {
+    'Notification.requestPermission': notificationRequestPermission,
+    'DeviceMotionEvent.requestPermission': motionRequestPermission,
+    'navigator.geolocation.getCurrentPosition': getCurrentPosition,
+    'navigator.geolocation.watchPosition': watchPosition,
+    'navigator.mediaDevices.getUserMedia': getUserMedia,
+    'navigator.mediaDevices.getDisplayMedia': getDisplayMedia,
+    'navigator.clipboard.readText': clipboardReadText,
+    'navigator.clipboard.read': clipboardRead,
+    'window.queryLocalFonts': queryLocalFonts,
+  }
+
+  return {
+    promptSpies,
+    pixelReadbackSpies,
+    enumerateDevicesSpy,
+    restore: () => {
+      for (const fn of restorers.reverse()) fn()
+    },
+  }
+}
+
+describe('full runtime pipeline prompt & Gecko RFP pixel-readback spies', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it.each([
+    ['16.67ms Firefox/Tor Standard step', 16.67],
+    ['100ms Firefox RFP / Tor Safest step', 100],
+    ['0ms stalled clock step', 0],
+  ])(
+    'invokes ZERO pixel readbacks or permission prompts on Gecko under %s across identify() and collect()',
+    async (_label, stepMs) => {
+      const spies = installRuntimePromptAndPixelSpies()
+      try {
+        // Configure Gecko environment (Firefox UA + MozAppearance on root style).
+        Object.defineProperty(navigator, 'userAgent', {
+          value: 'Mozilla/5.0 (Windows NT 10.0; rv:128.0) Gecko/20100101 Firefox/128.0',
+          configurable: true,
+        })
+        Object.defineProperty(document.documentElement.style, 'MozAppearance', {
+          value: 'none',
+          configurable: true,
+        })
+
+        let currentNow = 1000
+        vi.spyOn(performance, 'now').mockImplementation(() => {
+          currentNow += stepMs
+          return currentNow
+        })
+
+        // Also wire document.createElement('canvas') so if the RFP gate ever
+        // failed to block, getContext('2d').getImageData / toDataURL spies WOULD fire!
+        const origCreateElement = document.createElement.bind(document)
+        vi.spyOn(document, 'createElement').mockImplementation(((tag: string) => {
+          if (tag === 'canvas') {
+            return {
+              width: 0,
+              height: 0,
+              toDataURL: spies.pixelReadbackSpies['HTMLCanvasElement.prototype.toDataURL'],
+              toBlob: spies.pixelReadbackSpies['HTMLCanvasElement.prototype.toBlob'],
+              getContext: (kind: string) => {
+                if (kind === '2d') {
+                  return {
+                    globalCompositeOperation: 'source-over',
+                    fillStyle: '',
+                    font: '',
+                    textBaseline: 'alphabetic',
+                    fillRect: () => undefined,
+                    fillText: () => undefined,
+                    beginPath: () => undefined,
+                    arc: () => undefined,
+                    closePath: () => undefined,
+                    fill: () => undefined,
+                    rect: () => undefined,
+                    isPointInPath: () => false,
+                    getImageData:
+                      spies.pixelReadbackSpies['CanvasRenderingContext2D.prototype.getImageData'],
+                  }
+                }
+                if (kind === 'webgl' || kind === 'experimental-webgl') {
+                  return {
+                    VENDOR: 0x1f00,
+                    RENDERER: 0x1f01,
+                    VERSION: 0x1f02,
+                    SHADING_LANGUAGE_VERSION: 0x8b8c,
+                    MAX_TEXTURE_SIZE: 0x0d33,
+                    MAX_RENDERBUFFER_SIZE: 0x84e8,
+                    VERTEX_SHADER: 0x8b31,
+                    FRAGMENT_SHADER: 0x8b30,
+                    LOW_FLOAT: 0x8df0,
+                    MEDIUM_FLOAT: 0x8df1,
+                    HIGH_FLOAT: 0x8df2,
+                    getExtension: (ext: string) =>
+                      ext === 'WEBGL_lose_context' ? { loseContext: () => undefined } : null,
+                    getParameter: () => 'Mozilla',
+                    getShaderPrecisionFormat: () => ({ rangeMin: 127, rangeMax: 127, precision: 23 }),
+                    getSupportedExtensions: () => ['WEBGL_lose_context'],
+                    readPixels:
+                      spies.pixelReadbackSpies['WebGLRenderingContext.prototype.readPixels'],
+                  }
+                }
+                return null
+              },
+            } as unknown as HTMLElement
+          }
+          return origCreateElement(tag)
+        }) as typeof document.createElement)
+
+        const client = await load({
+          apiKey: 'fly_pk_development_test',
+          consent: 'granted',
+          transport: {
+            submit: async () => ({
+              request_id: 'req_rfp',
+              visitor_id: '',
+              identifiable: false,
+              state: 'enriched',
+            }),
+          },
+        })
+
+        const collected = await client.collect()
+        const identified = await client.identify()
+
+        for (const [name, spy] of Object.entries(spies.promptSpies)) {
+          expect(spy, `prompt API ${name} must never be called`).not.toHaveBeenCalled()
+        }
+        for (const [name, spy] of Object.entries(spies.pixelReadbackSpies)) {
+          expect(spy, `pixel readback ${name} must not be called on clamped Gecko`).not.toHaveBeenCalled()
+        }
+
+        // Non-prompting enumerateDevices() must remain functional!
+        expect(spies.enumerateDevicesSpy).toHaveBeenCalled()
+        expect(collected.sources.media_devices?.status).toBe('ok')
+
+        for (const report of [collected, identified.report]) {
+          expect(report.sources.shields).toMatchObject({
+            status: 'blocked',
+            reason: 'rfp-canvas-prompt-avoided',
+          })
+          expect(report.sources.canvas).toMatchObject({
+            status: 'blocked',
+            reason: 'rfp-canvas-prompt-avoided',
+          })
+          expect(report.sources.engine).toMatchObject({
+            status: 'ok',
+            value: expect.objectContaining({ has_motion_permission_fn: true }),
+          })
+        }
+      } finally {
+        delete (document.documentElement.style as unknown as Record<string, unknown>).MozAppearance
+        spies.restore()
+      }
+    },
+  )
+
+  it('never calls prompting APIs, toDataURL, toBlob, convertToBlob, or readPixels on an unlocked browser', async () => {
+    const spies = installRuntimePromptAndPixelSpies()
+    try {
+      const client = await load({
+        apiKey: 'fly_pk_development_test',
+        consent: 'granted',
+        transport: {
+          submit: async () => ({
+            request_id: 'req_std',
+            visitor_id: 'vis_std',
+            identifiable: true,
+            state: 'enriched',
+          }),
+        },
+      })
+
+      await client.identify({ incognitoDetection: 'extended' })
+
+      for (const [name, spy] of Object.entries(spies.promptSpies)) {
+        expect(spy, `prompt API ${name} must never be called`).not.toHaveBeenCalled()
+      }
+      expect(
+        spies.pixelReadbackSpies['HTMLCanvasElement.prototype.toDataURL'],
+      ).not.toHaveBeenCalled()
+      expect(spies.pixelReadbackSpies['HTMLCanvasElement.prototype.toBlob']).not.toHaveBeenCalled()
+      expect(
+        spies.pixelReadbackSpies['OffscreenCanvas.prototype.convertToBlob'],
+      ).not.toHaveBeenCalled()
+      expect(
+        spies.pixelReadbackSpies['WebGLRenderingContext.prototype.readPixels'],
+      ).not.toHaveBeenCalled()
+      expect(
+        spies.pixelReadbackSpies['WebGL2RenderingContext.prototype.readPixels'],
+      ).not.toHaveBeenCalled()
+      expect(spies.enumerateDevicesSpy).toHaveBeenCalled()
+    } finally {
+      spies.restore()
+    }
   })
 })
