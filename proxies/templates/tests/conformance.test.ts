@@ -356,6 +356,9 @@ const unlisted = {
 }
 /** Names the contract (sdks/contract/proxy.md section 3) lets a proxy send upstream. */
 const CONTRACT_REQUEST = /^(x-api-key|content-type|idempotency-key|user-agent|sec-fetch-(site|mode|dest)|sec-ch-ua(-mobile|-platform)?|x-fingerly-[a-z-]+)$/
+/** Keys a proxy holding a production proxy key must refuse locally. */
+const FOREIGN_PUBLIC_KEYS = ['fly_pk_development_x', 'fly_pk_staging_x', 'not-a-key', 'fly_sk_production_x', 'fly_pk_production_', 'fly_pk_production_a b', 'fly_px_production_x']
+
 describe.each(targets)('$kind template', (target) => {
   beforeAll(() => target.setKey(KEY))
   afterEach(() => {
@@ -533,6 +536,23 @@ describe.each(targets)('$kind template', (target) => {
     // Framing headers Node's own HTTP server adds are not relayed values.
     const outside = [...result.headers.keys()].filter((name) => !/^(x-request-id|ratelimit-limit|ratelimit-remaining|retry-after|content-type|cache-control)$/.test(name))
     expect(outside.filter((name) => !/^(connection|date|keep-alive|transfer-encoding|content-length)$/.test(name))).toEqual([])
+  })
+
+  it('answers 401 locally, before any upstream call, for an X-Api-Key that is not a public key of the proxy key environment', async () => {
+    for (const key of [...FOREIGN_PUBLIC_KEYS, undefined]) {
+      const headers: Record<string, string> = { ...visitor }
+      if (key === undefined) delete headers['x-api-key']
+      else headers['x-api-key'] = key
+      const result = await target.call({ headers, ip: TRUSTED_IP })
+      expect(result.status, String(key)).toBe(401)
+      expect(result.headers.get('cache-control'), String(key)).toBe('no-store')
+      expect(upstreamCalls, String(key)).toHaveLength(0)
+    }
+    // A native caller without Origin is held to the same rule.
+    const { origin: _origin, ...native } = visitor
+    const result = await target.call({ headers: { ...native, 'x-fingerly-sdk-platform': 'ios', 'x-api-key': 'fly_sk_production_x' }, ip: TRUSTED_IP })
+    expect(result.status).toBe(401)
+    expect(upstreamCalls).toHaveLength(0)
   })
 
   if (target.bodyCap) {
@@ -746,6 +766,30 @@ describe('platform specifics', () => {
     expect(differing).toEqual([
       "const PRESET = { kind: 'container', clientIpSource: 'remote' }\nconst PRESET = { kind: 'gcp-cloud-run', clientIpSource: 'xff:2' }",
     ])
+  })
+
+  it('aws-cloudfront: takes the accepted environment from PUBLIC_KEY_SAMPLE, as the dashboard fills it in', async () => {
+    const shipped = readFileSync(`${ROOT}aws-cloudfront/function.js`, 'utf8')
+    const placeholder = "var PUBLIC_KEY_SAMPLE = 'fly_pk_production_…';"
+    expect(shipped).toContain(placeholder)
+    const call = (handler: (event: unknown) => Promise<Record<string, unknown>>, key: string) => handler({
+      version: '1.0',
+      context: { eventType: 'viewer-request' },
+      viewer: { ip: TRUSTED_IP },
+      request: {
+        method: 'POST', uri: '/k7x2qm4a', querystring: {}, cookies: {},
+        headers: { host: { value: 'shop.example' }, origin: { value: 'https://shop.example' }, 'x-api-key': { value: key } },
+      },
+    })
+    const context = vm.createContext({})
+    vm.runInContext(shipped.replace(placeholder, placeholder.replace('production', 'staging')), context)
+    const staging = context.handler as (event: unknown) => Promise<Record<string, unknown>>
+    expect((await call(staging, 'fly_pk_staging_public')).statusCode).toBeUndefined()
+    expect((await call(staging, 'fly_pk_production_public')).statusCode).toBe(401)
+    // An unfilled or mistyped environment forwards nothing.
+    const broken = vm.createContext({})
+    vm.runInContext(shipped.replace(placeholder, placeholder.replace('production', 'sandbox')), broken)
+    expect((await call(broken.handler as (event: unknown) => Promise<Record<string, unknown>>, 'fly_pk_sandbox_public')).statusCode).toBe(503)
   })
 
   it('aws-cloudfront: the CloudFormation fragment embeds function.js unchanged', () => {

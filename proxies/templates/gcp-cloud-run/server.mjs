@@ -68,6 +68,16 @@ function isProxyKey(key) {
 }
 
 /**
+ * Whether the caller's X-Api-Key is a public key of the proxy key's
+ * environment. Anything else, a secret `fly_sk_` key included, is answered 401
+ * here rather than sent upstream.
+ */
+function isPublicKeyFor(proxyKey, publicKey) {
+  const environment = /^fly_px_(production|staging|development)_/.exec(proxyKey)?.[1]
+  return Boolean(environment) && new RegExp(`^fly_pk_${environment}_[A-Za-z0-9_-]+$`).test(publicKey ?? '')
+}
+
+/**
  * Whether the request target is for the one configured path. The raw target
  * is compared, before any URL parsing could resolve dot segments, merge
  * slashes or decode characters into the path: exactly the path, then nothing
@@ -198,7 +208,7 @@ export function createRelay(env = process.env) {
       }
 
       const publicKey = header(req, 'x-api-key')
-      if (!publicKey) {
+      if (!isPublicKeyFor(proxyKey, publicKey)) {
         req.resume()
         return plain(res, 401, 'Unauthorized')
       }

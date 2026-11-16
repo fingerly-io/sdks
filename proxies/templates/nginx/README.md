@@ -111,7 +111,10 @@ Requests missing both `Origin` and a valid `X-Fingerly-SDK-Platform` answer
 `proxy_pass_request_headers off` makes this an allowlist: cookies,
 `Authorization` and any `x-fingerly-*` header a visitor forges never leave your
 server. Bodies over 1 MiB are refused with `413`, redirects are not followed,
-and a key that is not shaped like a proxy key answers `503`.
+and a key that is not shaped like a proxy key answers `503`. A request whose
+`X-Api-Key` is missing or is not a `fly_pk_` key of the proxy key's
+environment (a secret `fly_sk_` key included) answers `401` and is not
+forwarded.
 
 Back to the page: the API's status and body with only `content-type`,
 `x-request-id`, `ratelimit-limit`, `ratelimit-remaining` and `retry-after`,

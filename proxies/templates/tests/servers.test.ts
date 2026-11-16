@@ -623,6 +623,19 @@ describe.skipIf(!docker).each(templates)('$kind template', (template) => {
     expect(response.headers.get('server') ?? '').not.toMatch(/fingerly|api|\d/)
   })
 
+  it('answers 401 locally for an X-Api-Key that is not a public key of the proxy key environment', async () => {
+    for (const key of ['fly_pk_development_x', 'fly_pk_staging_x', 'not-a-key', 'fly_sk_production_x', 'fly_pk_production_', 'fly_pk_production_a b', undefined]) {
+      stub.seen = []
+      const headers: Record<string, string> = { ...visitorHeaders }
+      if (key === undefined) delete headers['x-api-key']
+      else headers['x-api-key'] = key
+      const response = await fetch(`${proxy!.base}/k7x2qm4a`, { method: 'POST', headers, body: '{}' })
+      expect(response.status, String(key)).toBe(401)
+      expect(response.headers.get('cache-control'), String(key)).toBe('no-store')
+      expect(stub.seen, String(key)).toHaveLength(0)
+    }
+  })
+
   it('rejects originless POST without valid x-fingerly-sdk-platform with 400 missing_origin and never synthesizes x-fingerly-origin', async () => {
     stub.seen = []
     const { origin: _origin, 'x-fingerly-sdk-platform': _platform, ...withoutOrigin } = visitorHeaders

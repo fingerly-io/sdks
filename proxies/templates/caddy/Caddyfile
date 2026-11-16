@@ -44,7 +44,16 @@ www.example.com {
 			header @missingorigin Content-Type application/json
 			respond @missingorigin `{"error":{"code":"missing_origin","message":"Origin or X-Fingerly-SDK-Platform header is required"}}` 400
 
-			vars fingerly_public_key {http.request.header.X-Api-Key}
+			# X-Api-Key must be a public key of the proxy key's environment.
+			# Anything else, a missing header or a secret fly_sk_ key included,
+			# answers 401 and nothing is forwarded.
+			vars fingerly_public_key ""
+			@proxyenv vars_regexp proxyenv {env.FINGERLY_PROXY_KEY} ^fly_px_(production|staging|development)_
+			vars @proxyenv fingerly_key_pair "{re.proxyenv.1} {http.request.header.X-Api-Key}"
+			@public vars_regexp {http.vars.fingerly_key_pair} "^(production fly_pk_production|staging fly_pk_staging|development fly_pk_development)_[A-Za-z0-9_-]+$"
+			vars @public fingerly_public_key {http.request.header.X-Api-Key}
+			@notpublic vars {http.vars.fingerly_public_key} ""
+			respond @notpublic 401
 
 			request_body {
 				max_size 1MiB

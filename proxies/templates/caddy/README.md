@@ -100,8 +100,11 @@ headers the proxy sets itself (the proxy key, the client address,
 agent and `x-fingerly-proxy-version: caddy/1.0.0`, which the dashboard shows
 per proxy). Requests missing both `Origin` and a valid
 `X-Fingerly-SDK-Platform` answer `400` (`missing_origin`) without synthesizing
-`X-Fingerly-Origin`. Bodies over 1 MiB are refused with `413`, redirects are
-not followed, and a missing or malformed proxy key answers `503`. Other methods answer `405` with `Allow: POST`.
+`X-Fingerly-Origin`. A request whose `X-Api-Key` is missing or is not a
+`fly_pk_` key of the proxy key's environment (a secret `fly_sk_` key
+included) answers `401` and is not forwarded. Bodies over 1 MiB are refused
+with `413`, redirects are not followed, and a missing or malformed proxy key
+answers `503`. Other methods answer `405` with `Allow: POST`.
 
 Back to the page: the API's status and body with only `Content-Type`,
 `X-Request-Id`, `RateLimit-Limit`, `RateLimit-Remaining` and `Retry-After`,

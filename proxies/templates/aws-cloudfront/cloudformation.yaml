@@ -41,6 +41,16 @@ Resources:
         // Where the origin (api.fingerly.io) receives single-pass browser and native SDK submissions.
         var UPSTREAM_URI = '/api/v1/ingest';
 
+        // The environment of the proxy key in the origin's custom header. The function
+        // never sees that key, so the environment is written here, inside a sample
+        // public key: the dashboard fills it in; if you copy this file by hand, change
+        // `production` to `staging` or `development` to match your proxy key. A caller
+        // whose X-Api-Key is not a public key of this environment (a secret `fly_sk_`
+        // key included) is answered 401 and nothing is forwarded.
+        var PUBLIC_KEY_SAMPLE = 'fly_pk_production_…';
+        var ENVIRONMENT = /^fly_pk_(production|staging|development)_/.exec(PUBLIC_KEY_SAMPLE);
+        var PUBLIC_KEY = ENVIRONMENT ? new RegExp('^fly_pk_' + ENVIRONMENT[1] + '_[A-Za-z0-9_-]+$') : null;
+
         // The viewer request headers forwarded upstream, and nothing else: the
         // contract's client allowlist (proxy.md section 3.2). `Origin` goes on only
         // as `x-fingerly-origin`. Everything not named here (cookies, `Authorization`,
@@ -150,6 +160,12 @@ Resources:
           // 4. Reject with 400 missing_origin iff both Origin and validated sdkPlatform are empty.
           if (!origin && !sdkPlatform) {
             return jsonError(400, 'Bad Request', 'missing_origin', 'Origin or X-Fingerly-SDK-Platform header is required');
+          }
+
+          if (!PUBLIC_KEY) return plain(503, 'Service Unavailable', {});
+          var publicKey = headers['x-api-key'];
+          if (!publicKey || (publicKey.multiValue && publicKey.multiValue.length !== 1) || !PUBLIC_KEY.test(publicKey.value)) {
+            return plain(401, 'Unauthorized', {});
           }
 
           // The address CloudFront accepted the connection from, not a header.

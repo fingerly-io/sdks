@@ -18,7 +18,8 @@ it, and every other method is refused.
    the key it shows once. Note the path it issued, such as `/k7x2qm4a`.
 2. Create the function: **CloudFront > Functions > Create function**, runtime
    `cloudfront-js-2.0`. Paste `function.js`, replace `/k7x2qm4a` in `PATH` with
-   your path, save and publish.
+   your path and `production` in `PUBLIC_KEY_SAMPLE` with your proxy key's
+   environment, save and publish.
 3. Add an origin to your distribution: origin domain `api.fingerly.io`,
    protocol **HTTPS only**, and a custom header named `x-fingerly-proxy-key`
    whose value is the key. CloudFront always overwrites a viewer-sent header of
@@ -103,6 +104,13 @@ every origin request; the API does not read them. Requests missing both
 `Origin` and a valid `x-fingerly-sdk-platform` answer `400` (`missing_origin`)
 without synthesizing `x-fingerly-origin`. Other methods answer `405` with
 `Allow: POST`.
+
+The function never sees the proxy key, so the key's environment is written
+into it, in `PUBLIC_KEY_SAMPLE`. The dashboard fills it in; if you copy
+`function.js` yourself, change `production` there to the environment of your
+proxy key. A request whose `X-Api-Key` is missing or is not a `fly_pk_` key of
+that environment (a secret `fly_sk_` key included) answers `401` and is not
+forwarded.
 
 CloudFront Functions cannot read request bodies, so the body passes through
 unchanged and CloudFront's own request limits apply rather than a 1 MiB cap.

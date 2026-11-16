@@ -53,6 +53,10 @@ to the container.
   present), `x-fingerly-host`, `x-fingerly-user-agent` and
   `x-fingerly-proxy-version` itself, overwriting anything the visitor sent
   under those names.
+- Answers `401` locally, before any upstream call, when `X-Api-Key` is
+  missing or is not a `fly_pk_` public key of the proxy key's environment (a
+  secret `fly_sk_` key included). The CloudFront function never sees the proxy
+  key, so its environment is written into the function.
 - Forwards nothing and answers `500` ("The client IP callback returned no
   valid address") when the trusted source does not hold exactly one IPv4 or
   IPv6 address, and logs that once rather than per request. Vercel reads only
