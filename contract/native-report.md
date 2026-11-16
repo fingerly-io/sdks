@@ -20,6 +20,21 @@ platforms). The server treats absent, null and wrong-typed values as "not known"
 test `== false` do not fire on absent values. This is about fields inside a source. A source id is never absent from a
 real report: see section 8.11.
 
+**Probe errors.** A security source that ran keeps `status: "ok"` when one of its probes threw, was denied or could not
+answer; a probe error is not a source failure. The probe's field is left out rather than sent with the clean value it never
+measured (no `su_paths: []` for a lookup the sandbox denied), and the probe's short name goes into the source value's
+`probe_errors`: a sorted, de-duplicated string array of names matching `[a-z0-9_]`, at most 32 entries, omitted when empty.
+The Android SDK sets it on `root`, `emulator`, `instrumentation` and `cloned`; the probe names and the fields each one leaves
+out are listed under those sources in section 2. The iOS SDK does not set it: its probes answer inside the sandbox rather
+than fail. The server reads `probe_errors` on Android `root`, `emulator`, `instrumentation`, `cloned`, `debugger` and `tls`,
+on iOS `jailbreak`, `instrumentation`, `debugger` and `tls`, and in `integrity` (`detectProbeErrors`,
+`domain/risk/native_report.go`). It fires the low-weight signal `probe_errors` (weight 2, in the `report_incomplete` group),
+reason `probe-errors-<count>-<where>`, low confidence for one place and medium for two or more. Android's `su_paths`,
+`su_on_path`, `busybox_paths` and `framework_paths` are denied by the ordinary SELinux policy on most devices, so those four
+names alone never fire it. A missing field is never read as clean: a rule that needs a measured empty list
+(`rootLooksClean`, section 8.12) treats an absent one as unknown. A `probe_errors` value that is not a list of names counts
+as one error.
+
 **Default bounds.** Unless a table says otherwise: strings at most 256 bytes (truncate), integers are 32-bit
 signed, doubles are finite. Every array has a cap in its table; a client stops at the cap, it does not fail.
 
@@ -51,8 +66,9 @@ package, no accessibility service name. Where the raw value is free text it trav
 ### 1.1 hash64
 
 Sixteen lowercase hex characters: xxHash32 of the UTF-8 bytes with seed `0`, then with seed `0x9E3779B1`,
-concatenated. Identical to `hash64` in the Android and iOS SDKs. **The server has no implementation today and
-must add one.** Check it against these vectors:
+concatenated. Identical to `hash64` in the Android and iOS SDKs and in `domain/risk/native_hash.go`. iOS uses it for
+every name digest; Android uses it only for `app.signature_digest` and names with `nameDigest` (section 1.4). Check it
+against these vectors:
 
 | Input | hash64 |
 |---|---|
@@ -76,7 +92,8 @@ Used for libraries, threads, certificate subjects and signer subjects. Input is 
 3. Keep this as `leaf`. Remove one trailing `.so` or `.dylib` to get `stem`.
 4. `tokens` = `stem` split on every character outside `[a-z0-9]`, keeping tokens of 3 or more characters that
    are not all digits.
-5. Output the set `{ hash64(stem) } ∪ { hash64(t) for t in tokens }`.
+5. Output the set `{ digest(stem) } ∪ { digest(t) for t in tokens }`, where `digest` is `hash64` on iOS and `nameDigest`
+   (section 1.4) on Android.
 6. iOS image names only: also add `hash64(leaf)`, with the extension. Two iOS markers are bound to the extension.
 
 Why tokens and not only the whole name: today's library markers are substrings, and a hash can only match
@@ -91,10 +108,21 @@ The server holds marker strings in the clear (section 8.13), hashes them at star
 ### 1.3 Types used below
 
 - `hash64[]`: sorted ascending unless a rule below says otherwise; no duplicates.
-- `TokenSets`: array of arrays of hash64. Each inner array is one `nameHashes` output, capped at 24 and sorted.
+- `digest128`: one `nameDigest` (section 1.4). `digest128[]` follows the `hash64[]` rules.
+- `TokenSets`: array of arrays of name digests (`hash64` on iOS, `digest128` on Android). Each inner array is one
+  `nameHashes` output, capped at 24 and sorted.
 - `ImageRef` (iOS): for an image under a system tree (`usr_lib`, `system_library`, `system_applications`,
   `library_apple`, `sim_root`), the leaf file name as reported. For anything else, `hash64` of the lowercased
   leaf. Never a path.
+
+### 1.4 nameDigest (Android)
+
+Thirty-two lowercase hex characters: SHA-256 of the UTF-8 bytes, truncated to its first 128 bits (16 bytes). Android sends
+every name as `nameDigest`: `instrumentation.library_hashes` and `thread_hashes`, `app.signer_subject_tokens`,
+`tls.chain_subject_tokens`, and `images.digest`, which is one `nameDigest` over the image names joined by `\n`
+(`core/Hash.kt` in the SDK, `domain/risk/native_hash.go` on the server). The server hashes its Android marker sets the same way (`newAndroidMarkerSet`). It is
+deterministic and unkeyed, because the server matches it against marker names, so a common name can be recovered from its
+digest with a word list: pseudonymous, not anonymous. `app.signature_digest` stays `hash64`.
 
 ## 2. Android report
 
@@ -120,12 +148,9 @@ read move to the server.
 | `codename` | string | | unchanged |
 | `incremental` | string | | unchanged |
 | `security_patch` | string | absent below API 23 | unchanged |
-| `kernel_digest` | hash64 | | unchanged |
 | `build_id` | string | | unchanged |
 | `build_type` | string | | unchanged |
 | `build_tags` | string | | unchanged; now the only input for `test_keys` |
-| `build_host_digest` | hash64 | | unchanged |
-| `build_user_digest` | hash64 | | unchanged |
 | `fingerprint` | string | | unchanged |
 | `booted_recently` | bool | under 5 minutes; never the uptime | unchanged |
 | `device_provisioned` | bool | | unchanged |
@@ -240,19 +265,19 @@ read move to the server.
 | `signature_sha256` | string | 64 hex | unchanged |
 | `signer_count` | int | | unchanged |
 | `split_count` | int | | unchanged |
-| `signer_subject_tokens` | TokenSets | at most 4 signers; `nameHashes` of each subject DN | new (array, so outside the cohort) |
+| `signer_subject_tokens` | TokenSets | at most 4 signers; `nameHashes` of each subject DN, as `digest128` | new (array, so outside the cohort) |
 | `debug_signed` | bool | | removed (server tests the tokens) |
 
 ### root (fast)
 
 | Field | Type | Bounds | Status |
 |---|---|---|---|
-| `su_paths` | string[] | at most 10, probe paths only | unchanged |
-| `su_on_path` | bool | | unchanged |
-| `busybox_paths` | string[] | at most 10, probe paths only | unchanged |
-| `framework_paths` | string[] | at most 13, probe paths only | unchanged |
-| `root_manager_installed`, `hook_manager_installed` | bool | aggregate, see section 5; absent unless the app includes `fingerly-app-checks` | changed |
-| `writable_system` | string[] | at most 7, probe paths only | unchanged |
+| `su_paths` | string[] | at most 10, probe paths only; absent when nothing was found and a lookup was denied | changed |
+| `su_on_path` | bool | `true` when any `PATH` directory holds `su`; absent when none was found and a lookup was denied | changed |
+| `busybox_paths` | string[] | at most 10, probe paths only; absent when nothing was found and a lookup was denied | changed |
+| `framework_paths` | string[] | at most 13, probe paths only; absent when nothing was found and a lookup was denied | changed |
+| `root_manager_installed`, `hook_manager_installed` | bool | aggregate, see section 5; absent unless the app includes `fingerly-app-checks`, and absent when a lookup threw and no package was found | changed |
+| `writable_system` | string[] | at most 7, probe paths only; absent when the check threw | changed |
 | `selinux_enforcing` | bool | | unchanged |
 | `selinux_context` | string | at most 64, category suffix removed | unchanged |
 | `verified_boot_state` | string | at most 16, lowercased | unchanged |
@@ -262,9 +287,12 @@ read move to the server.
 | `ro_debuggable` | string | raw value, at most 8 | new |
 | `ro_secure` | string | raw value, at most 8 | new |
 | `property_store_refused` | bool | only ever `true`; present only when the property store refused a read | new |
-| `stat_access_mismatch` | bool | `Os.access` vs `File.exists` divergence across root/framework probe paths | new |
-| `system_mounts` | object[] | at most 8; see below | new |
-| `mount_framework_lines` | int | 0 to 1024; see below | new |
+| `stat_access_mismatch` | bool | `Os.access` vs `File.exists` divergence across root/framework probe paths; absent when no path could be checked | new |
+| `listing_mismatch` | bool | see below; absent when no path could be checked | new |
+| `system_mounts` | object[] | at most 8; see below; absent when the mount table could not be read | new |
+| `mount_framework_lines` | int | 0 to 1024; see below; absent with `system_mounts` | new |
+| `mounts_truncated` | bool | only ever `true`; present only when the mount table read stopped at its 1,024-line cap | new |
+| `probe_errors` | string[] | at most 32; see below | new |
 | `mount_anomalies` | string[] | | removed |
 | `dangerous_props` | string[] | | removed |
 | `test_keys` | bool | | removed (`system.build_tags` contains `test-keys`) |
@@ -274,18 +302,32 @@ read move to the server.
 options field starts with `rw`. These four points and the filesystem type are not free text.
 
 `mount_framework_lines`: how many mount lines have a source or point containing `magisk` (any case) or a point
-starting with `/data/adb`. A count because the rest of the table can name other apps (section 5).
+starting with `/data/adb`. A count because the rest of the table can name other apps (section 5). The table is
+`/proc/self/mountinfo`, or `/proc/self/mounts` when that reads empty, at most 1,024 non-blank lines.
+
+`listing_mismatch`: for the `stat_access_mismatch` probe paths (a control path, `su`, `busybox` and `magisk` in each
+binary directory, and the framework paths), whether a direct `lstat` and the parent directory's listing (`File.list`,
+which reads the directory entries) disagree: the path is present and not listed, or absent and listed. A path whose
+lookup is denied, or whose parent cannot be listed, is skipped. Hiding a file from one view and not the other is what
+root hiding does.
+
+`probe_errors` names, and the field each one leaves out (`observeRoot`, `collect/RootSource.kt`): `su_paths`,
+`busybox_paths`, `framework_paths`, `su_on_path` (a lookup was denied; the field is left out only when nothing was found),
+`writable_system`, `stat_access_mismatch`, `listing_mismatch`, `root_manager_installed`, `hook_manager_installed`
+(the package lookup threw; the field is left out only when no package was found), `system_mounts` (also leaves out
+`mount_framework_lines`).
 
 ### emulator (fast)
 
 | Field | Type | Bounds | Status |
 |---|---|---|---|
 | `qemu_props` | string[] | at most 6, probe names; absent when the property store refused a read | changed |
-| `qemu_devices` | string[] | at most 9, probe paths | unchanged |
-| `emulator_files` | string[] | at most 17, probe paths | unchanged |
-| `telephony` | bool | | unchanged |
+| `qemu_devices` | string[] | at most 9, probe paths; absent when nothing was found and a lookup was denied | changed |
+| `emulator_files` | string[] | at most 17, probe paths; absent when nothing was found and a lookup was denied | changed |
+| `telephony` | bool | absent when the package manager could not answer | changed |
 | `ro_hardware` | string | raw `ro.hardware`, at most 64 | new |
 | `features` | object | see below; absent when the package manager fails | new |
+| `probe_errors` | string[] | at most 32: `telephony`, `qemu_devices`, `emulator_files`, `features` | new |
 | `virtual_board` | string | | removed |
 | `build_indicators` | string[] | | removed |
 | `cpu_hardware` | string | | removed (`hardware.cpu_hardware`) |
@@ -309,15 +351,17 @@ starting with `/data/adb`. A count because the rest of the table can name other 
 
 | Field | Type | Bounds | Status |
 |---|---|---|---|
-| `hook_classes` | string[] | at most 6, probe classes | unchanged |
-| `foreign_stack_frames` | bool | | unchanged |
-| `open_ports` | int[] | at most 2 | unchanged |
-| `artefacts` | string[] | at most 4, probe paths | unchanged |
-| `library_hashes` | hash64[] | at most 768; see below | new |
-| `library_total` | int | distinct names before the cap | new |
-| `thread_hashes` | hash64[] | at most 128; `nameHashes` of each thread name, sorted | new |
-| `thread_total` | int | distinct thread names before the cap | new |
-| `exec_regions` | object | int counts; see below | new |
+| `hook_classes` | string[] | at most 6, probe classes; absent when the class lookup threw | changed |
+| `foreign_stack_frames` | bool | absent when the stack could not be sampled | changed |
+| `open_ports` | int[] | at most 2; absent when a port check failed and no port was found open | changed |
+| `artefacts` | string[] | at most 4, probe paths; absent when nothing was found and a lookup was denied | changed |
+| `library_hashes` | digest128[] | at most 768; see below; absent when the memory map could not be read | new |
+| `library_total` | int | distinct names before the cap; absent with `library_hashes` | new |
+| `thread_hashes` | digest128[] | at most 128; `nameHashes` of each thread name, sorted; absent when no thread name could be read | new |
+| `thread_total` | int | distinct thread names before the cap; absent with `thread_hashes` | new |
+| `exec_regions` | object | int counts; see below; absent when the memory map could not be read | new |
+| `maps_truncated` | bool | only ever `true`; present only when the `/proc/self/maps` read stopped at its 16,384-line cap | new |
+| `probe_errors` | string[] | at most 32: `maps`, `threads`, `hook_classes`, `foreign_stack_frames`, `open_ports`, `artefacts` | new |
 | `libraries` | string[] | | removed |
 | `threads` | string[] | | removed |
 | `anonymous_exec_maps` | int | | removed |
@@ -357,12 +401,14 @@ server. Each region goes in exactly one bucket, first match wins:
 
 | Field | Type | Bounds | Status |
 |---|---|---|---|
-| `data_dir_expected`, `data_dir_in_other_app`, `stub_process_name` | bool | see section 5 | unchanged |
-| `cloner_installed` | bool | see section 5; absent unless the app includes `fingerly-app-checks` | changed |
-| `foreign_sandbox_maps` | int | count, never names | unchanged |
+| `data_dir_expected`, `data_dir_in_other_app` | bool | see section 5 | unchanged |
+| `stub_process_name` | bool | see section 5; absent when the process name could not be read | changed |
+| `cloner_installed` | bool | see section 5; absent unless the app includes `fingerly-app-checks`, and absent when a lookup threw and no package was found | changed |
+| `foreign_sandbox_maps` | int | count, never names; absent when the memory map could not be read | changed |
 | `user_id` | int | | unchanged |
-| `is_managed_profile` | bool | | new |
-| `is_device_protected_storage` | bool | | new |
+| `is_managed_profile` | bool | absent below API 30 (no zero-permission query) and when the query failed | new |
+| `is_device_protected_storage` | bool | `false` below API 24; absent when the query failed | new |
+| `probe_errors` | string[] | at most 32: `maps`, `stub_process_name`, `is_managed_profile` (API 30 and up), `is_device_protected_storage`, `cloner_installed` | new |
 | `oem_clone` | bool | | removed (`user_id == 999`) |
 
 ### images (deferred)
@@ -370,7 +416,7 @@ server. Each region goes in exactly one bucket, first match wins:
 | Field | Type | Status |
 |---|---|---|
 | `count` | int | unchanged |
-| `digest` | hash64 | unchanged |
+| `digest` | digest128 | changed |
 | `executable_regions` | int | unchanged |
 | `foreign`, `foreign_count` | | removed (`instrumentation.exec_regions.file_other`, on the fast tier) |
 
@@ -417,10 +463,9 @@ timestamp, and reports Google's verdicts. Its absence is never evidence.
 | `failure` | string | at most 64, class name only | unchanged |
 | `chain_length` | int | | unchanged |
 | `system_trusted` | bool | | unchanged |
-| `root_digest` | hash64 | | unchanged |
 | `root_key_sha256` | string | base64 | new |
 | `leaf_expires_at` | int | epoch seconds | unchanged |
-| `chain_subject_tokens` | TokenSets | at most 6 certs, leaf first; `nameHashes` of subject and issuer DN joined by a space | new |
+| `chain_subject_tokens` | TokenSets | at most 6 certs, leaf first; `nameHashes` of subject and issuer DN joined by a space, as `digest128` | new |
 | `known_interceptor` | string | | removed |
 
 ### integrity
@@ -428,12 +473,18 @@ timestamp, and reports Google's verdicts. Its absence is never evidence.
 | Field | Type | Bounds | Status |
 |---|---|---|---|
 | `native_methods` | object[] | at most 32, see below | new |
+| `unresolved` | string[] | watched names that could not be resolved, in watch-list order; omitted when empty | new |
 | `patched_natives` | string[] | always empty on Android | removed |
 | `lies` | object[] | | removed (server derives, 8.12) |
 | `engine` | object | | removed (server derives, 8.12) |
 
 `native_methods`: one entry per watched method present on this OS. `{ "method": "java.io.File!exists", "declared": int, "native": int }`:
-how many overloads were checked and how many report `Modifier.isNative`. A method absent from the OS has no entry.
+how many overloads were checked and how many report `Modifier.isNative`. The watched methods are the `native_methods` list
+in [watchlist-android.json](./watchlist-android.json). A method whose class or method is missing on this OS, or whose
+lookup threw, has no entry and is named in `unresolved` instead (`nativeMethodCounts`, `integrity/Integrity.kt`): a
+suppressed lookup never looks like a shorter list. The server counts every watched name that has no entry or is listed in
+`unresolved` (`watchlistGaps`, `domain/risk/watchlist.go`) as tampering evidence `watchlist-incomplete`, 0.25 per name up
+to 1.25, unless the whole table is missing or empty, which already fires `missing-native-methods`.
 
 ### device
 
@@ -445,7 +496,7 @@ Removed entirely. See section 6.
 
 | Field | Type | Bounds | Status |
 |---|---|---|---|
-| `os_version`, `os_build`, `os_type`, `uname_release` | string | | unchanged |
+| `os_version`, `os_build`, `os_type`, `uname_release` | string | `os_version` is the Darwin release from `kern.osrelease` (for example `25.5.0` on iOS 26), never the iOS marketing version; the server maps it to the iOS major | unchanged |
 | `kernel_version` | hash64 | | unchanged |
 | `simulator_model`, `simulator_runtime` | string | | unchanged |
 | `simulator_environment` | string[] | at most 5, key names only | unchanged |
@@ -469,6 +520,10 @@ Removed entirely. See section 6.
 | `width`, `height`, `native_width`, `native_height` | int | unchanged |
 | `scale`, `native_scale` | double | unchanged |
 | `max_fps` | int | removed (iOS ADR 0001) |
+
+A process with no application object (`UIApplication.shared` is nil, as in a test bundle without a host app) has no screen
+to describe: the source is `{ status: "unsupported", reason: "no-application" }` with no value, and `UIScreen` is never
+touched, because its first use waits on the main thread for a launch context such a process never gets.
 | `brightness` | double | removed (iOS ADR 0001) |
 | `gamut`, `interface_style` | string | removed (iOS ADR 0001) |
 
@@ -599,7 +654,7 @@ Retired (iOS ADR 0001), sent as `unsupported` with reason `retired` and no value
 
 | Field | Type | Bounds | Status |
 |---|---|---|---|
-| `thread_count` | int | | unchanged |
+| `thread_count` | int | every thread `task_threads` returns, named or not; 0 when the call fails | unchanged |
 | `open_ports` | int[] | at most 2 | unchanged |
 | `library_hashes` | hash64[] | at most 768; see below | new |
 | `library_total` | int | images considered before the cap | new |
@@ -694,7 +749,8 @@ when that evidence verifies, and the customer's backend spends it once to read o
 |---|---|---|---|
 | `native_symbols` | object[] | at most 32; see below | new |
 | `objc_methods` | object[] | at most 32; see below | new |
-| `got_slots` | object[] | at most 32; see below | new |
+| `got_slots` | object[] | at most 32; always present, empty when no watched import has a slot; see below | new |
+| `unresolved` | string[] | watched names that could not be measured, sorted, no duplicates; omitted when empty | new |
 | `patched_natives` | string[] | | removed |
 | `lies` | object[] | | removed |
 | `engine` | object | | removed |
@@ -710,7 +766,14 @@ address map. Nothing here needs a private API, and system bytes are the same on 
 `objc_methods`: one entry per watched method that resolves: `{ "method": "NSFileManager fileExistsAtPath:", "image": ImageRef?, "tree": string, "isa_swizzled": bool?, "msg_forward": bool? }`,
 with `tree` set to `unresolved` when `dladdr` cannot place the implementation, `isa_swizzled` true when a singleton instance's runtime `object_getClass` disagrees with its declared class, and `msg_forward` true when the method implementation points to `_objc_msgForward`.
 
-`got_slots`: optional Mach-O `__DATA_CONST,__got` / `__la_symbol_ptr` slot bindings for watched C imports: `{ "symbol": string, "image": ImageRef?, "tree": string }`, using the `image_trees` vocabulary (`unresolved` when `dladdr` cannot place the bound pointer).
+`got_slots`: Mach-O `__DATA_CONST,__got` / `__la_symbol_ptr` slot bindings for watched C imports: `{ "symbol": string, "image": ImageRef?, "tree": string }`, using the `image_trees` vocabulary (`unresolved` when `dladdr` cannot place the bound pointer). The array is always sent, empty when no watched import has a slot in the image, so the server can tell "inspected" from "not inspected".
+
+`unresolved`: the watched names, from the `native_symbols` and `objc_methods` lists in [watchlist-ios.json](./watchlist-ios.json),
+that could not be measured: a function `dlsym` does not resolve or `dladdr` cannot place, and a method (`Class selector`) whose
+class or implementation cannot be found (`measureIntegrity`, `Integrity/Hooks.swift`). Such a name has no table entry and is
+listed here instead of being dropped. The server counts every watched name that has no entry or is listed in `unresolved`
+(`watchlistGaps`, `domain/risk/watchlist.go`) as tampering evidence `watchlist-incomplete`, 0.25 per name up to 1.25, so a
+function an older iOS does not have yet (two names on iOS 13) stays below the tampering bar on its own.
 
 ### device
 
@@ -842,6 +905,8 @@ Source `root`. If `sources.root.status == "blocked"`: single tell `root-probe-bl
 | `ro_debuggable == "1"` or `ro_secure == "0"`, once, and not `emulatorHard` [proposed P6] | 0.4 | `dangerous-prop-<first>` |
 | `root_manager_installed` | 0.7 | `root-manager-installed` |
 | else `hook_manager_installed` | 0.7 | `hook-manager-installed` |
+| `stat_access_mismatch` | 0.7 | `stat-access-mismatch` |
+| `listing_mismatch` | 1.4 | `root-hidden-listing-mismatch` |
 | `busybox_paths` non-empty | 0.5 | `busybox-present` |
 | `su_on_path` and `su_paths` empty | 1.2 | `su-on-path-but-not-stattable` |
 
@@ -1073,7 +1138,11 @@ Android, sources `integrity`, `identity`, `app`, and iOS, sources `integrity`, `
 | `schema` absent or not an integer | 1.5 | `report-schema-missing` |
 | `schema` below 2 | 1.5 | `report-schema-outdated` |
 | `n` required sources omitted (see below) | `min(2.0, 1.25 + 0.25 * (n - 1))` | `required-sources-omitted-<n>` |
-| selective probe failure (see below) | 1.0 (low confidence alone) | `security-probes-failed-<n>` |
+| Android: `integrity.native_methods` missing, empty, or an entry with `declared <= 0` | 1.25 | `missing-native-methods` |
+| iOS: `integrity` missing, or `native_symbols` or `objc_methods` missing or empty | 1.25 | `missing-integrity-probes` |
+| `n` watched names with no entry or listed in `integrity.unresolved`, when the tables are there | `min(1.25, 0.25 * n)` | `watchlist-incomplete` |
+| Android: `root.stat_access_mismatch` | 1.25 | `stat-access-mismatch` |
+| Android: `root.listing_mismatch` | 1.25 | `listing-mismatch` |
 | `library_hashes` over 768 entries, or `thread_hashes` over 128 | 1.5 | `hash-list-over-cap` |
 | `library_hashes` exactly 768 entries | 0.15 | `library-list-at-cap` |
 
@@ -1083,17 +1152,18 @@ absent, or counted absent, when it is missing, has an unknown status, or is `ok`
 empty object, because a real probe always sends its lists even when empty. An ordinary source may be an empty object: a field that could not
 be read is omitted.
 
-**Selective probe failure.** Android 4 of its 5 integrity probes, or iOS all 3, are `timeout`, `error` or `blocked`, on a run that still had
-budget (`elapsed_ms` under 90 percent of `budget_ms`) and whose ordinary fast sources are at most half failed. One failed probe is not
-evidence. The threshold is tuned from the real schedulers and fixtures so a slow genuine device stays quiet:
-
-- Integrity probes run last in the fast queue, so a budget that runs out reaches all of them at once, as `budget-exhausted` timeouts at 0 ms,
-  and the spent `elapsed_ms` excuses it. Forging the excuse costs a client one number, which is the price of not punishing a slow phone.
-- Probe timeouts are generous (Android 200 to 600 ms, iOS 80 to 200 ms) against 0 to 301 ms in the real fixtures. Root, instrumentation and
-  cloned read the same files, so three of them timing out is one slow disk; 4 of 5 also needs the unrelated emulator or debugger probe, and
-  3 of 3 on iOS needs every probe, each under 30 ms in the fixture.
-- A device stalled badly enough to fail the probes also fails its ordinary sources, and deferred failures are ordinary network behaviour, so
-  neither counts.
+**Failed security sources are `report_incomplete`, not tampering.** The signal `report_incomplete` (weight 16;
+`detectNativeReportIncomplete`, `domain/risk/native_report.go`) fires when a required security source is missing or did not
+finish: Android `root`, `instrumentation`, `emulator`, `debugger`, `cloned` and `tls`, iOS `jailbreak`, `instrumentation`,
+`debugger` and `tls`. A source counts when it is absent in the sense above, or its status is `timeout`, `error` or `blocked`;
+`unsupported` is not a failure. `tls` is required only when `tiers` claims the deferred tier or does not say. One such source
+is medium confidence and two or more are high, reason `security-source-missing-<n>` when any was missing, else
+`security-source-failed-<n>`. With no failed security source, three or more missing required sources (fast tier, and deferred
+except `attest`) fire it at high confidence, reason `missing-required-sources`. The rule reads presence and status only, and
+never runs for a report whose `schema` is missing or below 2 (that is tampering, above). Nothing the client says about time
+excuses a failed or missing security source: a source's `ms`, `budget_ms` and `elapsed_ms` are numbers the client writes, so
+a slow honest device whose probes run out of budget reports them as `timeout` and is scored for it. A failed probe inside a
+source that ran is `probe_errors` (section 1), not this rule.
 
 **Hash lists.** An SDK stops at each cap, so a list past one is not a real report, and the server neither reads past the cap nor scans the
 tail. Which hashes survive the cap is the SDK's decision (tree order, then ascending hash) and the server cannot see one it dropped; a
@@ -1117,7 +1187,8 @@ The debug-key and sideload weights are capped so a debug build over adb (0.8 tot
 
 ### 8.12 Contradictions, injected and missing (computed by the server)
 
-**Android.** `rootLooksClean`: `root` ok, `su_paths`, `framework_paths`, `writable_system` empty, and `mountAnomalies == 0`.
+**Android.** `rootLooksClean`: `root` ok, `su_paths`, `framework_paths` and `writable_system` present and empty (an absent
+list is unknown, not clean), `mounts_truncated` and `listing_mismatch` not true, and `mountAnomalies == 0`.
 
 Emit in this order (first three contradictions count):
 
@@ -1149,7 +1220,8 @@ iOS: `claimed` = `hardware.machine`; `observed` = `simulator` when `simulator` a
 
 ### 8.13 Server-held constants
 
-Marker strings, in the clear, hashed with `hash64` at start-up. A list hits when any marker's hash is in the array.
+Marker strings, in the clear, hashed at start-up: with `nameDigest` for the Android sets and with `hash64` for the iOS
+sets. A list hits when any marker's digest is in the array.
 
 Android library set: `frida`, `libfrida`, `fridagadget`, `xposed`, `libxposed`, `lsposed`, `liblsposed`, `edxposed`, `libedxposed`, `riru`, `libriru`, `libriruhide`,
 `libriruloader`, `zygisk`, `libzygisk`, `zygiskloader`, `substrate`, `libsubstrate`, `shadowhook`, `libshadowhook`, `sandhook`, `libsandhook`, `yahfa`, `libyahfa`, `libwhale`,
@@ -1215,5 +1287,5 @@ Android fixes with no iOS counterpart to port: ADB and developer options counted
 In the `v: 3` wire protocol ([v3-envelope.md](./v3-envelope.md)), the `schema: 2` native report defined in sections 2 and 3 is serialized once to UTF-8 bytes (`signalsBytes`) and placed verbatim into the top-level `signals` field of `IdentifyIn` / `IngestIn`:
 
 - **Top-level `AttestEnvelope`**: Cryptographic proofs move from in-report fields to top-level `attest` (`mode` in `{"android_key_register", "android_key_assert", "app_attest_register", "app_attest_assert"}`, stateless KMS-signed `challenge` ticket, `install_id`, `key_id`, iOS `attestation_object` / `assertion` / `device_token`, Android `certificate_chain` / `signature` / `prev_key_id` / `prev_signature`, and optional `play_integrity_token`).
-- **Raw-byte signing**: Mobile clients compute `signalsDigest = SHA256(signalsBytes)` and sign `framedPreimage` (`statementDigest = SHA256(framedPreimage)`) covering the authenticated platform, `challenge` ticket ASCII string, `install_id`, `Idempotency-Key`, `device_token` digest, and `signalsDigest` without cross-language JSON re-canonicalization. The server verifies the hardware signature and single-use ticket over exact `signals` wire bytes before JSON decoding, then checks `attest.install_id == sources.identity.value.install_id`.
-- **1-RTT steady-state**: Every native `IdentifyOut` response carries `next_attestation` (`AttestationChallengeOut`) and optional `attest_key_status` (`"rekey_required"`), while `sources.tls` reads `root_key_sha256` from the shared HTTPS transport cache rather than issuing a separate `HEAD /` probe.
+- **Raw-byte signing**: Mobile clients compute `signalsDigest = SHA256(signalsBytes)` and sign `framedPreimage` (`statementDigest = SHA256(framedPreimage)`) covering the authenticated platform, `challenge` ticket ASCII string, `install_id`, `Idempotency-Key`, `device_token` digest, the envelope digest of `tag`, `sdk.platform`, `sdk.version`, `consent` and `attest.reattest_attempt` ([v3-envelope.md](./v3-envelope.md) section 3.2), and `signalsDigest` without cross-language JSON re-canonicalization. The server verifies the hardware signature and single-use ticket over exact `signals` wire bytes before JSON decoding, then checks `attest.install_id == sources.identity.value.install_id`.
+- **1-RTT steady-state**: Every native `IdentifyOut` response carries `next_attestation` (`AttestationChallengeOut`). Whenever the request carried `attest`, it also carries `attest_key_id` (the `attest.key_id` the server evaluated) and `attest_key_status`: `registered`, `valid`, `rekey_required` or `rejected` ([v3-envelope.md](./v3-envelope.md) section 1.3). A native request without `attest` carries `attest_skipped` instead. `sources.tls` reads `root_key_sha256` from the shared HTTPS transport cache rather than issuing a separate `HEAD /` probe.

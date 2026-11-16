@@ -1,90 +1,125 @@
-# First-Party Proxy Relay Contract (`CA-06`, `F-10`)
+# First-Party Proxy Relay Contract
 
-This contract governs all 17 first-party proxy relay implementations: the Cloudflare Worker (`sdks/proxies/cloudflare`), the 8 edge and reverse-proxy templates (`sdks/proxies/templates/*`, where Traefik routes to `container/server.mjs`), and the 8 Server SDK proxy middlewares (`sdks/server/{node,go,python,java,dotnet,ruby,rust,php}`).
+This contract governs every first-party proxy relay. Two families implement it:
+
+- **Edge proxies**: the Cloudflare Worker (`sdks/proxies/cloudflare`) and the 8 edge and reverse-proxy templates in `sdks/proxies/templates` (`aws-cloudfront`, `caddy`, `container`, `gcp-cloud-run`, `netlify`, `nginx`, `traefik`, `vercel`; Traefik routes to the `container` server).
+- **SDK proxies**: the proxy handlers of the 8 Server SDKs (`sdks/server/{node,go,python,java,dotnet,ruby,rust,php}`), including their framework adapters (Java Jakarta, javax and WebFlux filters; ASP.NET Core middleware; PHP PSR-15, Laravel and Symfony adapters).
+
+Every refusal a proxy writes itself carries `Cache-Control: no-store` and forwards nothing upstream.
 
 ---
 
 ## 1. Single-Path Raw-Byte Forwarding
 
-1. **Exact Path Matching**: A proxy answers only its configured path (for example `/k7x2qm4a`, normalized without trailing slashes). Subpaths, dot-segment traversals (`/k7x2qm4a/..`, `%2e%2e`), and sibling paths return HTTP `404` (`Cache-Control: no-store`). Only `POST` (and `OPTIONS` when cross-origin CORS is explicitly configured) is accepted; all other methods return HTTP `405` (`Allow: POST` or `Allow: POST, OPTIONS`, `Cache-Control: no-store`).
-2. **Pinned Upstream Target**: Every accepted `POST` forwards exclusively to `https://api.fingerly.io/api/v1/ingest` (or a loopback-only dev override in test harnesses), with `redirect: "manual"`, a `5s` upstream deadline, a `1 MiB` (`1,048,576` bytes) request body cap (`413 Payload Too Large`), and a `4 MiB` (`4,194,304` bytes) response body cap (`502 Bad Gateway`).
-3. **Zero Body Mutation**: Request body bytes are forwarded verbatim without JSON decoding, key re-ordering, whitespace normalization, or float re-formatting. Mutating even one byte of `signals` invalidates mobile `v: 3` raw-byte hardware signatures ([v3-envelope.md](./v3-envelope.md)) and `Gate` `SHA256(rawBody)[0:16]` idempotency checks.
+1. **Exact path**: A proxy answers only its configured path (for example `/k7x2qm4a`, configured without a trailing slash). The match is on the raw request target and is case-sensitive: subpaths, trailing or doubled slashes, dot segments (`/k7x2qm4a/..`, `/x/../k7x2qm4a`), percent-encoded forms (`%2e%2e`) and sibling paths answer HTTP `404`. A query string after the exact path is accepted.
+2. **Exact method**: Only `POST` is forwarded. The method is compared exactly as the runtime delivers it (methods are case-sensitive, RFC 9110), so an SDK proxy answers `post`, `Post` or `pOST` with HTTP `405`, just like `GET` or `PUT`. A `405` carries `Allow: POST`, or `Allow: POST, OPTIONS` when cross-origin origins are configured (section 4.4). `OPTIONS` is answered `204` only as a preflight from an allowed cross origin. Fetch-based runtimes (the Worker, Vercel, Netlify, and the Node SDK's `handle(Request)`) receive a method the Fetch standard has already uppercased; the Node SDK's Node-server handler passes the raw method, so `post` gets `405` there.
+3. **Pinned upstream**:
+   - Edge proxies forward to the constant `https://api.fingerly.io/api/v1/ingest`, never to a configured URL. The Worker alone honours `FINGERLY_DEV_UPSTREAM` for local testing: it is used only when it is a bare `http://` or `https://` origin on `localhost`, `127.0.0.1` or `[::1]` with no path; any other value is ignored and the constant is used.
+   - SDK proxies take an optional `upstream` that must be a bare origin, `https://host` or `https://host:port`, with no path, query, fragment or credentials. Plain `http://` is accepted only for `127.0.0.1`, `localhost` or `[::1]`, and only when the dev flag is set: `allowInsecureLoopback` (Node, Java builder, .NET `AllowInsecureLoopback`, Go `ProxyOptions.AllowInsecureLoopback`) or `allow_insecure_loopback` (Python, Ruby, Rust builder, PHP). Any other value is a configuration error raised when the proxy is built. Requests go to `<upstream>/api/v1/ingest`.
+   - Redirects are never followed. Fetch-based proxies send `redirect: "manual"`; the Java and .NET SDKs refuse an HTTP client or handler configured to follow redirects.
+4. **Limits**: a `5s` deadline for the whole upstream exchange (`504` when it passes), a `1 MiB` (`1,048,576` bytes) request body cap (`413 Payload Too Large`, checked on the declared `Content-Length` and on the bytes read), and, wherever the proxy holds the answer (the Worker, Vercel, Netlify, container and Cloud Run templates and every SDK proxy), a `4 MiB` (`4,194,304` bytes) response cap (`502`). SDK proxies take the deadline and the request cap as options with these defaults. An unreachable upstream answers `502`.
+5. **Zero body mutation**: Request body bytes are forwarded verbatim without JSON decoding, key re-ordering, whitespace normalization or float re-formatting. Mutating one byte of `signals` invalidates the native `v: 3` raw-byte attestation ([v3-envelope.md](./v3-envelope.md)) and the `SHA256(rawBody)[0:16]` idempotency check.
 
 ---
 
 ## 2. Sanitize-and-Restore Header Sequence
 
-Every proxy implementation must process incoming headers in this exact logical sequence (or construct a clean outgoing header map from scratch that produces the identical result):
+Every proxy builds the upstream header set from scratch (or produces the identical result), in this logical sequence:
 
-1. **Capture Validated `x-fingerly-sdk-platform`**:
-   Read the incoming `x-fingerly-sdk-platform` header (case-insensitive header name) and retain its value **if and only if** it matches the exact lowercase pattern:
+1. **Capture validated `x-fingerly-sdk-platform`**: Read the incoming `x-fingerly-sdk-platform` header (case-insensitive name) and keep its value **if and only if** it matches exactly:
    ```regex
    ^(ios|android|react-native|react-native-ios|react-native-android|flutter|flutter-ios|flutter-android|lynx-ios|lynx-android|capacitor|kotlin-multiplatform)$
    ```
-   Any non-matching value (whitespace, uppercase, unknown string, or multiple comma-separated values) is discarded as empty (`""`).
-2. **Strip All Incoming `x-fingerly-*` Headers**:
-   Remove every incoming header whose lowercased name starts with `x-fingerly-` (alongside `Cookie` and `Authorization`, which are never forwarded). Callers must never be able to smuggle `x-fingerly-proxy-key` (`X-Fingerly-Key`), `x-fingerly-client-ip` (`X-Fingerly-Forwarded-For`), `x-fingerly-origin`, `x-fingerly-host`, `x-fingerly-edge-tls-*`, or an unvalidated `x-fingerly-sdk-platform` through the proxy.
-3. **Restore Validated `x-fingerly-sdk-platform`**:
-   If Step 1 captured a valid platform identifier, set `X-Fingerly-SDK-Platform` to that validated value on the upstream request.
-4. **Enforce the Origin / Native-Platform Gate (`400 missing_origin`)**:
-   Inspect the incoming `Origin` header and the validated `x-fingerly-sdk-platform` from Step 1:
-   - Reject immediately with HTTP `400` (`missing_origin`, `Cache-Control: no-store`) **if and only if both** `Origin` and validated `x-fingerly-sdk-platform` are empty.
-   - **Never synthesize `X-Fingerly-Origin`** from `Host`, `$scheme://$http_host`, `Referer`, or `request.url`. Browser `POST` requests carry `Origin`; native SDK HTTP stacks carry `X-Fingerly-SDK-Platform`; raw `curl` or script calls without either are rejected at the proxy edge before consuming upstream resources.
-5. **Inject Proxy Metadata and Forward Allowlisted Client Headers**:
-   Construct the upstream request headers using only verified proxy metadata and the explicit client header allowlist below.
+   Any other value (whitespace, uppercase, an unknown name, several values) counts as empty.
+2. **Drop everything else the caller sent**: No incoming header crosses unless section 3.2 names it. Every incoming `x-fingerly-*` header, `Cookie`, `Authorization`, `Referer`, `Forwarded`, `X-Forwarded-*`, `X-Real-IP` and application headers are dropped. The caller's `Origin` header itself is never sent upstream; its value travels only as `X-Fingerly-Origin` (step 4).
+3. **Origin gate (`400 missing_origin`)**: When both `Origin` and the validated platform are empty, answer HTTP `400` with `Content-Type: application/json` and a body `{"error":{"code":"missing_origin","message":"..."}}`. Clients read `code`; the message text differs between implementations. Browser `POST` requests carry `Origin`, native SDK HTTP stacks carry `X-Fingerly-SDK-Platform`, and a script call with neither is refused at the proxy.
+4. **One channel header (Origin wins)**: Exactly one channel header goes upstream:
+   - `Origin` present: `X-Fingerly-Origin` is set to its exact value and `X-Fingerly-SDK-Platform` is not sent, even when a valid platform was captured.
+   - `Origin` absent: `X-Fingerly-SDK-Platform` is set to the validated platform.
+
+   `X-Fingerly-Origin` is never synthesized from `Host`, `$scheme://$http_host`, `Referer` or the request URL. In the nginx template the `map` keeps the platform only for a request without `Origin`; in CloudFront the platform is restored only when `Origin` is absent.
+5. **Inject proxy metadata** (section 3.1) and the allowlisted client headers (section 3.2).
+
+### 2.1 Local Key Checks
+
+Both checks run before anything is forwarded.
+
+- **Proxy key**: The proxy's own key must match `^fly_px_(production|staging|development)_[A-Za-z0-9_-]+$`.
+  - Edge proxies check the configured key on every request and answer HTTP `503` (`Cache-Control: no-store`) when it is missing or malformed. The CloudFront function never sees the key, which rides in the origin's custom header; it answers `503` when its environment sample is not a public key of a known environment.
+  - SDK proxies treat a missing or malformed proxy key as a configuration error raised when the proxy is built. The Node SDK validates the key on the first request instead and answers HTTP `500` for every request until it is fixed, reporting it once per process.
+- **Public key**: The caller's `X-Api-Key` must match `^fly_pk_<environment>_[A-Za-z0-9_-]+$`, where `<environment>` is the proxy key's environment. A missing header, a public key of another environment, a secret `fly_sk_` key or any other value is answered HTTP `401` (`Unauthorized`, `Content-Type: text/plain; charset=utf-8`, `Cache-Control: no-store`) by the proxy itself.
+
+### 2.2 Check Order
+
+A request that fails several checks gets the first refusal in its family's order:
+
+| Family | Order |
+|---|---|
+| Worker, Vercel, Netlify, container, Cloud Run, nginx, Caddy | path `404`, (Worker: `403` for an `Origin` neither its own nor allowed), method `405`, proxy key `503`, `400 missing_origin`, public key `401`, then the client IP (`500`) and size (`413`) checks where the runtime makes them |
+| CloudFront | path `404`, method `405`, `400 missing_origin`, environment `503`, public key `401`, client IP `500` |
+| SDK proxies | path `404`, method `405`, (Node: proxy key `500`), public key `401`, `400 missing_origin`, then the client IP (`500`) and size (`413`) checks |
 
 ---
 
 ## 3. Upstream Request Header Specification
 
+The upstream request carries only the headers in sections 3.1 and 3.2, plus transport framing (`Host`, `Content-Length`, `Connection`, `Accept-Encoding`, `Transfer-Encoding`). A header with an empty value is not sent.
+
 ### 3.1 Proxy-Injected Headers
 
 | Upstream Wire Header | Contract Role | Value Rules |
 |---|---|---|
-| `X-Fingerly-Proxy-Key` (`X-Fingerly-Key`) | Proxy authentication credential | Secret `fly_px_<environment>_...` key held by the proxy. Missing or malformed proxy configuration fails closed (`500`/`503`) without calling upstream. |
-| `X-Fingerly-Client-IP` (`X-Fingerly-Forwarded-For`) | Trusted visitor IP address | Single validated IPv4 or IPv6 literal (no port, no IPv6 zone ID, no comma-separated XFF list) extracted from the platform's trusted edge socket/header. |
-| `X-Fingerly-Origin` | Browser page origin | Exact incoming `Origin` header when present. Omitted (not synthesized) when `Origin` is absent on validated `X-Fingerly-SDK-Platform` requests. |
-| `X-Fingerly-Host` | Proxy ingress host | Incoming `Host` header observed at the customer proxy edge (when available), distinct from the upstream `Host: api.fingerly.io` target. |
-| `X-Fingerly-SDK-Platform` | Restored native platform | Set only when Step 1 matched `^(ios|android|react-native|react-native-ios|react-native-android|flutter|flutter-ios|flutter-android|lynx-ios|lynx-android|capacitor|kotlin-multiplatform)$`. |
-| `X-Fingerly-Proxy-Version` | Proxy runtime telemetry | Static `<impl>/<version>` identifier (for example `cloudflare-worker/0.3.0`, `nginx/1.0.0`, `node/0.3.0`). |
-| `X-Fingerly-Edge-TLS-Version` (`X-Fingerly-Edge-TLS-*`) | Edge TLS protocol | Terminated visitor TLS version (for example `TLSv1.3`) injected by edge runtimes that expose TLS metadata (such as Cloudflare Workers `request.cf.tlsVersion`). |
-| `X-Fingerly-Edge-TLS-Cipher` (`X-Fingerly-Edge-TLS-*`) | Edge TLS cipher suite | Terminated visitor TLS cipher (for example `AEAD-AES128-GCM-SHA256`) injected by edge runtimes (`request.cf.tlsCipher`). |
-| `X-Fingerly-Edge-HTTP-Proto` (`X-Fingerly-Edge-TLS-*`) | Edge HTTP protocol | Terminated visitor HTTP protocol (for example `HTTP/2`, `HTTP/3`) injected by edge runtimes (`request.cf.httpProtocol`). |
+| `X-Fingerly-Proxy-Key` | Proxy authentication credential | The proxy's `fly_px_<environment>_...` key (section 2.1). |
+| `X-Fingerly-Client-IP` | Trusted visitor IP address | One IPv4 or IPv6 literal (no port, no IPv6 zone ID, no comma-separated list) from the platform's trusted socket or edge header. Anything else answers `500` and forwards nothing. |
+| `X-Fingerly-Origin` | Browser page origin | The exact incoming `Origin` value when present (section 2, step 4). Never synthesized. |
+| `X-Fingerly-SDK-Platform` | Native platform | The validated platform, only when `Origin` is absent (section 2, step 4). |
+| `X-Fingerly-Host` | Proxy ingress host | The incoming `Host` observed at the proxy, distinct from the upstream `Host`. |
+| `X-Fingerly-User-Agent` | Visitor user agent | The incoming `User-Agent`, so the server scores the visitor's agent rather than the proxy's HTTP client. |
+| `X-Fingerly-Proxy-Version` | Proxy runtime telemetry | Static `<impl>/<version>` (for example `cloudflare-worker/0.3.0`, `nginx/1.0.0`, `node/0.3.0`). |
+| `X-Fingerly-Edge-TLS-Version` | Edge TLS protocol | Worker only: `request.cf.tlsVersion` (for example `TLSv1.3`). |
+| `X-Fingerly-Edge-TLS-Cipher` | Edge TLS cipher suite | Worker only: `request.cf.tlsCipher`. |
+| `X-Fingerly-Edge-HTTP-Proto` | Edge HTTP protocol | Worker only: `request.cf.httpProtocol` (for example `HTTP/2`). |
 
 ### 3.2 Forwarded Client Headers
 
-Only the following caller headers are forwarded upstream when present on the incoming request:
+Only these caller headers are forwarded, under the same name, when present:
 
-| Incoming Client Header | Upstream Header | Notes |
-|---|---|---|
-| `X-Api-Key` | `X-Api-Key` | Required client publishable key (`fly_pk_<environment>_...`); missing or environment-mismatched keys return HTTP `401` locally before upstream fetch. |
-| `Content-Type` | `Content-Type` | Defaults to `application/json` if absent. |
-| `Idempotency-Key` | `Idempotency-Key` | Forwarded verbatim; required by the `v: 3` ingest contract ([v3-envelope.md](./v3-envelope.md)) and bound into native `framedPreimage`. |
-| `User-Agent` | `X-Fingerly-User-Agent` / `User-Agent` | Forwarded verbatim so the server scores the visitor's `User-Agent` rather than the proxy runtime's HTTP client string. |
-| `Sec-Fetch-Site`, `Sec-Fetch-Mode`, `Sec-Fetch-Dest` (`Sec-Fetch-*`) | Same header names | Forwarded verbatim when present for browser fetch-metadata and embedded-WebView consistency checks. |
-| `Sec-CH-UA`, `Sec-CH-UA-Mobile`, `Sec-CH-UA-Platform` (`Sec-CH-UA-*`) | Same header names | Forwarded verbatim when present for client-hint engine consistency checks. |
+| Incoming Client Header | Notes |
+|---|---|
+| `X-Api-Key` | The caller's public key, after the check in section 2.1. |
+| `Content-Type` | `application/json` when absent. |
+| `Idempotency-Key` | Verbatim; required by the `v: 3` ingest contract and bound into the native `framedPreimage` ([v3-envelope.md](./v3-envelope.md)). |
+| `User-Agent` | Edge proxies forward the visitor's `User-Agent` as `User-Agent` too. SDK proxies send it only as `X-Fingerly-User-Agent`; their own `User-Agent` names the SDK's HTTP client. |
+| `Sec-Fetch-Site`, `Sec-Fetch-Mode`, `Sec-Fetch-Dest` | Verbatim, for browser fetch-metadata and embedded-WebView checks. |
+| `Sec-CH-UA`, `Sec-CH-UA-Mobile`, `Sec-CH-UA-Platform` | Verbatim, for client-hint engine checks. |
 
 ---
 
 ## 4. Upstream Response Relay Rules
 
-To prevent content blockers from fingerprinting Fingerly-specific headers and to avoid leaking internal billing state:
-
-1. **Always Set**: `Cache-Control: no-store`.
-2. **Response Header Allowlist**: Relay **only** `Content-Type`, `X-Request-Id`, `RateLimit-Limit`, `RateLimit-Remaining`, and `Retry-After` (required for `409 request_in_progress` client retry pacing).
-3. **Never Relay**: `Set-Cookie`, `Server`, `Fingerly-Balance-Micros`, `Fingerly-RateLimit-Scope`, or any upstream `Cache-Control` directive.
-4. **Cross-Origin CORS (when `FINGERLY_ALLOWED_ORIGINS` matches incoming `Origin`)**:
+1. **Always set** `Cache-Control: no-store`, replacing any upstream `Cache-Control`.
+2. **Response header allowlist**: relay only `Content-Type`, `X-Request-Id`, `RateLimit-Limit`, `RateLimit-Remaining` and `Retry-After` (needed for `409 request_in_progress` retry pacing), plus the CORS headers of section 4.4 and the framing headers the runtime manages. Nothing else crosses, whatever the API sends: not `Set-Cookie`, `Server` from upstream, `Location`, `Fingerly-Balance-Micros` or `Fingerly-RateLimit-Scope`.
+3. **Statuses**:
+   - SDK proxies relay only a final answer of the pinned URL with a status in `200` to `599` outside `300` to `399`. A `3xx`, a status below `200` or above `599`, a followed redirect or an answer from another URL is answered HTTP `502` and nothing of it is relayed.
+   - Edge proxies relay the upstream status as their runtime receives it; a redirect is not followed and its `Location` is not relayed (rule 2).
+   - `204`, `205` and `304` are relayed without a body.
+4. **Cross-origin CORS**, when the incoming `Origin` is in the configured list (Worker `FINGERLY_ALLOWED_ORIGINS`; SDK proxies `allowedOrigins` or the SDK's equivalent option). The other edge templates serve the page's own host and send no CORS headers.
    - `Access-Control-Allow-Origin: <matched_origin>` and `Vary: Origin`
    - `Access-Control-Allow-Methods: POST, OPTIONS`
    - `Access-Control-Allow-Headers: content-type, x-api-key, idempotency-key, x-fingerly-sdk-platform`
    - `Access-Control-Expose-Headers: x-request-id, ratelimit-limit, ratelimit-remaining, retry-after`
 
+### 4.1 nginx Requires njs
+
+Core nginx can only hide named upstream headers, not keep an allowlist. The nginx template therefore needs the njs module (`load_module modules/ngx_http_js_module.so;`): `fingerly.js` runs as the location's `js_header_filter` and deletes every response header outside the relay list (plus the pinned `Cache-Control`, `Allow` and framing headers). Without njs the template's `js_import` and `js_header_filter` directives do not load.
+
 ---
 
 ## 5. Server Proxied Native Routing
 
-When the Go server receives an authenticated proxy request (`X-Fingerly-Proxy-Key` valid):
+When the API receives a request with `X-Fingerly-Proxy-Key`:
 
-- If `X-Fingerly-Origin` is non-empty, the request authenticates on the browser proxy channel (`AuthenticateProxied`), validating `X-Fingerly-Origin` against the key's allowed origins.
-- If `X-Fingerly-Origin` is empty and `X-Fingerly-SDK-Platform` matches an allowed native/bridge platform, the request routes through `AuthenticateNative` with `caller.Proxied = true` (extracting client IP from `X-Fingerly-Client-IP` without requiring `X-Fingerly-Origin`), and rejects web-only keys (`len(AllowedOrigins) > 0` with no native app configuration) across all environments.
-- If both `X-Fingerly-Origin` and `X-Fingerly-SDK-Platform` are empty on a proxied request, the server rejects with HTTP `401` (`code: "proxy_origin_missing"`).
+- Both `X-Fingerly-Origin` and `X-Fingerly-SDK-Platform` empty: HTTP `401` (`code: "proxy_origin_missing"`).
+- Both present: HTTP `401` (`code: "ambiguous_sdk_channel"`). Section 2, step 4 keeps a conforming proxy from sending both.
+- `X-Fingerly-Origin` only: the browser proxy channel (`AuthenticateProxied`), validating `X-Fingerly-Origin` against the key's allowed origins.
+- `X-Fingerly-SDK-Platform` only: the native channel (`AuthenticateProxiedNative`, `caller.Proxied = true`), reading the client IP from `X-Fingerly-Client-IP` without `X-Fingerly-Origin`. A web-only key (allowed origins and no native app configured) is refused on this channel in every environment.
