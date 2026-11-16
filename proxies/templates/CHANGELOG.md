@@ -2,6 +2,10 @@
 
 ## 1.0.0 (unreleased)
 
+- Every template answers an API redirect (`3xx`), or any status outside 200
+  to 599, with 502 marked `no-store`, like the server SDK proxies, and never
+  relays `Location`. CloudFront cannot replace the body in its viewer response
+  function, so that body still passes.
 - Every template answers exactly the issued path: no trailing slash, nothing
   under it, case-sensitive.
 - The container, Cloud Run, nginx and Caddy templates compare the raw request

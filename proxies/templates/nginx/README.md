@@ -117,7 +117,10 @@ and a key that is not shaped like a proxy key answers `503`. A request whose
 environment (a secret `fly_sk_` key included) answers `401` and is not
 forwarded.
 
-Back to the page: the API's status and body with only `content-type`,
+Back to the page: an API redirect (`3xx`), or any status outside `200` to
+`599`, answers `502` marked `no-store` with none of its headers or body
+(`fingerly.js` rewrites the status and replaces the body), so `Location` never
+reaches the page. Any other answer: the API's status and body with only `content-type`,
 `x-request-id`, `ratelimit-limit`, `ratelimit-remaining` and `retry-after`,
 plus `Cache-Control: no-store`. `fingerly.js` removes every other upstream
 header, so a header the API adds later never reaches the page. nginx adds its

@@ -93,11 +93,20 @@ function jsonError(statusCode, statusDescription, code, message) {
 
 function relayResponse(response) {
   var headers = response.headers;
+  // A redirect, or any status outside 200 to 599, is answered 502 with none
+  // of the origin's headers. A viewer response function cannot replace the
+  // body, so whatever body the origin sent with it still passes.
+  var status = response.statusCode;
+  var relayable = status >= 200 && status <= 599 && (status < 300 || status > 399);
   for (var name in headers) {
-    if (!RELAYED_HEADERS[name] && !TRANSPORT_HEADERS[name]) delete headers[name];
+    if (!relayable || (!RELAYED_HEADERS[name] && !TRANSPORT_HEADERS[name])) delete headers[name];
   }
   for (var cookie in response.cookies) delete response.cookies[cookie];
   headers['cache-control'] = { value: 'no-store' };
+  if (!relayable) {
+    response.statusCode = 502;
+    response.statusDescription = 'Bad Gateway';
+  }
   return response;
 }
 

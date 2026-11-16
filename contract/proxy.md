@@ -100,9 +100,10 @@ Only these caller headers are forwarded, under the same name, when present:
 1. **Always set** `Cache-Control: no-store`, replacing any upstream `Cache-Control`.
 2. **Response header allowlist**: relay only `Content-Type`, `X-Request-Id`, `RateLimit-Limit`, `RateLimit-Remaining` and `Retry-After` (needed for `409 request_in_progress` retry pacing), plus the CORS headers of section 4.4 and the framing headers the runtime manages. Nothing else crosses, whatever the API sends: not `Set-Cookie`, `Server` from upstream, `Location`, `Fingerly-Balance-Micros` or `Fingerly-RateLimit-Scope`.
 3. **Statuses**:
-   - SDK proxies relay only a final answer of the pinned URL with a status in `200` to `599` outside `300` to `399`. A `3xx`, a status below `200` or above `599`, a followed redirect or an answer from another URL is answered HTTP `502` and nothing of it is relayed.
-   - Edge proxies relay the upstream status as their runtime receives it; a redirect is not followed and its `Location` is not relayed (rule 2).
-   - `204`, `205` and `304` are relayed without a body.
+   - Every proxy relays only a final answer of the pinned URL with a status in `200` to `599` outside `300` to `399`. A `3xx`, a status below `200` or above `599` (an opaque redirect has status `0`), a followed redirect or an answer from another URL is answered HTTP `502` with `Cache-Control: no-store`, and nothing of it is relayed: no header, no body, never its `Location`.
+   - How each edge proxy does it: the Worker, Vercel, Netlify, container and Cloud Run templates check the status in code before reading the body; Traefik routes to the container server; Caddy answers those statuses with a `handle_response` matcher (`status 1xx 3xx 6xx 7xx 8xx 9xx`); nginx rewrites the status and replaces the body in `fingerly.js` (section 4.1).
+   - CloudFront limit: its viewer response function turns such a status into `502` and drops every origin header, but a viewer response function cannot replace the body, so whatever body the origin sent with that answer still reaches the caller.
+   - `204` and `205` are relayed without a body.
 4. **Cross-origin CORS**, when the incoming `Origin` is in the configured list (Worker `FINGERLY_ALLOWED_ORIGINS`; SDK proxies `allowedOrigins` or the SDK's equivalent option). The other edge templates serve the page's own host and send no CORS headers.
    - `Access-Control-Allow-Origin: <matched_origin>` and `Vary: Origin`
    - `Access-Control-Allow-Methods: POST, OPTIONS`
@@ -111,7 +112,7 @@ Only these caller headers are forwarded, under the same name, when present:
 
 ### 4.1 nginx Requires njs
 
-Core nginx can only hide named upstream headers, not keep an allowlist. The nginx template therefore needs the njs module (`load_module modules/ngx_http_js_module.so;`): `fingerly.js` runs as the location's `js_header_filter` and deletes every response header outside the relay list (plus the pinned `Cache-Control`, `Allow` and framing headers). Without njs the template's `js_import` and `js_header_filter` directives do not load.
+Core nginx can only hide named upstream headers, not keep an allowlist. The nginx template therefore needs the njs module (`load_module modules/ngx_http_js_module.so;`): `fingerly.js` runs as the location's `js_header_filter` and deletes every response header outside the relay list (plus the pinned `Cache-Control`, `Allow` and framing headers). For a status that rule 3 refuses, the same filter sets the status to `502`, keeps only `Cache-Control` and sets `Content-Type: text/plain; charset=utf-8`; the `js_body_filter` then replaces the body with `Bad gateway` (the `js_var $fingerly_refused` flag links the two). Without njs the template's `js_import`, `js_var`, `js_header_filter` and `js_body_filter` directives do not load.
 
 ---
 

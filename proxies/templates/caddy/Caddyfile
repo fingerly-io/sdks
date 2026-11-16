@@ -140,6 +140,13 @@ www.example.com {
 				# Cache-Control is pinned above. The placeholders spell each name the
 				# way Go stores it (Ratelimit-Limit, not RateLimit-Limit).
 				header_down -*
+				# A redirect is never followed or relayed, and neither is a status
+				# outside 200 to 599: each is answered 502, with none of its headers
+				# or body.
+				@unrelayable status 1xx 3xx 6xx 7xx 8xx 9xx
+				handle_response @unrelayable {
+					respond "Bad gateway" 502
+				}
 				handle_response {
 					@relaycontenttype not vars {rp.header.Content-Type} ""
 					header @relaycontenttype Content-Type {rp.header.Content-Type}

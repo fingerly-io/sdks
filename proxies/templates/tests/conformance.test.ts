@@ -59,6 +59,22 @@ let upstreamCalls: Upstream[] = []
 let upstreamFails = false
 /** How the stub API misbehaves, beyond being unreachable. */
 let upstreamTrouble: 'none' | 'hang' | 'truncated' | 'huge' = 'none'
+/** A status the stub API answers with instead of 200, with a Location to steal. */
+let upstreamStatus: number | null = null
+
+/**
+ * The API's answer with another status. The Response constructor refuses
+ * statuses outside 200 to 599, which a runtime's fetch can still deliver, so
+ * those are faked.
+ */
+function statusResponse(status: number): Response {
+  const headers = { 'content-type': 'text/html', 'x-request-id': 'req_status', location: 'https://elsewhere.example/steal' }
+  const body = status === 204 || status === 205 || status === 304 ? null : 'moved'
+  if (status >= 200 && status <= 599) return new Response(body, { status, headers })
+  return {
+    status, statusText: '', redirected: false, url: UPSTREAM, headers: new Headers(headers), body: null, text: async () => '',
+  } as unknown as Response
+}
 
 function stubUpstream(): void {
   vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
@@ -85,6 +101,7 @@ function stubUpstream(): void {
       }), { status: 200, headers: { 'content-type': 'application/json' } })
     }
     if (upstreamTrouble === 'huge') return new Response(new Uint8Array(4 * 1_048_576 + 1), { status: 200 })
+    if (upstreamStatus !== null) return statusResponse(upstreamStatus)
     return apiResponse()
   }))
 }
@@ -288,7 +305,7 @@ const cloudFrontTarget: Target = {
     if (cloudFrontOriginKey) headers.set('x-fingerly-proxy-key', cloudFrontOriginKey)
     upstreamCalls.push({ url: `https://api.fingerly.io${forwarded.uri}`, method: forwarded.method, headers, body: null })
 
-    const origin = apiResponse()
+    const origin = upstreamStatus === null ? apiResponse() : statusResponse(upstreamStatus)
     const viewerResponse = {
       version: '1.0',
       context: { eventType: 'viewer-response' },
@@ -602,6 +619,34 @@ describe.each(targets)('$kind template', (target) => {
       expect(failed.headers.get('cache-control')).toBe('no-store')
     })
   }
+
+  describe('upstream statuses', () => {
+    afterEach(() => {
+      upstreamStatus = null
+      vi.restoreAllMocks()
+    })
+
+    it.each([0, 101, 199, 300, 301, 302, 303, 304, 307, 308, 399, 600, 999])('answers %i from the API with 502, no-store and no Location', async (status) => {
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+      upstreamStatus = status
+      const result = await target.call({ headers: visitor, ip: TRUSTED_IP })
+      expect(result.status).toBe(502)
+      expect(result.headers.get('cache-control')).toBe('no-store')
+      expect(result.headers.get('location')).toBeNull()
+      expect(result.headers.get('x-request-id')).toBeNull()
+      // A CloudFront viewer response function cannot replace the origin's body.
+      if (target.kind !== 'aws-cloudfront') expect(result.body).toBe('Bad gateway')
+    })
+
+    it.each([200, 201, 204, 400, 409, 429, 500, 503, 599])('relays %i from the API without its Location', async (status) => {
+      upstreamStatus = status
+      const result = await target.call({ headers: visitor, ip: TRUSTED_IP })
+      expect(result.status).toBe(status)
+      expect(result.headers.get('location')).toBeNull()
+      expect(result.headers.get('x-request-id')).toBe('req_status')
+      expect(result.headers.get('cache-control')).toBe('no-store')
+    })
+  })
 })
 
 describe.each([vercelTarget, netlifyTarget, containerTarget, cloudRunTarget])('$kind template under upstream trouble', (target) => {

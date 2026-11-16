@@ -124,7 +124,11 @@ and only a proxy key may. Add it before routing traffic.
 Back to the page: the viewer response event keeps only `content-type`,
 `x-request-id`, `ratelimit-limit`, `ratelimit-remaining` and `retry-after`
 (and the framing headers CloudFront manages), drops every cookie and sets
-`cache-control: no-store`. CloudFront adds its own `Via` and `X-Cache` style
+`cache-control: no-store`. An API redirect (`3xx`), or any status outside
+`200` to `599`, becomes `502` with none of the origin's headers, so its
+`Location` never reaches the page. A viewer response function cannot replace
+the body, so whatever body the origin sent with such an answer still passes.
+CloudFront adds its own `Via` and `X-Cache` style
 headers after the function runs; none of them names Fingerly. The API itself
 sends nothing naming Fingerly to proxied callers, and the server tests that, so
 the allowlist is defense in depth.

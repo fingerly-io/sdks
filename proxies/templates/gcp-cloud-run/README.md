@@ -127,7 +127,10 @@ leave. Bodies over 1 MiB are refused with `413`, redirects are not followed,
 and a missing or malformed key answers `503` rather than forwarding. With
 `FINGERLY_PATH` unset the service answers `404` to everything.
 
-Back to the page: the API's status and body with only `content-type`,
+Back to the page: an API redirect (`3xx`), or any status outside `200` to
+`599`, answers `502` marked `no-store` with none of its headers or body, so
+`Location` never reaches the page. Any other answer: the API's status and body
+with only `content-type`,
 `x-request-id`, `ratelimit-limit`, `ratelimit-remaining` and `retry-after`,
 plus `cache-control: no-store`. Nothing relayed names Fingerly.
 

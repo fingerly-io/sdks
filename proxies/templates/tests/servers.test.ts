@@ -57,12 +57,15 @@ interface Seen { method: string; url: string; headers: IncomingHttpHeaders; body
 /** The stub API: records every request and answers like the real one, plus cookies and internal headers. */
 class StubApi {
   seen: Seen[] = []
+  /** The status to answer with; anything but 200 also carries a Location to steal. */
+  status = 200
   private server: Server = createServer((req, res) => {
     const chunks: Buffer[] = []
     req.on('data', (chunk: Buffer) => chunks.push(chunk))
     req.on('end', () => {
       this.seen.push({ method: req.method ?? '', url: req.url ?? '', headers: req.headers, body: Buffer.concat(chunks).toString() })
-      res.writeHead(200, {
+      res.writeHead(this.status, {
+        ...(this.status === 200 ? {} : { location: 'https://elsewhere.example/steal' }),
         'content-type': 'application/json',
         'x-request-id': 'req_stub',
         'ratelimit-limit': '100',
@@ -738,6 +741,29 @@ describe.skipIf(!docker).each(templates)('$kind template', (template) => {
     expect(stub.seen).toHaveLength(0)
     const atCap = await fetch(`${proxy!.base}/k7x2qm4a`, { method: 'POST', headers: visitorHeaders, body: 'x'.repeat(1_048_576) })
     expect(atCap.status).toBe(200)
+  })
+
+  it('answers an API redirect or a status outside 200 to 599 with 502, never relaying Location', async () => {
+    try {
+      for (const status of [301, 302, 303, 304, 307, 308, 399, 600, 999]) {
+        stub.status = status
+        const response = await fetch(`${proxy!.base}/k7x2qm4a`, { method: 'POST', headers: visitorHeaders, body: '{}', redirect: 'manual' })
+        expect(response.status, `${status}: ${proxy!.logs()}`).toBe(502)
+        expect(response.headers.get('cache-control'), String(status)).toBe('no-store')
+        expect(response.headers.get('location'), String(status)).toBeNull()
+        expect(response.headers.get('x-request-id'), String(status)).toBeNull()
+        expect(await response.text(), String(status)).not.toContain('req_stub')
+      }
+      for (const status of [201, 409, 500]) {
+        stub.status = status
+        const response = await fetch(`${proxy!.base}/k7x2qm4a`, { method: 'POST', headers: visitorHeaders, body: '{}', redirect: 'manual' })
+        expect(response.status, String(status)).toBe(status)
+        expect(response.headers.get('location'), String(status)).toBeNull()
+        expect(response.headers.get('x-request-id'), String(status)).toBe('req_stub')
+      }
+    } finally {
+      stub.status = 200
+    }
   })
 
   if (template.keyless) {

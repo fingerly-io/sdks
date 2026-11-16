@@ -20,12 +20,31 @@ var RELAYED = [
   'transfer-encoding',
 ]
 
-// Plain ES5 loops: the default njs engine supports no `for...of`.
-function relay(r) {
-  var names = Object.keys(r.headersOut)
-  for (var i = 0; i < names.length; i++) {
-    if (RELAYED.indexOf(names[i].toLowerCase()) === -1) delete r.headersOut[names[i]]
-  }
+/** Only a final answer in 200 to 599, outside 300 to 399, is relayed. */
+function relayable(status) {
+  return status >= 200 && status <= 599 && (status < 300 || status > 399)
 }
 
-export default { relay }
+// Plain ES5 loops: the default njs engine supports no `for...of`.
+function relay(r) {
+  // A redirect, or any status outside 200 to 599, is answered 502 with none
+  // of its headers; `body` below replaces what it carried.
+  var refused = !relayable(r.status)
+  if (refused) {
+    r.variables.fingerly_refused = '1'
+    r.status = 502
+  }
+  var names = Object.keys(r.headersOut)
+  for (var i = 0; i < names.length; i++) {
+    var name = names[i].toLowerCase()
+    if (refused ? name !== 'cache-control' : RELAYED.indexOf(name) === -1) delete r.headersOut[names[i]]
+  }
+  if (refused) r.headersOut['Content-Type'] = 'text/plain; charset=utf-8'
+}
+
+function body(r, data, flags) {
+  if (r.variables.fingerly_refused !== '1') return r.sendBuffer(data, flags)
+  if (flags.last) r.sendBuffer('Bad gateway', flags)
+}
+
+export default { relay, body }

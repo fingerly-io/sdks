@@ -78,6 +78,11 @@ to the container.
   `ratelimit-remaining` and `retry-after`, plus `cache-control: no-store`,
   whatever the API sends: every template drops all other upstream headers
   (nginx through the njs filter in `fingerly.js`).
+- Answers an API redirect (`3xx`), or any status outside `200` to `599`, with
+  `502` ("Bad gateway") marked `no-store`, relaying none of its headers and
+  never its `Location`. The CloudFront viewer response function turns the
+  status into `502` and drops every header, but it cannot replace a body, so
+  whatever body the origin sent with such an answer still reaches the page.
 - Keeps the proxy key out of shipped files: an environment variable, a secret
   store, a root-only include file or a `NoEcho` parameter. The nginx, Caddy,
   Vercel, Netlify, CloudFront, container and Traefik steps never put it on a

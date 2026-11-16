@@ -107,7 +107,10 @@ included) answers `401` and is not forwarded. Bodies over 1 MiB are refused
 with `413`, redirects are not followed, and a missing or malformed proxy key
 answers `503`. Other methods answer `405` with `Allow: POST`.
 
-Back to the page: the API's status and body with only `Content-Type`,
+Back to the page: an API redirect (`3xx`), or any status outside `200` to
+`599`, answers `502` marked `no-store` with none of its headers or body (a
+`handle_response` matching those statuses), so `Location` never reaches the
+page. Any other answer: the API's status and body with only `Content-Type`,
 `X-Request-Id`, `RateLimit-Limit`, `RateLimit-Remaining` and `Retry-After`,
 plus `Cache-Control: no-store`. Every other upstream header is removed
 (`header_down -*`) and only those five are set again, so a header the API adds

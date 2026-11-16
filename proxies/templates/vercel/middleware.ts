@@ -78,6 +78,11 @@ function clientIp(request: Request): string {
   return (request.headers.get('x-real-ip') ?? '').trim()
 }
 
+/** Only a final answer in 200 to 599, outside 300 to 399, is relayed. */
+function relayable(status: number): boolean {
+  return status >= 200 && status <= 599 && (status < 300 || status > 399)
+}
+
 function plain(status: number, message: string, extra: Record<string, string> = {}): Response {
   return new Response(message, { status, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', ...extra } })
 }
@@ -195,6 +200,14 @@ export default async function middleware(request: Request): Promise<Response> {
   let answer: Uint8Array | null
   try {
     upstream = await fetch(UPSTREAM, { method: 'POST', headers, body, redirect: 'manual', signal })
+    // A redirect is never followed or relayed, and neither is a status
+    // outside 200 to 599: the key went to the pinned URL only. An opaque
+    // redirect has status 0, so it is caught here too.
+    if (!relayable(upstream.status) || upstream.redirected) {
+      upstream.body?.cancel().catch(() => {})
+      console.warn('proxy: upstream answered with an unusable status')
+      return plain(502, 'Bad gateway')
+    }
     // Read whole, under the same deadline, before anything is sent back: a
     // truncated answer relayed with a 200 would be read as a success.
     answer = await readCapped(upstream.body, MAX_RESPONSE_BYTES)
@@ -214,6 +227,6 @@ export default async function middleware(request: Request): Promise<Response> {
     const value = upstream.headers.get(name)
     if (value !== null) outgoing.set(name, value)
   }
-  const bodiless = [204, 205, 304].includes(upstream.status)
+  const bodiless = upstream.status === 204 || upstream.status === 205
   return new Response(bodiless ? null : answer, { status: upstream.status, statusText: upstream.statusText, headers: outgoing })
 }

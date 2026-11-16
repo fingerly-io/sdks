@@ -132,6 +132,11 @@ export function clientIpReader(source) {
 /** Reported once per process rather than per request: it is configuration. */
 let reportedMissingAddress = false
 
+/** Only a final answer in 200 to 599, outside 300 to 399, is relayed. */
+function relayable(status) {
+  return status >= 200 && status <= 599 && (status < 300 || status > 399)
+}
+
 function plain(res, status, message, extra = {}) {
   res.writeHead(status, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', ...extra })
   res.end(message)
@@ -260,6 +265,13 @@ export function createRelay(env = process.env) {
       let answer
       try {
         upstream = await fetch(UPSTREAM, { method: 'POST', headers, body, redirect: 'manual', signal })
+        // A redirect is never followed or relayed, and neither is a status
+        // outside 200 to 599: the key went to the pinned URL only.
+        if (!relayable(upstream.status) || upstream.redirected) {
+          upstream.body?.cancel().catch(() => {})
+          console.warn('proxy: upstream answered with an unusable status')
+          return plain(res, 502, 'Bad gateway')
+        }
         // Read whole, under the same deadline, before anything is sent back: a
         // truncated answer relayed with a 200 would be read as a success.
         answer = await readCapped(upstream.body, MAX_RESPONSE_BYTES)
@@ -280,7 +292,7 @@ export function createRelay(env = process.env) {
         if (value !== null) outgoing[name] = value
       }
       res.writeHead(upstream.status, outgoing)
-      res.end([204, 205, 304].includes(upstream.status) ? undefined : answer)
+      res.end(upstream.status === 204 || upstream.status === 205 ? undefined : answer)
     } catch {
       if (!res.headersSent) plain(res, 502, 'Bad gateway')
       else res.destroy()
