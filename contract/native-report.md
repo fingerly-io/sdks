@@ -13,7 +13,7 @@ ignored and an absent one reads as not known. Anything else needs a new schema n
 ## 1. Conventions
 
 **Status words.** `unchanged`: same name, type and meaning as today. `new`: did not exist. `renamed`: same
-measurement under a new name or type. `removed`: no longer sent.
+measurement under a new name or type.
 
 **Absent is not false.** A field that could not be read is omitted (`jsonObject` already drops nulls on both
 platforms). The server treats absent, null and wrong-typed values as "not known" (`risk/report.go`). Rules that
@@ -111,9 +111,12 @@ The server holds marker strings in the clear (section 8.13), hashes them at star
 - `digest128`: one `nameDigest` (section 1.4). `digest128[]` follows the `hash64[]` rules.
 - `TokenSets`: array of arrays of name digests (`hash64` on iOS, `digest128` on Android). Each inner array is one
   `nameHashes` output, capped at 24 and sorted.
-- `ImageRef` (iOS): for an image under a system tree (`usr_lib`, `system_library`, `system_applications`,
+- `ImageRef` (iOS): for an image in a system tree (`usr_lib`, `system_library`, `system_applications`,
   `library_apple`, `sim_root`), the leaf file name as reported. For anything else, `hash64` of the lowercased
-  leaf. Never a path.
+  leaf. Never a path. A system tree is decided by more than the path: an image under `/usr/lib/` or
+  `/System/Library/` is a system image only when the dyld shared cache contains it or it is one of the listed
+  standalone OS images and its file has a Mach-O header (see `image_trees` in section 3), so a dylib dropped under a
+  system prefix is `other` and travels hashed.
 
 ### 1.4 nameDigest (Android)
 
@@ -178,9 +181,7 @@ read move to the server.
 
 | Field | Type | Bounds | Status |
 |---|---|---|---|
-| `total_gb`, `available_gb` | int | | removed (no rule reads them; Android ADR 0001) |
 | `free_ratio` | double | 0 to 1, 2 decimals | unchanged |
-| `app_dir_entries` | int | | removed (no rule reads it; Android ADR 0001, Appendix A row 11) |
 | `external_emulated` | bool | | unchanged |
 
 ### intl (fast)
@@ -191,7 +192,6 @@ read move to the server.
 | `utc_offset_min` | int | | unchanged |
 | `dst` | bool | | unchanged |
 | `locale` | string | BCP 47 | unchanged |
-| `locales` | string[] | | removed (no rule reads it; `locale` is the first locale) |
 | `uses_24h` | bool | | unchanged |
 
 ### accessibility (fast)
@@ -202,7 +202,6 @@ read move to the server.
 | `screen_off_timeout_s` | int | absent when never sleeps | unchanged |
 | `screen_never_sleeps` | bool | | unchanged |
 | `any_service_enabled` | bool | yes or no, never a count or a name | new |
-| `settings_changed` | int | | removed (server derives it, 8.7) |
 
 ### battery (fast)
 
@@ -221,14 +220,12 @@ read move to the server.
 |---|---|---|---|
 | `lockscreen_set` | bool | | unchanged |
 | `biometry_hardware` | string[] | at most 3 of fingerprint, face, iris | unchanged |
-| `biometry_unusable` | bool | | removed (hardware present and no lockscreen, derived) |
 
 ### sensors (fast)
 
 | Field | Type | Bounds | Status |
 |---|---|---|---|
 | `count` | int | | unchanged |
-| `vendors` | string[] | | removed (Android ADR 0001) |
 | `only_platform_vendors` | bool | absent when no sensor names a vendor; see section 5 | new |
 | `accelerometer`, `gyroscope`, `magnetometer`, `proximity`, `light`, `pressure`, `step_counter`, `heart_rate` | bool | | unchanged |
 
@@ -238,7 +235,6 @@ read move to the server.
 |---|---|---|
 | `max_music_volume` | int | unchanged |
 | `supports_low_latency`, `supports_pro` | bool | unchanged |
-| `output_sample_rate`, `output_frames_per_buffer`, `music_active` | | removed (no rule reads them) |
 
 ### network (fast)
 
@@ -250,7 +246,6 @@ read move to the server.
 | `proxy_configured` | bool | | unchanged |
 | `sim_absent` | bool | | unchanged |
 | `metered` | bool | | unchanged |
-| `tunnelled` | bool | | removed (`underlying_transports` contains `vpn`) |
 
 ### app (fast; scalars are in the velocity cohort)
 
@@ -266,7 +261,6 @@ read move to the server.
 | `signer_count` | int | | unchanged |
 | `split_count` | int | | unchanged |
 | `signer_subject_tokens` | TokenSets | at most 4 signers; `nameHashes` of each subject DN, as `digest128` | new (array, so outside the cohort) |
-| `debug_signed` | bool | | removed (server tests the tokens) |
 
 ### root (fast)
 
@@ -293,9 +287,6 @@ read move to the server.
 | `mount_framework_lines` | int | 0 to 1024; see below; absent with `system_mounts` | new |
 | `mounts_truncated` | bool | only ever `true`; present only when the mount table read stopped at its 1,024-line cap | new |
 | `probe_errors` | string[] | at most 32; see below | new |
-| `mount_anomalies` | string[] | | removed |
-| `dangerous_props` | string[] | | removed |
-| `test_keys` | bool | | removed (`system.build_tags` contains `test-keys`) |
 
 `system_mounts`: one entry per `/proc/self/mounts` line whose mount point is exactly `/system`, `/vendor`,
 `/product` or `/system_ext`. Each is `{ "point": string, "type": string (at most 16), "rw": bool }`, where `rw` means the
@@ -328,11 +319,6 @@ root hiding does.
 | `ro_hardware` | string | raw `ro.hardware`, at most 64 | new |
 | `features` | object | see below; absent when the package manager fails | new |
 | `probe_errors` | string[] | at most 32: `telephony`, `qemu_devices`, `emulator_files`, `features` | new |
-| `virtual_board` | string | | removed |
-| `build_indicators` | string[] | | removed |
-| `cpu_hardware` | string | | removed (`hardware.cpu_hardware`) |
-| `x86_abi` | bool | | removed (`hardware.abis`) |
-| `form_factor` | string | | removed (`features`) |
 
 `features`: `{ leanback, television, watch, automotive, pc, arc }`, all bool, from `hasSystemFeature` of
 `android.software.leanback`, `android.hardware.type.television`, `.watch`, `.automotive`, `.pc`, `org.chromium.arc`.
@@ -362,9 +348,6 @@ root hiding does.
 | `exec_regions` | object | int counts; see below; absent when the memory map could not be read | new |
 | `maps_truncated` | bool | only ever `true`; present only when the `/proc/self/maps` read stopped at its 16,384-line cap | new |
 | `probe_errors` | string[] | at most 32: `maps`, `threads`, `hook_classes`, `foreign_stack_frames`, `open_ports`, `artefacts` | new |
-| `libraries` | string[] | | removed |
-| `threads` | string[] | | removed |
-| `anonymous_exec_maps` | int | | removed |
 
 `library_hashes`: `nameHashes` of the leaf of every distinct `/proc/self/maps` region that is executable and whose path
 starts with `/` (memfd included). Executable only, to keep the list short: a hooking framework's code always has an
@@ -409,7 +392,6 @@ server. Each region goes in exactly one bucket, first match wins:
 | `is_managed_profile` | bool | absent below API 30 (no zero-permission query) and when the query failed | new |
 | `is_device_protected_storage` | bool | `false` below API 24; absent when the query failed | new |
 | `probe_errors` | string[] | at most 32: `maps`, `stub_process_name`, `is_managed_profile` (API 30 and up), `is_device_protected_storage`, `cloner_installed` | new |
-| `oem_clone` | bool | | removed (`user_id == 999`) |
 
 ### images (deferred)
 
@@ -418,7 +400,6 @@ server. Each region goes in exactly one bucket, first match wins:
 | `count` | int | unchanged |
 | `digest` | digest128 | changed |
 | `executable_regions` | int | unchanged |
-| `foreign`, `foreign_count` | | removed (`instrumentation.exec_regions.file_other`, on the fast tier) |
 
 ### attest (deferred)
 
@@ -430,7 +411,6 @@ server. Each region goes in exactly one bucket, first match wins:
 | `challenge_source` | string | server or device | unchanged |
 | `secure_hardware` | bool | | unchanged |
 | `security_level` | string | at most 32 | unchanged |
-| `software_rooted` | bool | | removed (`chain_length <= 1`) |
 
 Challenge flow: the SDK requests a nonce from `POST /api/v1/attestation/challenge` (32 random bytes, five minutes,
 single use, bound to the SDK key), has the hardware keystore attest a fresh key to it, and sends the chain with
@@ -466,7 +446,6 @@ timestamp, and reports Google's verdicts. Its absence is never evidence.
 | `root_key_sha256` | string | base64 | new |
 | `leaf_expires_at` | int | epoch seconds | unchanged |
 | `chain_subject_tokens` | TokenSets | at most 6 certs, leaf first; `nameHashes` of subject and issuer DN joined by a space, as `digest128` | new |
-| `known_interceptor` | string | | removed |
 
 ### integrity
 
@@ -474,9 +453,6 @@ timestamp, and reports Google's verdicts. Its absence is never evidence.
 |---|---|---|---|
 | `native_methods` | object[] | at most 32, see below | new |
 | `unresolved` | string[] | watched names that could not be resolved, in watch-list order; omitted when empty | new |
-| `patched_natives` | string[] | always empty on Android | removed |
-| `lies` | object[] | | removed (server derives, 8.12) |
-| `engine` | object | | removed (server derives, 8.12) |
 
 `native_methods`: one entry per watched method present on this OS. `{ "method": "java.io.File!exists", "declared": int, "native": int }`:
 how many overloads were checked and how many report `Modifier.isNative`. The watched methods are the `native_methods` list
@@ -502,7 +478,6 @@ Removed entirely. See section 6.
 | `simulator_environment` | string[] | at most 5, key names only | unchanged |
 | `simulator_build` | bool | | unchanged |
 | `active_processors` | int | sent only on a simulator (iOS ADR 0001) | unchanged |
-| `low_power_mode` | bool | | removed (iOS ADR 0001) |
 
 ### hardware (fast; in the velocity cohort)
 
@@ -510,8 +485,6 @@ Removed entirely. See section 6.
 |---|---|---|
 | `machine`, `uname_machine`, `model`, `target`, `product` | string | unchanged |
 | `gpu_family_max` | int | new (outside the cohort) |
-| `memory_bytes` | int64 | removed (iOS ADR 0001) |
-| `physical_cpu`, `logical_cpu`, `cpu_family`, `cpu_subfamily`, `cacheline`, `l1d_cache`, `l1i_cache`, `l2_cache`, `page_size`, `byte_order` | int | removed (iOS ADR 0001) |
 
 ### display (fast)
 
@@ -519,13 +492,10 @@ Removed entirely. See section 6.
 |---|---|---|
 | `width`, `height`, `native_width`, `native_height` | int | unchanged |
 | `scale`, `native_scale` | double | unchanged |
-| `max_fps` | int | removed (iOS ADR 0001) |
 
 A process with no application object (`UIApplication.shared` is nil, as in a test bundle without a host app) has no screen
 to describe: the source is `{ status: "unsupported", reason: "no-application" }` with no value, and `UIScreen` is never
 touched, because its first use waits on the main thread for a launch context such a process never gets.
-| `brightness` | double | removed (iOS ADR 0001) |
-| `gamut`, `interface_style` | string | removed (iOS ADR 0001) |
 
 ### storage (fast)
 
@@ -541,31 +511,15 @@ No capacity, free space or boot time: required-reason APIs whose approved reason
 |---|---|---|---|
 | `timezone` | string | | unchanged |
 | `locale` | string | `language[-Script][-REGION]` only, no `-u-` extensions | unchanged; reduced (iOS ADR 0001) |
-| `apple_locale`, `region`, `calendar`, `currency`, `decimal_separator` | string | | removed (iOS ADR 0001) |
-| `utc_offset_s`, `first_weekday` | int | | removed (iOS ADR 0001) |
-| `is_dst`, `uses_24_hour`, `uses_metric` | bool | | removed (iOS ADR 0001) |
-| `languages` | string[] | at most 6 | removed (iOS ADR 0001) |
 
 ### accessibility (fast)
 
 Retired (iOS ADR 0001). The id is still sent, as `{ status: "unsupported", reason: "retired" }` with no value, so that
 section 8.11 does not read it as omitted. No API is called.
 
-| Field | Type | Status |
-|---|---|---|
-| `settings_changed` | int | removed (iOS ADR 0001) |
-| `default_text_size` | bool | removed (iOS ADR 0001) |
-
 ### battery (fast)
 
 Retired (iOS ADR 0001), sent as `unsupported` with reason `retired` and no value.
-
-| Field | Type | Bounds | Status |
-|---|---|---|---|
-| `level` | int | 0 to 100, step 5 | removed (iOS ADR 0001) |
-| `state` | string | charging, full, unplugged, unknown | removed (iOS ADR 0001) |
-| `low_power_mode` | bool | | removed (iOS ADR 0001) |
-| `thermal_state` | string | | removed (iOS ADR 0001) |
 
 ### security (fast)
 
@@ -573,25 +527,16 @@ Retired (iOS ADR 0001), sent as `unsupported` with reason `retired` and no value
 |---|---|---|
 | `passcode_set` | bool | unchanged |
 | `biometry_reason` | string | unchanged |
-| `biometry_enrolled` | bool | removed (iOS ADR 0001; an absent `biometry_reason` says it) |
-| `biometry_type` | string | removed (iOS ADR 0001) |
 
 ### sensors (fast)
 
 | Field | Type | Status |
 |---|---|---|
 | `accelerometer`, `gyroscope` | bool | unchanged |
-| `magnetometer`, `device_motion` | bool | removed (iOS ADR 0001) |
 
 ### audio (fast)
 
 Retired (iOS ADR 0001), sent as `unsupported` with reason `retired` and no value.
-
-| Field | Type | Bounds | Status |
-|---|---|---|---|
-| `outputs`, `inputs` | string[] | at most 8 | removed (iOS ADR 0001) |
-| `output_channels` | int | | removed (iOS ADR 0001) |
-| `other_audio_playing` | bool | | removed (iOS ADR 0001) |
 
 ### network (fast)
 
@@ -601,13 +546,6 @@ Retired (iOS ADR 0001), sent as `unsupported` with reason `retired` and no value
 | `proxy_configured`, `proxy_auto_config` | bool | | unchanged |
 | `transport` | string | wifi, cellular, wired | unchanged |
 | `interface_types` | string[] | at most 5 | unchanged |
-| `interfaces` | string[] | at most 32, each at most 16 | removed (iOS ADR 0001) |
-| `tunnels`, `scoped_tunnels` | string[] | at most 16 | removed (iOS ADR 0001) |
-| `tunnel_count` | int | | removed (iOS ADR 0001) |
-| `path_status` | string | | removed (iOS ADR 0001) |
-| `expensive`, `constrained`, `supports_ipv4`, `supports_ipv6` | bool | | removed (iOS ADR 0001) |
-| `radio` | string[] | at most 4 | removed (iOS ADR 0001) |
-| `tunnelled` | bool | | removed (`interface_types` contains `other`) |
 
 ### app (fast; scalars are in the velocity cohort)
 
@@ -622,10 +560,8 @@ Retired (iOS ADR 0001), sent as `unsupported` with reason `retired` and no value
 | Field | Type | Bounds | Status |
 |---|---|---|---|
 | `install_id` | string | UUID | unchanged |
-| `first_seen_at` | int | epoch seconds | removed (iOS ADR 0001) |
 | `launches` | int | >= 1 | unchanged; meaning changes to once per process (P3) |
 | `install_age_h` | int | may be negative after P4 | unchanged; stop clamping to 0 (P4) |
-| `reinstalled` | bool | see section 5 | removed (iOS ADR 0001: the install record lives in the app container by default, and the vendor identifier is no longer read) |
 
 ### jailbreak (fast)
 
@@ -633,7 +569,6 @@ Retired (iOS ADR 0001), sent as `unsupported` with reason `retired` and no value
 |---|---|---|---|
 | `injectors` | string[] | at most 10, probe paths | unchanged |
 | `userland` | string[] | at most 10, probe paths | unchanged |
-| `symlinked_directories` | string[] | at most 8, probe paths | removed (iOS ADR 0001: `readlink` reads outside the container, Guideline 2.5.2) |
 | `rootless_prefix_present`, `rootless` | bool | | unchanged |
 | `schemes_queryable` | bool | | unchanged |
 | `managers_found` | int | 0 to 10 | renamed (from `managers`, string[]) |
@@ -648,7 +583,6 @@ Retired (iOS ADR 0001), sent as `unsupported` with reason `retired` and no value
 | `traced`, `parent_is_launchd`, `debug_build` | bool | | unchanged |
 | `parent_pid` | int | | unchanged |
 | `automation_environment` | string[] | at most 9, key names only | unchanged |
-| `automation_images` | string[] | | removed (`instrumentation.library_hashes`) |
 
 ### instrumentation (fast)
 
@@ -662,20 +596,37 @@ Retired (iOS ADR 0001), sent as `unsupported` with reason `retired` and no value
 | `thread_total` | int | distinct thread names before the cap | new |
 | `app_image_hashes` | hash64[] | at most 128; `hash64` of the lowercased path of each image inside the app, relative to the container (`@app/...`), sorted | new |
 | `image_trees` | object | int counts by tree; see below | new |
-| `images` | string[] | | removed |
-| `threads` | string[] | | removed |
 
-`library_hashes`: for every loaded image whose tree is not `system_library` or `sim_root` (those trees are the bulk of a real
-app's images and are not where an injected library lives): `nameHashes` of the leaf, plus `nameHashes` of the name of its
+`library_hashes`: for every loaded image except `sim_root` images and `system_library` images that the dyld shared cache
+contains (those are the bulk of a real app's images and are not where an injected library lives; a standalone
+`system_library` image outside the cache is hashed): `nameHashes` of the leaf, plus `nameHashes` of the name of its
 immediate parent directory. The parent is there because today's match runs on the whole path, and every tweak lives under a
 telling directory (`/Library/MobileSubstrate/DynamicLibraries/x.dylib`, `/usr/lib/TweakInject/x.dylib`). When over the cap,
 take trees `other`, `app_bundle`, `app_parent` and `loaded_bundle` first, then the rest; inside each group ascending by hash.
 Sort the final list.
 
-`image_trees` counts all loaded images, first match wins. Trees: `sim_root` (prefix is the value of `SIMULATOR_ROOT`,
-`DYLD_ROOT_PATH` or `IPHONE_SIMULATOR_ROOT`), `usr_lib` (`/usr/lib/`), `system_library` (`/System/Library/`),
-`system_applications` (`/System/Applications/`), `library_apple` (`/Library/Apple/`), `app_bundle` (main bundle path),
-`app_parent` (the bundle's parent directory), `loaded_bundle` (any `Bundle.allBundles` path), `other`.
+`image_trees` counts all loaded images, first match wins. Paths are compared with `/private/var/` read as `/var/`. Trees:
+
+- `sim_root`: simulator builds only. The prefix is the value of `SIMULATOR_ROOT`, `DYLD_ROOT_PATH` or
+  `IPHONE_SIMULATOR_ROOT`. A device build never reads these variables, so setting them cannot hide an image.
+- `usr_lib`: under `/usr/lib/` or `/System/Cryptexes/OS/usr/lib/`, and either contained in the dyld shared cache
+  (`_dyld_shared_cache_contains_path`) or one of the standalone images `/usr/lib/dyld` and
+  `/usr/lib/libffi-trampolines.dylib` whose file starts with a Mach-O header. Any other image under these prefixes is `other`.
+- `system_library`: under `/System/Library/`, `/System/Cryptexes/OS/System/Library/` or `/System/iOSSupport/System/Library/`,
+  and either contained in the dyld shared cache or a standalone image under `/System/Library/Extensions/`,
+  `CoreServices/`, `Components/` or `AccessibilityBundles/` whose file starts with a Mach-O header. Any other image under
+  these prefixes is `other`.
+- `system_applications` (`/System/Applications/`), `library_apple` (`/Library/Apple/`).
+- `app_bundle`: the main bundle path.
+- `loaded_bundle`: a `Bundle.allBundles` path inside the app's container only: below the bundle's parent directory, not
+  the main bundle itself, no `..` segment, and with a code bundle extension (`app`, `appex`, `framework`, `bundle`,
+  `xctest`, `plugin`). A bundle anywhere else on the device does not count, and its images fall through to `other`.
+- `app_parent`: the bundle's parent directory (the container).
+- `other`: everything else.
+
+The Mach-O header test reads the first 16 bytes without blocking: a thin header (`MH_MAGIC`, `MH_MAGIC_64`) of an
+executable, dylib, dynamic linker, bundle or kext bundle, or a universal header. A name or a prefix alone never makes an
+image a system image.
 
 ### images (fast)
 
@@ -683,16 +634,10 @@ Sort the final list.
 |---|---|---|
 | `count` | int | unchanged |
 | `digest` | hash64 | unchanged |
-| `foreign` | string[] | removed; it sent full paths in the clear |
-| `foreign_count` | int | removed (`instrumentation.image_trees.other`) |
 
 ### fonts (deferred)
 
 Retired (iOS ADR 0001), sent as `unsupported` with reason `retired` and no value.
-
-| Field | Type | Status |
-|---|---|---|
-| `count` | int | removed (iOS ADR 0001) |
 
 ### attest (deferred)
 
@@ -740,8 +685,6 @@ when that evidence verifies, and the customer's backend spends it once to read o
 | `clock_skew_s` | int | | unchanged |
 | `handshake_failed` | bool | P5 | new |
 | `chain_subject_tokens` | TokenSets | exactly leaf then root, at most 2; `nameHashes` of `SecCertificateCopySubjectSummary` | new |
-| `leaf_subject`, `root_subject` | string | | removed (free text naming an employer's CA) |
-| `known_interceptor` | string | | removed |
 
 ### integrity
 
@@ -751,9 +694,6 @@ when that evidence verifies, and the customer's backend spends it once to read o
 | `objc_methods` | object[] | at most 32; see below | new |
 | `got_slots` | object[] | at most 32; always present, empty when no watched import has a slot; see below | new |
 | `unresolved` | string[] | watched names that could not be measured, sorted, no duplicates; omitted when empty | new |
-| `patched_natives` | string[] | | removed |
-| `lies` | object[] | | removed |
-| `engine` | object | | removed |
 
 `native_symbols`: one entry per watched function that `dlsym` resolves and `dladdr` places:
 `{ "symbol": string, "image": ImageRef, "tree": string, "prologue": string?, "branch_image": ImageRef?, "branch_tree": string?, "branch_resolved": bool? }`.
@@ -847,22 +787,24 @@ no rule may raise a score because a service is on.
 
 ## 7. Report size
 
-The ingest routes refuse a body over 1 MiB (`DefaultMaxBodySize`). Today a report is about 5 KB of JSON. One hash costs 19 bytes.
+The ingest routes refuse a body over 1 MiB (`DefaultMaxBodySize`). In JSON one Android `digest128` costs 35 bytes (32 hex
+characters, two quotes, a comma) and one iOS `hash64` costs 19 bytes. The hash-bearing fields below dominate a report;
+everything else is about 4 KB.
 
 | | Android typical | Android at every cap | iOS typical | iOS at every cap |
 |---|---|---|---|---|
-| `library_hashes` | about 400 hashes, 7.6 KB | 14.6 KB | about 180 hashes, 3.4 KB | 14.6 KB |
-| `thread_hashes` | 1.1 KB | 2.4 KB | 0.4 KB | 2.4 KB |
-| chain and signer tokens | 0.8 KB | 4.6 KB | 0.4 KB | 0.9 KB |
+| `library_hashes` | about 400 digests, 14.0 KB | 768 digests, 26.9 KB | about 180 hashes, 3.4 KB | 768 hashes, 14.6 KB |
+| `thread_hashes` | about 58 digests, 2.0 KB | 128 digests, 4.5 KB | 0.4 KB | 128 hashes, 2.4 KB |
+| chain and signer tokens | about 42 digests, 1.5 KB | 240 digests (6 certs and 4 signers, 24 each), 8.4 KB | 0.4 KB | 48 hashes, 0.9 KB |
 | integrity tables, regions, mounts, features | 1.0 KB | 1.3 KB | 3.1 KB (with `app_image_hashes` and trees) | 5.5 KB |
-| Removed (`device`, `lies`, `engine`, names) | minus 1 KB | minus 1 KB | minus 1 KB | minus 1 KB |
-| **Net increase** | **about 9.5 KB** | **about 22 KB** | **about 6.5 KB** | **about 22 KB** |
+| **Total of these fields** | **about 18.5 KB** | **about 41 KB** | **about 7.3 KB** | **about 23 KB** |
 
-So a typical report goes from about 5 KB to about 15 KB on Android and about 12 KB on iOS, roughly 6 KB and 4 KB gzipped (hex hashes
-compress about 2 to 1). The worst case, with Android's 32 KiB attestation chain as base64, is about 70 KB: 7 percent of the limit.
+So a typical report is about 23 KB on Android and about 11 KB on iOS, roughly 11 KB and 5 KB gzipped (hex digests compress
+about 2 to 1). The worst case, Android at every cap with its 32 KiB attestation chain as base64 (about 44 KB), is about 90 KB:
+under 9 percent of the limit.
 
-These are estimates from the SDKs' own notes (two to four hundred distinct mapped files on a real Android app, a report of about five
-kilobytes), not device measurements. The caps are what hold the worst case. Measure on real devices when the SDKs land.
+These are estimates from the SDKs' own notes (two to four hundred distinct mapped files on a real Android app), not device
+measurements. The caps are what hold the worst case.
 
 ## 8. Detector specification
 
