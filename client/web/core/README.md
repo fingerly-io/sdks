@@ -19,6 +19,14 @@ browser SDKs:
 - **1-RTT `v: 3` transport & Option B normalization:** posts to
   `POST /api/v1/ingest` with idempotent retries and guarantees `visitorId === ""`
   and `visitorIsNew === false` whenever `identifiable === false`.
+- **Single-use freshness ticket (web):** each report carries a `ticket` the
+  server issued, so a recorded report cannot be replayed. The answer's
+  `next_ticket` is held in memory for the next report; only when none is held
+  (or it has 10 seconds or less left) does the SDK ask for one, on the same
+  path as reports and in parallel with collection. A failed or slow ticket
+  request never blocks or fails `identify()`: the report goes without one.
+  Tickets are never written to storage. A custom `Transport` opts in by
+  implementing `ticket()`.
 
 It contains no DOM code of its own and decides nothing: scoring lives on the
 server.

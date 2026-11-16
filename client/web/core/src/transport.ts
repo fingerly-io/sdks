@@ -9,7 +9,13 @@
 import { own, ownCopy } from './own.js'
 import { validateApiVersion } from './routes.js'
 import { DEFAULT_ENDPOINT } from './routing.js'
-import type { IdentifySubmission, IdentifyTrigger, SuspectLevel } from './types.js'
+import type {
+  FreshnessTicket,
+  IdentifySubmission,
+  IdentifyTrigger,
+  SuspectLevel,
+  TicketRequest,
+} from './types.js'
 
 export const SDK_KEY_HEADER = 'x-api-key'
 
@@ -36,6 +42,8 @@ export interface SubmitResponse {
   suspect_score?: number | null
   suspect_level?: SuspectLevel | string | null
   triggers?: IdentifyTrigger[]
+  /** Web only: the ticket for this page's next report. */
+  next_ticket?: FreshnessTicket
 }
 
 export interface Transport {
@@ -44,6 +52,30 @@ export interface Transport {
    * for every attempt of this call and mint a new one for the next call.
    */
   submit(submission: IdentifySubmission, signal?: AbortSignal): Promise<SubmitResponse>
+  /**
+   * Fetches a single-use freshness ticket (web only), from the same path as
+   * reports. Optional: a transport without it sends reports without a ticket.
+   */
+  ticket?(request: TicketRequest, signal?: AbortSignal): Promise<FreshnessTicket>
+}
+
+/** The longest ticket this SDK accepts. A real one is a few hundred characters. */
+const MAX_TICKET_CHARS = 2048
+
+/**
+ * A ticket as the server sends it, or `undefined` for anything else: an
+ * unpadded base64url string and a parseable expiry.
+ */
+export function readTicket(value: unknown): FreshnessTicket | undefined {
+  if (value === null || typeof value !== 'object') return undefined
+  const candidate = value as Record<string, unknown>
+  const ticket = own(candidate, 'ticket')
+  const expiresAt = own(candidate, 'expires_at')
+  if (typeof ticket !== 'string' || typeof expiresAt !== 'string') return undefined
+  if (ticket.length === 0 || ticket.length > MAX_TICKET_CHARS) return undefined
+  if (!/^[A-Za-z0-9_-]+$/.test(ticket)) return undefined
+  if (!Number.isFinite(Date.parse(expiresAt))) return undefined
+  return { ticket, expires_at: expiresAt }
 }
 
 export class TransportError extends Error {
@@ -335,6 +367,67 @@ export class HttpTransport implements Transport {
     }
 
     throw lastError ?? new TransportError('The submission could not be sent')
+  }
+
+  /**
+   * One try per configured URL, in order, with no waiting between them: the
+   * report goes out without a ticket rather than waiting for one.
+   */
+  async ticket(request: TicketRequest, signal?: AbortSignal): Promise<FreshnessTicket> {
+    const rawBody = JSON.stringify(request)
+    let lastError: TransportError | undefined
+    for (const url of this.urls) {
+      if (signal?.aborted) throw new TransportError('The ticket request was cancelled')
+      try {
+        return await this.ticketAttempt(url, rawBody, signal)
+      } catch (error) {
+        lastError =
+          error instanceof TransportError
+            ? error
+            : new TransportError(
+                error instanceof Error ? error.message : 'The ticket request could not be sent',
+                undefined,
+                true,
+              )
+      }
+    }
+    throw lastError ?? new TransportError('The ticket request could not be sent')
+  }
+
+  private async ticketAttempt(
+    url: string,
+    rawBody: string,
+    signal: AbortSignal | undefined,
+  ): Promise<FreshnessTicket> {
+    const controller = new AbortController()
+    const abort = () => controller.abort()
+    signal?.addEventListener('abort', abort, { once: true })
+    const timer = setTimeout(abort, this.requestTimeoutMs)
+
+    try {
+      const response = await this.fetchImpl(url, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          [SDK_KEY_HEADER]: this.#apiKey,
+          [IDEMPOTENCY_KEY_HEADER]: newIdempotencyKey(),
+        },
+        body: rawBody,
+        credentials: 'omit',
+        signal: controller.signal,
+      })
+
+      if (!response.ok) throw refusal(response, await refusalCode(response))
+
+      const ticket = readTicket(await readAnswer(response))
+      if (!ticket) {
+        throw new TransportError('The server answered the ticket request without a usable ticket')
+      }
+      return ticket
+    } finally {
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', abort)
+    }
   }
 
   private nextAttempt(failure: TransportError, attempt: number, endpointIndex: number): number | null {

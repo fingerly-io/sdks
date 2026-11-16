@@ -156,7 +156,9 @@ async function onSubmit() {
 `identify()` runs a single-pass `v: 3` browser collection (`<= 350 ms` default
 budget, Stage 1 Gecko `<= 3 ms` RFP canvas-prompt guard, CSP-safe `worker_realm`,
 and `incognitoDetection: 'standard' | 'extended'`) and submits once in **1 RTT**
-to `POST /api/v1/ingest`. Under **Option B**, `visitorId.value` is `""` (and
+to `POST /api/v1/ingest`, with a single-use freshness ticket held in memory only
+(when none is held, the ticket request runs in parallel with collection and
+never holds up or fails `identify()`). Under **Option B**, `visitorId.value` is `""` (and
 `visitorIsNew.value` is `false`) whenever `identifiable.value === false`, inside
 an embedded WebView, or when an unmatched Web report is high-risk. To inspect
 the raw `SignalReport` locally without submitting, call

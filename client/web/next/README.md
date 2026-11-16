@@ -127,7 +127,9 @@ an action on them in the page.
 `identify()` runs a single-pass `v: 3` collection (`<= 350 ms` default budget,
 Stage 1 Gecko `<= 3 ms` RFP canvas-prompt guard, CSP-safe `worker_realm`, and
 `incognitoDetection: 'standard' | 'extended'`) and posts once in **1 RTT** to
-`POST /api/v1/ingest`. Under **Option B**, `visitorId` is `""` (and
+`POST /api/v1/ingest`, with a single-use freshness ticket held in memory only
+(when none is held, the ticket request runs in parallel with collection and
+never holds up or fails `identify()`). Under **Option B**, `visitorId` is `""` (and
 `visitorIsNew` is `false`) whenever `identifiable === false`, inside an embedded
 WebView, or when an unmatched Web report is high-risk. To inspect the raw
 `SignalReport` locally without submitting, call `(await useFingerly().client()).collect()`.

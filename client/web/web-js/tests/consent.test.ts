@@ -55,8 +55,10 @@ describe('consent', () => {
     const result = await fingerly.identify()
     expect(result.visitorId).toBe('vis_1')
 
-    expect(bodies).toHaveLength(1)
-    expect(bodies[0]).toMatchObject({
+    // One ticket request beside collection, then one report.
+    expect(bodies).toHaveLength(2)
+    expect(bodies[0]).toEqual({ v: 3, op: 'ticket', sdk: { platform: 'web', version: '0.3.0' } })
+    expect(bodies[1]).toMatchObject({
       v: 3,
       consent: 'granted',
       sdk: { platform: 'web', version: '0.3.0' },
@@ -94,6 +96,7 @@ describe('consent', () => {
 
     expect(result.visitorId).toBe('vis_1')
     expect(runs.length).toBeGreaterThan(0)
-    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    // The ticket request and the report.
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
   })
 })

@@ -122,8 +122,34 @@ describe('a polluted Object.prototype (WEB-09)', () => {
     pollute('fallbackToDefaultEndpoint', true)
     const c = new FingerlyClient({ apiKey: 'fly_pk_development_test', consent: 'granted', sources: [plain] })
     await c.identify()
-    expect(fetchStub).toHaveBeenCalledTimes(1)
-    expect(fetchStub.mock.calls[0]![0]).toBe('https://api.fingerly.io/api/v1/ingest')
+    // The ticket request and the report, both to the default path.
+    expect(fetchStub).toHaveBeenCalledTimes(2)
+    for (const call of fetchStub.mock.calls) {
+      expect(call[0]).toBe('https://api.fingerly.io/api/v1/ingest')
+    }
+  })
+
+  it('a polluted ticket does not ride on the report', async () => {
+    const bodies: Record<string, unknown>[] = []
+    const fetchStub = vi.fn(async (_url: string, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>)
+      return new Response(JSON.stringify({ request_id: 'real' }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+    })
+    vi.stubGlobal('fetch', fetchStub)
+    pollute('ticket', 'pollutedticket')
+    pollute('expires_at', '2999-01-01T00:00:00Z')
+    pollute('next_ticket', { ticket: 'pollutednext', expires_at: '2999-01-01T00:00:00Z' })
+    const c = new FingerlyClient({ apiKey: 'fly_pk_development_test', consent: 'granted', sources: [plain] })
+    await c.identify()
+    await c.identify()
+    const reports = bodies.filter((body) => !Object.prototype.hasOwnProperty.call(body, 'op'))
+    expect(reports).toHaveLength(2)
+    for (const report of reports) {
+      expect(Object.prototype.hasOwnProperty.call(report, 'ticket')).toBe(false)
+    }
   })
 
   it('maxAttempts and requestTimeoutMs do not change the transport', () => {

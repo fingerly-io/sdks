@@ -10,6 +10,7 @@ import type { Source } from './source.js'
 import {
   HttpTransport,
   INSPECT,
+  readTicket,
   REDACTED,
   TransportError,
   type SubmitResponse,
@@ -17,6 +18,7 @@ import {
 } from './transport.js'
 import type {
   ConsentState,
+  FreshnessTicket,
   IdentifyResult,
   IdentifySubmission,
   IncognitoDetection,
@@ -134,12 +136,45 @@ const EMPTY_INTEGRITY: IntegrityReport = {
   engine: {},
 }
 
+/** A held ticket is used only while it has at least this long left. */
+export const TICKET_MARGIN_MS = 10_000
+
+/**
+ * How long a report waits, once collection is done, for a ticket request that
+ * is still in flight. After that the report goes without one; the ticket, if
+ * it arrives, is held for the next report.
+ */
+export const TICKET_GRACE_MS = 250
+
+interface HeldTicket {
+  ticket: string
+  expiresAtMs: number
+}
+
+function heldTicket(value: unknown): HeldTicket | undefined {
+  const read = readTicket(value)
+  return read ? { ticket: read.ticket, expiresAtMs: Date.parse(read.expires_at) } : undefined
+}
+
+function lateBy<T>(ms: number, value: T): { promise: Promise<T>; cancel(): void } {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const promise = new Promise<T>((resolve) => {
+    timer = setTimeout(() => resolve(value), ms)
+  })
+  return { promise, cancel: () => clearTimeout(timer) }
+}
+
 export class FingerlyClient {
   readonly #options: FingerlyClientOptions
   private readonly transport: Transport
   private readonly platform: SdkPlatform
   private consentState: ConsentState
   private readonly consentListeners = new Set<(state: ConsentState) => void>()
+  /**
+   * The ticket for this page's next report. In memory only: a ticket is never
+   * written to any storage, so it dies with the page.
+   */
+  #heldTicket: HeldTicket | undefined
 
   constructor(input: FingerlyClientOptions) {
     // Own properties only (`WEB-09`): an option the caller did not set is
@@ -244,9 +279,23 @@ export class FingerlyClient {
   ): Promise<IdentifyResult> {
     const incognitoDetection =
       options.incognitoDetection ?? this.#options.incognitoDetection ?? 'standard'
-    const report = await this.collectReport(incognitoDetection, signal)
-
-    this.requireConsent()
+    // The ticket request runs beside collection, so it adds no round trip.
+    const pendingTicket = this.ticketFor(signal)
+    let sentTicket: HeldTicket | undefined
+    let report: SignalReport
+    try {
+      report = await this.collectReport(incognitoDetection, signal)
+      this.requireConsent()
+      const grace = lateBy<HeldTicket | undefined>(TICKET_GRACE_MS, undefined)
+      sentTicket = await Promise.race([pendingTicket, grace.promise])
+      grace.cancel()
+    } finally {
+      // A ticket this report did not send (it came too late, or collection
+      // failed) is still unused, so it is kept for the next report.
+      void pendingTicket.then((ticket) => {
+        if (ticket !== undefined && ticket !== sentTicket) this.holdTicket(ticket)
+      })
+    }
 
     const submission: IdentifySubmission = {
       v: 3,
@@ -254,6 +303,7 @@ export class FingerlyClient {
       consent: this.consentState,
       signals: report,
       ...(typeof options.tag === 'string' && options.tag !== '' ? { tag: options.tag } : {}),
+      ...(sentTicket === undefined ? {} : { ticket: sentTicket.ticket }),
     }
 
     let response: SubmitResponse
@@ -267,6 +317,10 @@ export class FingerlyClient {
     // Own fields of the answer only (`WEB-09`): a field the server left out
     // (for example the score on a key that hides it) stays absent.
     const answer = ownCopy(response)
+    if (this.platform === 'web') {
+      const next = heldTicket(answer.next_ticket)
+      if (next) this.holdTicket(next)
+    }
     const visitorId = typeof answer.visitor_id === 'string' ? answer.visitor_id : ''
     // The report is not part of the result (`WEB-14`): it describes the
     // device, and callers that keep the result in application state would
@@ -290,6 +344,39 @@ export class FingerlyClient {
           : null,
       suspectLevel: isSuspectLevel(answer.suspect_level) ? answer.suspect_level : null,
     }
+  }
+
+  /**
+   * The ticket for one report: the held one while it has more than
+   * [[TICKET_MARGIN_MS]] left, otherwise a fresh request. Resolves to
+   * `undefined` on any failure and never rejects, so a ticket can never block
+   * or fail identification. Native platforms never carry a ticket.
+   */
+  private ticketFor(signal: AbortSignal): Promise<HeldTicket | undefined> {
+    if (this.platform !== 'web') return Promise.resolve(undefined)
+
+    // Single use: a held ticket is taken, so a concurrent call cannot send it too.
+    const held = this.#heldTicket
+    this.#heldTicket = undefined
+    if (held && held.expiresAtMs - Date.now() > TICKET_MARGIN_MS) return Promise.resolve(held)
+
+    const transport = this.transport
+    if (typeof transport.ticket !== 'function') return Promise.resolve(undefined)
+    try {
+      return Promise.resolve(
+        transport.ticket({ v: 3, op: 'ticket', sdk: { platform: 'web', version: SDK_VERSION } }, signal),
+      ).then(
+        (answer: FreshnessTicket) => heldTicket(answer),
+        () => undefined,
+      )
+    } catch {
+      return Promise.resolve(undefined)
+    }
+  }
+
+  private holdTicket(ticket: HeldTicket): void {
+    const current = this.#heldTicket
+    if (!current || ticket.expiresAtMs > current.expiresAtMs) this.#heldTicket = ticket
   }
 
   /**

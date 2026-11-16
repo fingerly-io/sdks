@@ -106,6 +106,9 @@ including the Stage 1 Gecko `<= 3 ms` RFP timer guard and CSP-safe
 resolving with the server's answer: `requestId`, `visitorId`, `identifiable`,
 and `suspectScore` / `suspectLevel` (unless hidden by the key). Nothing is
 decided in the page: scoring lives on the server, under the weights you set.
+Each report carries a single-use freshness ticket, held in memory only; when
+none is held, the ticket request runs in parallel with collection and never
+holds up or fails `identify()`.
 
 ### Decide on your backend
 

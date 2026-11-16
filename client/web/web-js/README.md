@@ -61,7 +61,12 @@ Loading collects nothing and sends nothing. Consent defaults to `'pending'`, and
 
 `identify()` executes a single-pass `v: 3` collection (`<= 350 ms` default
 wall-clock budget) and posts once to `POST /api/v1/ingest`; there are no
-multi-tier runs or follow-up sidecar requests. Under **Option B**,
+multi-tier runs or follow-up sidecar requests. Each report carries a single-use
+freshness ticket from the server, so a recorded report cannot be replayed. The
+ticket for the next report comes back with each answer and is held in memory
+only; when none is held, a small ticket request to the same path runs in
+parallel with collection, and if it fails the report is sent without a ticket.
+Under **Option B**,
 `visitorId === ""` and `visitorIsNew === false` whenever `identifiable === false`,
 when the report came from an embedded WebView, or when an unmatched Web report
 is high-risk.
