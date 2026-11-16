@@ -14,7 +14,6 @@ export type {
   CollectOptions,
   Confidence,
   ConsentState,
-  FingerlyWebEvent,
   IdentifyOptions,
   IdentifyResult,
   IncognitoDetection,
