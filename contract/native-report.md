@@ -38,7 +38,8 @@ as one error.
 **Default bounds.** Unless a table says otherwise: strings at most 256 bytes (truncate), integers are 32-bit
 signed, doubles are finite. Every array has a cap in its table; a client stops at the cap, it does not fail.
 
-**Envelope.** Unchanged shape: `{ schema, budget_ms, elapsed_ms, tiers, sources: { id: { status, ms, value?, reason? } }, integrity }`.
+**Envelope.** Shape: `{ schema, budget_ms, elapsed_ms, tiers, digest_salt_id, sources: { id: { status, ms, value?, reason? } }, integrity }`.
+`digest_salt_id` (string, 16 lowercase hex characters, or `""`) names the salt the report's name digests were keyed with (section 1.4).
 `schema` becomes `2` on both native platforms, because field meanings change. The server reads rules the same way whatever the
 schema, but a native report that lacks `schema` or names one below `2` is tampering evidence (8.11): no native SDK ever sent anything
 else, so a lower number is a report asking to be read by older rules.
@@ -61,14 +62,14 @@ the sources of a tier the report claims to have run are required; `fast` is alwa
 enters native identity, which stays `identity.install_id` only.
 
 **Free text.** No names from outside system trees, no other app's name, no raw data directory, no installer
-package, no accessibility service name. Where the raw value is free text it travels as `hash64`.
+package, no accessibility service name. Where the raw value is a name it travels as a salted `nameDigest` (section 1.4).
 
 ### 1.1 hash64
 
 Sixteen lowercase hex characters: xxHash32 of the UTF-8 bytes with seed `0`, then with seed `0x9E3779B1`,
-concatenated. Identical to `hash64` in the Android and iOS SDKs and in `domain/risk/native_hash.go`. iOS uses it for
-every name digest; Android uses it only for `app.signature_digest` and names with `nameDigest` (section 1.4). Check it
-against these vectors:
+concatenated. Identical to `hash64` in the Android and iOS SDKs. It is not a name digest and is used for exactly three
+values: Android `app.signature_digest`, iOS `system.kernel_version` and iOS `images.digest`. Every name digest on both
+platforms is a `nameDigest` (section 1.4). Check it against these vectors:
 
 | Input | hash64 |
 |---|---|
@@ -92,9 +93,8 @@ Used for libraries, threads, certificate subjects and signer subjects. Input is 
 3. Keep this as `leaf`. Remove one trailing `.so` or `.dylib` to get `stem`.
 4. `tokens` = `stem` split on every character outside `[a-z0-9]`, keeping tokens of 3 or more characters that
    are not all digits.
-5. Output the set `{ digest(stem) } ∪ { digest(t) for t in tokens }`, where `digest` is `hash64` on iOS and `nameDigest`
-   (section 1.4) on Android.
-6. iOS image names only: also add `hash64(leaf)`, with the extension. Two iOS markers are bound to the extension.
+5. Output the set `{ nameDigest(stem) } ∪ { nameDigest(t) for t in tokens }` (section 1.4), on both platforms.
+6. iOS image names only: also add `nameDigest(leaf)`, with the extension. Two iOS markers are bound to the extension.
 
 Why tokens and not only the whole name: today's library markers are substrings, and a hash can only match
 exactly. `libfrida-gadget-16.5.2.so` has a new whole name every release, but always yields the token `libfrida`.
@@ -103,29 +103,56 @@ Examples: `libfrida-gadget-16.5.2.so` gives stem `libfrida-gadget-16.5.2`, token
 `memfd:frida-agent-64.so (deleted)` gives stem `frida-agent-64`, tokens `frida`, `agent`.
 `libXposed_art.so` gives stem `libxposed_art`, tokens `libxposed`, `art`.
 
-The server holds marker strings in the clear (section 8.13), hashes them at start-up, and tests set membership.
+The server holds marker strings in the clear (section 8.13), digests them under the zero salt and each project's salt,
+and tests set membership.
 
 ### 1.3 Types used below
 
-- `hash64[]`: sorted ascending unless a rule below says otherwise; no duplicates.
-- `digest128`: one `nameDigest` (section 1.4). `digest128[]` follows the `hash64[]` rules.
-- `TokenSets`: array of arrays of name digests (`hash64` on iOS, `digest128` on Android). Each inner array is one
-  `nameHashes` output, capped at 24 and sorted.
+- `hash64`: one `hash64` (section 1.1).
+- `digest128`: one `nameDigest` (section 1.4). `digest128[]`: sorted ascending unless a rule below says otherwise; no
+  duplicates.
+- `TokenSets`: array of arrays of `digest128`. Each inner array is one `nameHashes` output, capped at 24 and sorted.
 - `ImageRef` (iOS): for an image in a system tree (`usr_lib`, `system_library`, `system_applications`,
-  `library_apple`, `sim_root`), the leaf file name as reported. For anything else, `hash64` of the lowercased
+  `library_apple`, `sim_root`), the leaf file name as reported. For anything else, `nameDigest` of the lowercased
   leaf. Never a path. A system tree is decided by more than the path: an image under `/usr/lib/` or
   `/System/Library/` is a system image only when the dyld shared cache contains it or it is one of the listed
   standalone OS images and its file has a Mach-O header (see `image_trees` in section 3), so a dylib dropped under a
   system prefix is `other` and travels hashed.
 
-### 1.4 nameDigest (Android)
+### 1.4 nameDigest and the project digest salt
 
-Thirty-two lowercase hex characters: SHA-256 of the UTF-8 bytes, truncated to its first 128 bits (16 bytes). Android sends
-every name as `nameDigest`: `instrumentation.library_hashes` and `thread_hashes`, `app.signer_subject_tokens`,
-`tls.chain_subject_tokens`, and `images.digest`, which is one `nameDigest` over the image names joined by `\n`
-(`core/Hash.kt` in the SDK, `domain/risk/native_hash.go` on the server). The server hashes its Android marker sets the same way (`newAndroidMarkerSet`). It is
-deterministic and unkeyed, because the server matches it against marker names, so a common name can be recovered from its
-digest with a word list: pseudonymous, not anonymous. `app.signature_digest` stays `hash64`.
+Thirty-two lowercase hex characters: the first 16 bytes of `HMAC-SHA256(salt, UTF-8 name)`, keyed with the project's
+32-byte digest salt (`core/Hash.kt` on Android, `Core/NameHashes.swift` on iOS, `domain/risk/native_hash.go` on the server).
+
+- **The salt.** The server generates one random 32-byte salt per project when the project is created; it is never shown in
+  the console. It reaches the SDK as `digest_salt`, unpadded `base64url`, in `AttestationChallengeOut`: the cold-start
+  `POST /api/v1/attestation/challenge` answer and every `next_attestation` ([v3-envelope.md](./v3-envelope.md) section 1.3).
+  The SDK caches it per SDK key in the same container storage as the install record (`noBackupFilesDir` on Android, the
+  app's own container on iOS).
+- **`digest_salt_id`.** Every report names the salt it used at its top level: the first 8 bytes of `SHA-256(salt)` as 16
+  lowercase hex characters.
+- **No salt yet.** On the very first call, or when no challenge was offered, the SDK keys the same HMAC with 32 zero bytes
+  and sends `digest_salt_id: ""`.
+- **Server matching.** The server holds its marker names in the clear and digests them under the zero salt at start-up and
+  under each project's salt (cached). A report is matched under the salt its `digest_salt_id` names. An id that does not name
+  the project's salt is matched as zero-salt, which a report digested under another salt
+  never matches, so it adds nothing.
+
+Android sends as `nameDigest`: `instrumentation.library_hashes` and `thread_hashes`, `app.signer_subject_tokens`,
+`tls.chain_subject_tokens`, and `images.digest`, which is one `nameDigest` over the image names joined by `\n`. iOS sends as
+`nameDigest`: `instrumentation.library_hashes`, `thread_hashes` and `app_image_hashes`, the hashed `ImageRef` of a
+non-system image, and `tls.chain_subject_tokens`. The values that are not name digests keep `hash64` (section 1.1):
+Android `app.signature_digest`, iOS `system.kernel_version` and iOS `images.digest`.
+
+Because the key is per project, the same name digests differently in two projects, and a digest cannot be looked up in a
+word list without the project's salt. Known-answer vectors, with the salt bytes `0x00` to `0x1f`:
+
+| Input | nameDigest |
+|---|---|
+| `libfrida-gadget.so` | `72e6904a26d05758813f8b7be4d52471` |
+| `com.example.app` | `86aa713c3c4d9e001dbbe3b4818ce84b` |
+| `MobileSubstrate` | `15055d9c13f7a864275eb7df9253b8e7` |
+| `digest_salt_id` of that salt | `630dcd2966c43366` |
 
 ## 2. Android report
 
@@ -590,11 +617,11 @@ Retired (iOS ADR 0001), sent as `unsupported` with reason `retired` and no value
 |---|---|---|---|
 | `thread_count` | int | every thread `task_threads` returns, named or not; 0 when the call fails | unchanged |
 | `open_ports` | int[] | at most 2 | unchanged |
-| `library_hashes` | hash64[] | at most 768; see below | new |
+| `library_hashes` | digest128[] | at most 768; see below | new |
 | `library_total` | int | images considered before the cap | new |
-| `thread_hashes` | hash64[] | at most 128; `nameHashes` of each thread name, sorted | new |
+| `thread_hashes` | digest128[] | at most 128; `nameHashes` of each thread name, sorted | new |
 | `thread_total` | int | distinct thread names before the cap | new |
-| `app_image_hashes` | hash64[] | at most 128; `hash64` of the lowercased path of each image inside the app, relative to the container (`@app/...`), sorted | new |
+| `app_image_hashes` | digest128[] | at most 128; `nameDigest` of the lowercased path of each image inside the app, relative to the container (`@app/...`), sorted | new |
 | `image_trees` | object | int counts by tree; see below | new |
 
 `library_hashes`: for every loaded image except `sim_root` images and `system_library` images that the dyld shared cache
@@ -671,9 +698,11 @@ are rate limited on the device, because Apple's risk metric counts the keys a de
 immediate, the next waits 7 days, then 14, then 30 days for good, and the count restarts after 90 days without one.
 
 DeviceCheck (server ADR 0026): when the project has its own Apple key with DeviceCheck switched on, the challenge also
-sets `device_check`. The SDK then generates a DeviceCheck token and binds it into the App Attest evidence:
-`clientDataHash = SHA-256(challenge || SHA-256(token bytes))`. The server holds the token sealed for one hour only
-when that evidence verifies, and the customer's backend spends it once to read or write the device's two bits.
+sets `device_check`. The SDK then generates two DeviceCheck tokens and sends them in the top-level `attest` envelope as
+`device_token` and `device_token_write`, both bound into `statementDigest` through `deviceTokenDigest`
+([v3-envelope.md](./v3-envelope.md) section 3.2). The server holds both sealed for one hour only when that evidence
+verifies. The customer's backend spends the first with one read of the device's two bits and the second with one write,
+so a single identification supports a read and a write.
 
 ### tls (deferred)
 
@@ -684,7 +713,7 @@ when that evidence verifies, and the customer's backend spends it once to read o
 | `system_trusted` | bool | | unchanged |
 | `clock_skew_s` | int | | unchanged |
 | `handshake_failed` | bool | P5 | new |
-| `chain_subject_tokens` | TokenSets | exactly leaf then root, at most 2; `nameHashes` of `SecCertificateCopySubjectSummary` | new |
+| `chain_subject_tokens` | TokenSets | exactly leaf then root, at most 2; `nameHashes` of `SecCertificateCopySubjectSummary`, as `digest128` | new |
 
 ### integrity
 
@@ -787,19 +816,19 @@ no rule may raise a score because a service is on.
 
 ## 7. Report size
 
-The ingest routes refuse a body over 1 MiB (`DefaultMaxBodySize`). In JSON one Android `digest128` costs 35 bytes (32 hex
-characters, two quotes, a comma) and one iOS `hash64` costs 19 bytes. The hash-bearing fields below dominate a report;
-everything else is about 4 KB.
+The ingest routes refuse a body over 1 MiB (`DefaultMaxBodySize`). In JSON one `digest128` costs 35 bytes (32 hex
+characters, two quotes, a comma) on both platforms. The hash-bearing fields below dominate a report; everything else is
+about 4 KB.
 
 | | Android typical | Android at every cap | iOS typical | iOS at every cap |
 |---|---|---|---|---|
-| `library_hashes` | about 400 digests, 14.0 KB | 768 digests, 26.9 KB | about 180 hashes, 3.4 KB | 768 hashes, 14.6 KB |
-| `thread_hashes` | about 58 digests, 2.0 KB | 128 digests, 4.5 KB | 0.4 KB | 128 hashes, 2.4 KB |
-| chain and signer tokens | about 42 digests, 1.5 KB | 240 digests (6 certs and 4 signers, 24 each), 8.4 KB | 0.4 KB | 48 hashes, 0.9 KB |
-| integrity tables, regions, mounts, features | 1.0 KB | 1.3 KB | 3.1 KB (with `app_image_hashes` and trees) | 5.5 KB |
-| **Total of these fields** | **about 18.5 KB** | **about 41 KB** | **about 7.3 KB** | **about 23 KB** |
+| `library_hashes` | about 400 digests, 14.0 KB | 768 digests, 26.9 KB | about 180 digests, 6.3 KB | 768 digests, 26.9 KB |
+| `thread_hashes` | about 58 digests, 2.0 KB | 128 digests, 4.5 KB | 0.7 KB | 128 digests, 4.5 KB |
+| chain and signer tokens | about 42 digests, 1.5 KB | 240 digests (6 certs and 4 signers, 24 each), 8.4 KB | 0.7 KB | 48 digests, 1.7 KB |
+| integrity tables, regions, mounts, features | 1.0 KB | 1.3 KB | 3.2 KB (with `app_image_hashes` and trees) | 7.5 KB |
+| **Total of these fields** | **about 18.5 KB** | **about 41 KB** | **about 11 KB** | **about 41 KB** |
 
-So a typical report is about 23 KB on Android and about 11 KB on iOS, roughly 11 KB and 5 KB gzipped (hex digests compress
+So a typical report is about 23 KB on Android and about 15 KB on iOS, roughly 11 KB and 7 KB gzipped (hex digests compress
 about 2 to 1). The worst case, Android at every cap with its 32 KiB attestation chain as base64 (about 44 KB), is about 90 KB:
 under 9 percent of the limit.
 
@@ -1162,8 +1191,9 @@ iOS: `claimed` = `hardware.machine`; `observed` = `simulator` when `simulator` a
 
 ### 8.13 Server-held constants
 
-Marker strings, in the clear, hashed at start-up: with `nameDigest` for the Android sets and with `hash64` for the iOS
-sets. A list hits when any marker's digest is in the array.
+Marker strings, in the clear, digested with `nameDigest` for both platforms: under the zero salt at start-up and under each
+project's salt, cached (section 1.4). A list hits when any marker's digest, under the salt the report's `digest_salt_id`
+names, is in the array.
 
 Android library set: `frida`, `libfrida`, `fridagadget`, `xposed`, `libxposed`, `lsposed`, `liblsposed`, `edxposed`, `libedxposed`, `riru`, `libriru`, `libriruhide`,
 `libriruloader`, `zygisk`, `libzygisk`, `zygiskloader`, `substrate`, `libsubstrate`, `shadowhook`, `libshadowhook`, `sandhook`, `libsandhook`, `yahfa`, `libyahfa`, `libwhale`,
@@ -1228,6 +1258,6 @@ Android fixes with no iOS counterpart to port: ADB and developer options counted
 
 In the `v: 3` wire protocol ([v3-envelope.md](./v3-envelope.md)), the `schema: 2` native report defined in sections 2 and 3 is serialized once to UTF-8 bytes (`signalsBytes`) and placed verbatim into the top-level `signals` field of `IdentifyIn` / `IngestIn`:
 
-- **Top-level `AttestEnvelope`**: Cryptographic proofs move from in-report fields to top-level `attest` (`mode` in `{"android_key_register", "android_key_assert", "app_attest_register", "app_attest_assert"}`, stateless KMS-signed `challenge` ticket, `install_id`, `key_id`, iOS `attestation_object` / `assertion` / `device_token`, Android `certificate_chain` / `signature` / `prev_key_id` / `prev_signature`, and optional `play_integrity_token`).
-- **Raw-byte signing**: Mobile clients compute `signalsDigest = SHA256(signalsBytes)` and sign `framedPreimage` (`statementDigest = SHA256(framedPreimage)`) covering the authenticated platform, `challenge` ticket ASCII string, `install_id`, `Idempotency-Key`, `device_token` digest, the envelope digest of `tag`, `sdk.platform`, `sdk.version`, `consent` and `attest.reattest_attempt` ([v3-envelope.md](./v3-envelope.md) section 3.2), and `signalsDigest` without cross-language JSON re-canonicalization. The server verifies the hardware signature and single-use ticket over exact `signals` wire bytes before JSON decoding, then checks `attest.install_id == sources.identity.value.install_id`.
-- **1-RTT steady-state**: Every native `IdentifyOut` response carries `next_attestation` (`AttestationChallengeOut`). Whenever the request carried `attest`, it also carries `attest_key_id` (the `attest.key_id` the server evaluated) and `attest_key_status`: `registered`, `valid`, `rekey_required` or `rejected` ([v3-envelope.md](./v3-envelope.md) section 1.3). A native request without `attest` carries `attest_skipped` instead. `sources.tls` reads `root_key_sha256` from the shared HTTPS transport cache rather than issuing a separate `HEAD /` probe.
+- **Top-level `AttestEnvelope`**: Cryptographic proofs move from in-report fields to top-level `attest` (`mode` in `{"android_key_register", "android_key_assert", "app_attest_register", "app_attest_assert"}`, stateless KMS-signed `challenge` ticket, `install_id`, `key_id`, iOS `attestation_object` / `assertion` / `device_token` / `device_token_write`, Android `certificate_chain` / `signature` / `prev_key_id` / `prev_signature`, and optional `play_integrity_token`).
+- **Raw-byte signing**: Mobile clients compute `signalsDigest = SHA256(signalsBytes)` and sign `framedPreimage` (`statementDigest = SHA256(framedPreimage)`) covering the authenticated platform, `challenge` ticket ASCII string, `install_id`, `Idempotency-Key`, the digest of both DeviceCheck tokens, the envelope digest of `tag`, `sdk.platform`, `sdk.version`, `consent` and `attest.reattest_attempt` ([v3-envelope.md](./v3-envelope.md) section 3.2), and `signalsDigest` without cross-language JSON re-canonicalization. The server verifies the hardware signature and single-use ticket over exact `signals` wire bytes before JSON decoding, then checks `attest.install_id == sources.identity.value.install_id`.
+- **1-RTT steady-state**: Every native `IdentifyOut` response carries `next_attestation` (`AttestationChallengeOut`). Whenever the request carried `attest`, it also carries `attest_key_id` (the `attest.key_id` the server evaluated) and `attest_key_status`: `registered`, `valid`, `rekey_required` or `rejected` ([v3-envelope.md](./v3-envelope.md) section 1.3). A native request without `attest` carries `attest_skipped` instead. `next_attestation` also carries the project's `digest_salt`, which keys every name digest of the next report (section 1.4). `sources.tls` reads `root_key_sha256` from the shared HTTPS transport cache rather than issuing a separate `HEAD /` probe.

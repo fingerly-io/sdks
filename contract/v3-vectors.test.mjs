@@ -79,10 +79,31 @@ function computeEnvelopeDigest({ tag, sdkPlatform, sdkVersion, consent, reattest
   )
 }
 
-function computeStatement({ domainSeparator, platform, challenge, installId, idempotencyKey, deviceToken, envelope, signalsBytes }) {
+// deviceTokenDigest = SHA256(SHA256(read) || SHA256(write)); a missing token
+// contributes 32 zero bytes, and with both missing the digest is 32 zero bytes.
+function computeDeviceTokenDigest(readBytes, writeBytes) {
+  if (!readBytes?.length && !writeBytes?.length) return Buffer.alloc(32, 0)
+  const part = (bytes) => (bytes?.length ? sha256(bytes) : Buffer.alloc(32, 0))
+  return sha256(Buffer.concat([part(readBytes), part(writeBytes)]))
+}
+
+function decodeToken(encoded) {
+  return encoded ? Buffer.from(encoded, 'base64') : undefined
+}
+
+function computeStatement({
+  domainSeparator,
+  platform,
+  challenge,
+  installId,
+  idempotencyKey,
+  deviceToken,
+  deviceTokenWrite,
+  envelope,
+  signalsBytes,
+}) {
   const signalsDigest = sha256(signalsBytes)
-  const deviceTokenDigest =
-    deviceToken === '' ? Buffer.alloc(32, 0) : sha256(Buffer.from(deviceToken, 'base64'))
+  const deviceTokenDigest = computeDeviceTokenDigest(decodeToken(deviceToken), decodeToken(deviceTokenWrite))
   const envelopeDigest = computeEnvelopeDigest(envelope)
 
   const framedPreimage = Buffer.concat([
@@ -124,6 +145,7 @@ function vectorStatement(vec, overrides = {}) {
     installId: vec.install_id,
     idempotencyKey: vec.idempotency_key,
     deviceToken: vec.device_token,
+    deviceTokenWrite: vec.device_token_write,
     envelope: { ...vectorEnvelope(vec), ...overrides },
     signalsBytes: Buffer.from(vec.signals_utf8, 'utf8'),
   })
@@ -346,7 +368,8 @@ test('native-report.md preserves archive_fields_test.go machine-parser invariant
   assert.equal(androidFixture.sources.cloned.value.is_managed_profile, false)
   assert.equal(androidFixture.sources.cloned.value.is_device_protected_storage, false)
   assert.equal(androidFixture.sources.tls.value.root_key_sha256, 'YSoUL4CBzo5aJ/ES9gSZTsavsgtHsiLLnTG+BKUdork=')
-  // Android name digests are SHA-256 truncated to 128 bits; signature_digest stays hash64.
+  // Android name digests are salted HMAC-SHA256 truncated to 128 bits; signature_digest stays hash64.
+  assert.equal(androidFixture.digest_salt_id, '')
   const nameDigest = /^[0-9a-f]{32}$/
   const androidValues = androidFixture.sources
   for (const digest of [
@@ -366,9 +389,72 @@ test('native-report.md preserves archive_fields_test.go machine-parser invariant
 
   const iosFixture = JSON.parse(readFileSync(resolve(root, 'fixtures/native-report-ios.json'), 'utf8'))
   assert.equal(iosFixture.sources.hardware.value.gpu_family_max, 7)
+  assert.equal(iosFixture.digest_salt_id, '')
 
   const envelopeDoc = readFileSync(resolve(root, 'v3-envelope.md'), 'utf8')
   const proxyDoc = readFileSync(resolve(root, 'proxy.md'), 'utf8')
   assert.ok(envelopeDoc.includes('fingerly:v3:identify'))
   assert.ok(proxyDoc.includes('missing_origin'))
+  assert.ok(proxyDoc.includes('X-Fingerly-Edge-JA4'))
+})
+
+test('deviceTokenDigest binds the read and the write DeviceCheck token', () => {
+  const read = Buffer.from('read-token-bytes', 'ascii')
+  const write = Buffer.from('write-token-bytes', 'ascii')
+  assert.equal(
+    computeDeviceTokenDigest(read, write).toString('hex'),
+    'c3a06cc18593f3c526c58bd7b1670f8f4ffc8fcfaeaee97460b777d6137ece23',
+  )
+  assert.equal(
+    computeDeviceTokenDigest(read, undefined).toString('hex'),
+    '88b7e591bbb678f946dcfe3deb7ef46a2d2971dbc8ae29f181c4ea2b537d9ae9',
+  )
+  assert.deepEqual(computeDeviceTokenDigest(undefined, undefined), Buffer.alloc(32, 0))
+  assert.notEqual(
+    computeDeviceTokenDigest(undefined, write).toString('hex'),
+    computeDeviceTokenDigest(write, undefined).toString('hex'),
+    'a write token is not interchangeable with a read token',
+  )
+})
+
+test('name digests are the salted HMAC the contract writes, with digest_salt_id', () => {
+  const salt = Buffer.from(Array.from({ length: 32 }, (_, i) => i))
+  const nameDigest = (key, name) => createHmac('sha256', key).update(Buffer.from(name, 'utf8')).digest().subarray(0, 16).toString('hex')
+  assert.equal(nameDigest(salt, 'libfrida-gadget.so'), '72e6904a26d05758813f8b7be4d52471')
+  assert.equal(nameDigest(salt, 'com.example.app'), '86aa713c3c4d9e001dbbe3b4818ce84b')
+  assert.equal(nameDigest(salt, 'MobileSubstrate'), '15055d9c13f7a864275eb7df9253b8e7')
+  assert.equal(sha256(salt).subarray(0, 8).toString('hex'), '630dcd2966c43366')
+  assert.notEqual(nameDigest(Buffer.alloc(32, 0), 'libfrida-gadget.so'), nameDigest(salt, 'libfrida-gadget.so'))
+
+  const md = readFileSync(resolve(root, 'native-report.md'), 'utf8')
+  for (const value of ['72e6904a26d05758813f8b7be4d52471', '630dcd2966c43366', 'digest_salt_id']) {
+    assert.ok(md.includes(value), `native-report.md names ${value}`)
+  }
+})
+
+test('the web ticket proof of work vector: ticket abc at 8 bits first passes at 181', () => {
+  const leadingZeroBits = (digest) => {
+    let n = 0
+    for (const byte of digest) {
+      if (byte === 0) {
+        n += 8
+        continue
+      }
+      n += Math.clz32(byte) - 24
+      break
+    }
+    return n
+  }
+  let first = ''
+  for (let n = 0; n < 100000; n++) {
+    if (leadingZeroBits(sha256(Buffer.from(`abc:${n}`, 'ascii'))) >= 8) {
+      first = String(n)
+      break
+    }
+  }
+  assert.equal(first, '181')
+  const envelopeDoc = readFileSync(resolve(root, 'v3-envelope.md'), 'utf8')
+  for (const value of ['"op":"ticket"', 'next_ticket', 'ticket_pow', 'web_ticket_invalid', '"181"', 'device_token_write', 'digest_salt', '/consume']) {
+    assert.ok(envelopeDoc.includes(value), `v3-envelope.md names ${value}`)
+  }
 })

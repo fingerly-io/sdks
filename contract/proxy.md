@@ -76,8 +76,9 @@ The upstream request carries only the headers in sections 3.1 and 3.2, plus tran
 | `X-Fingerly-Host` | Proxy ingress host | The incoming `Host` observed at the proxy, distinct from the upstream `Host`. |
 | `X-Fingerly-User-Agent` | Visitor user agent | The incoming `User-Agent`, so the server scores the visitor's agent rather than the proxy's HTTP client. |
 | `X-Fingerly-Proxy-Version` | Proxy runtime telemetry | Static `<impl>/<version>` (for example `cloudflare-worker/0.3.0`, `nginx/1.0.0`, `node/0.3.0`). |
+| `X-Fingerly-Edge-JA4` | Visitor TLS client fingerprint | Cloudflare Worker only: the JA4 fingerprint Cloudflare computed for the visitor's TLS handshake, `request.cf.botManagement.ja4`, sent only when Cloudflare provides one (zones with Bot Management) and it is shaped like JA4 (`^[tqd][0-9a-z]{2}[di][0-9]{4}[0-9a-z]{2}_[0-9a-f]{12}_[0-9a-f]{12}$`). Otherwise not sent. |
 
-No proxy forwards details of the visitor's TLS or HTTP connection, such as the Worker's `request.cf.tlsVersion`, `request.cf.tlsCipher` or `request.cf.httpProtocol`. Current browsers and common scripting clients negotiate the same TLS 1.3 suites, so these values cannot tell them apart, and the values that stand out come mostly from TLS-inspecting middleboxes and older WebViews.
+`X-Fingerly-Edge-JA4` is the only detail of the visitor's TLS or HTTP connection a proxy forwards. No other edge template and no SDK proxy sends it, and every proxy drops a caller-sent copy with the other incoming `x-fingerly-*` headers (section 2, step 2), so only the Worker's own value reaches the API. No proxy forwards the Worker's `request.cf.tlsVersion`, `request.cf.tlsCipher` or `request.cf.httpProtocol`: current browsers and common scripting clients negotiate the same TLS 1.3 suites, so these values cannot tell them apart.
 
 ### 3.2 Forwarded Client Headers
 
@@ -123,3 +124,5 @@ When the API receives a request with `X-Fingerly-Proxy-Key`:
 - Both present: HTTP `401` (`code: "ambiguous_sdk_channel"`). Section 2, step 4 keeps a conforming proxy from sending both.
 - `X-Fingerly-Origin` only: the browser proxy channel (`AuthenticateProxied`), validating `X-Fingerly-Origin` against the key's allowed origins.
 - `X-Fingerly-SDK-Platform` only: the native channel (`AuthenticateProxiedNative`, `caller.Proxied = true`), reading the client IP from `X-Fingerly-Client-IP` without `X-Fingerly-Origin`. A web-only key (allowed origins and no native app configured) is refused on this channel in every environment.
+
+`X-Fingerly-Edge-JA4` is read only on a request a proxy key authenticated, and only when it is well formed (36 characters, three `_`-separated sections of 10 lowercase alphanumerics, 12 and 12 lowercase hex); any other value is dropped. A public key presenting it without a proxy key is refused with HTTP `401` (`code: "proxy_key_missing"`), like the other forwarded visitor headers, and a secret key's copy is ignored. The value is stored with the event as the archived document's `edge_ja4` and read by no scoring rule: the JA4 fields that stay stable across browser releases are the same for every current mainstream browser, and the values that contradict a browser's User-Agent come from TLS-inspecting middleboxes in front of real browsers, so a mismatch rule would not have a near-zero false-positive rate.

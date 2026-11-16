@@ -21,6 +21,9 @@ Both `POST /api/v1/ingest` and `POST /api/v1/identify` accept the same top-level
 | `attest` | `AttestEnvelope` | conditional | Hardware and platform attestation proof. Omitted on Web; optional on native when `require_attestation == false`; required on native when `require_attestation == true`. |
 | `tag` | `string` | optional | Opaque caller correlation label stored with the event. On native attested requests it is bound into `statementDigest` with `sdk` and `consent` (section 3.2). |
 | `attest_skipped` | `string` | optional (native) | Why a native report carries no `attest` (section 1.4). Never sent together with `attest`, and never sent on Web. |
+| `op` | `string` | optional (Web) | Omitted for a report. `"ticket"` turns the request into a web freshness ticket request (section 1.6), whose body is `v`, `op` and `sdk` only. Any other value is refused with HTTP `400` (`code: "invalid_request"`). |
+| `ticket` | `string` | optional (Web) | The web freshness ticket from a ticket request or from the previous answer's `next_ticket` (section 1.6). A native report carrying one is refused with HTTP `400` (`code: "invalid_request"`). |
+| `ticket_pow` | `string` | optional (Web) | The proof of work for a ticket whose answer carried `pow_bits` (section 1.7). Refused on native reports like `ticket`. |
 
 ### 1.2 `AttestEnvelope` Fields
 
@@ -34,7 +37,8 @@ When `attest` is present, it is a JSON object with the following fields:
 | `key_id` | `string` | required | iOS: standard Base64 App Attest key identifier (32 decoded bytes). Android: 64-character lowercase hex SHA-256 of the signing key's ASN.1 DER `SubjectPublicKeyInfo` (SPKI). |
 | `attestation_object` | `string` | when `mode == "app_attest_register"` | Standard Base64 Apple App Attest CBOR attestation object (at most 32 KiB decoded). |
 | `assertion` | `string` | when `mode == "app_attest_assert"` | Standard Base64 Apple App Attest CBOR assertion object (at most 32 KiB decoded). |
-| `device_token` | `string` | optional | Standard Base64 Apple `DCDevice` token (at most 4 KiB decoded), generated on iOS when `device_check == true` in the challenge offer and bound into `statementDigest`. |
+| `device_token` | `string` | optional | Standard Base64 Apple `DCDevice` token (at most 4 KiB decoded), generated on iOS when `device_check == true` in the challenge offer and bound into `statementDigest`. The server holds it for one hour; a DeviceCheck read (`POST /api/v1/events/{request_id}/device-check/query`) spends it. |
+| `device_token_write` | `string` | optional | A second standard Base64 Apple `DCDevice` token (at most 4 KiB decoded), generated beside `device_token` and bound into `statementDigest`. The server holds it for one hour; a DeviceCheck write (`PUT /api/v1/events/{request_id}/device-check`) spends it (section 4.2). |
 | `certificate_chain` | `string[]` | when `mode == "android_key_register"` | Array of standard Base64 ASN.1 DER X.509 certificates (leaf signing key first, attestation root last; at most 32 KiB total decoded). |
 | `signature` | `string` | Android modes | Standard Base64 ASN.1 DER ECDSA P-256 signature (`SHA256withECDSA`) over `framedPreimage`. Required on `"android_key_register"` and `"android_key_assert"`. |
 | `prev_key_id` | `string` | optional | Key ID of the previous confirmed key, sent with its continuity proof. Android: 64-character lowercase hex SHA-256 of the retiring signing key's SPKI DER during key rollover (`K1 -> K2`). iOS: standard Base64 App Attest key identifier, only on `"app_attest_register"` (section 4.2). |
@@ -60,6 +64,7 @@ When `attest` is present, it is a JSON object with the following fields:
 | `attest_key_status` | `string` | whenever `attest` was sent | What became of the presented key: `"registered"`, `"valid"`, `"rekey_required"` or `"rejected"` (section 1.5). Given to every audience, including public keys with `hide_client_score`. |
 | `attest_key_id` | `string` | whenever `attest` was sent | The `key_id` the server evaluated on this request, copied from `attest.key_id`. |
 | `next_attestation` | `AttestationChallengeOut` | native responses | Fresh stateless challenge offer piggybacked on mobile responses for `1-RTT` steady-state calls. Omitted on Web. |
+| `next_ticket` | `WebTicketOut` | Web responses | A fresh web freshness ticket for the next report from the same page, so it needs no ticket request (section 1.6). Left out when no ticket could be signed; the page then asks for one. Omitted on native. |
 
 `AttestationChallengeOut` (returned both in `IdentifyOut.next_attestation` and by cold-start `POST /api/v1/attestation/challenge`):
 
@@ -70,6 +75,7 @@ When `attest` is present, it is a JSON object with the following fields:
 | `app_attest` | `bool` | `true` when Apple App Attest is offered for the authenticated SDK key. |
 | `device_check` | `bool` | `true` when Apple DeviceCheck token generation is offered. |
 | `play_integrity` | `bool` | `true` when Google Play Integrity token generation is offered. |
+| `digest_salt` | `string` | The project's 32-byte name digest salt, unpadded `base64url`. The SDK caches it per SDK key beside the install record and keys every name digest with it ([native-report.md](./native-report.md) section 1.4). Absent when the server has none to give; the SDK then digests under 32 zero bytes. |
 
 ### 1.4 `attest_skipped`
 
@@ -109,6 +115,81 @@ Client rules on Android and iOS:
 - `rejected` on a pending key discards that key, keeps the previous confirmed key and applies the backoff. `rekey_required` on a probed pending key means the server never stored it.
 - Attestation work is single-flight per process: concurrent `identify()` calls never register two keys.
 
+### 1.6 Web Freshness Ticket
+
+A web report carries no hardware proof, so nothing in it says when it was collected. The ticket makes a recorded web report impossible to replay: a report that carries a valid ticket was sent within five minutes of the ticket being issued, from the page origin it was issued to, and no other report has carried it. It does not make a web report trustworthy, because a script that holds the public key can ask for a ticket too.
+
+**Ticket request.** Web only, on a public key, through the same paths as reports, so a first-party proxy needs no change: `POST /api/v1/ingest` or `POST /api/v1/identify` with the body
+
+```json
+{"v":3,"op":"ticket","sdk":{"platform":"web","version":"<sdk version>"}}
+```
+
+The Origin rules are those of a report (a proxy forwards `x-fingerly-origin`). A ticket request on a secret key or a native platform, or one that carries `signals`, `attest`, `attest_skipped`, `ticket` or `ticket_pow`, is refused with HTTP `400` (`code: "invalid_request"`, `details[0].field == "op"`). It is never charged and is rate limited per client address in a bucket of its own (HTTP `429`, `code: "rate_limited"`, with `Retry-After`).
+
+**Answer.** HTTP `200` with `Cache-Control: no-store` and a `WebTicketOut`:
+
+| Field | Type | Presence | Description |
+|---|---|---|---|
+| `ticket` | `string` | always | Unpadded `base64url` ticket, sent as `ticket` on the next report. Opaque to the client. |
+| `expires_at` | `string` | always | RFC 3339 UTC time the ticket stops being accepted (`issued + 300s`). |
+| `pow_bits` | `int` | when the key asks for proof of work | Leading zero bits `ticket_pow` must produce (section 1.7). |
+
+Every web `IdentifyOut` carries the same object as `next_ticket`. A duplicate replay of a web verdict carries a fresh `next_ticket`, metered in the ticket bucket.
+
+**Binding.** The ticket is stateless and signed with the attestation keyring that signs native challenge tickets, under a key derived for web tickets only (`HMAC-SHA256(challengeKey, "fingerly:v3:web-ticket\x00")`) and with its own leading byte, so neither kind can stand in for the other. Its binary layout before encoding:
+
+```text
+0x57                                   (1B: web ticket type)
+|| key_id_len_u8                       (1B: 0..32)
+|| key_id_bytes                        (0..32B: UTF-8 keyring key identifier)
+|| pow_bits_u8                         (1B: 0..22, 0 for no proof of work)
+|| issued_unix_u32_be                  (4B)
+|| exp_unix_u32_be                     (4B: issued + 300)
+|| org_uuid_16B                        (16B)
+|| sdk_key_uuid_16B                    (16B: the public key it was issued to)
+|| rand_16B                            (16B: CSPRNG nonce)
+|| origin_digest_16B                   (16B: SHA256(page origin)[0:16])
+|| HMAC_SHA256(webKey, everything before it) (32B)
+```
+
+**Redemption.** On a web report that authenticated with a public key (directly, through a first-party proxy or on a hosted domain), the server checks the signature, the organization, the SDK key, the origin digest and the expiry, then claims `web:<hex(rand_16B)>` in the atomic nonce store that native tickets use, for the ticket's remaining lifetime. The same submission retried with the same `Idempotency-Key` and the same `signals` bytes redeems its ticket again; any other second use is a reuse. A report a customer's backend relays with its secret key is not checked, and a store that cannot answer adds no evidence. The ticket is spent before its proof of work is checked.
+
+**Scoring, never a refusal.**
+
+| Signal | Weight | Confidence | Group | Reasons |
+|---|---|---|---|---|
+| `web_ticket_missing` | 4 | low | `report_incomplete` | `ticket-missing` (no ticket), `ticket-pow-missing` (the ticket asks for proof of work and `ticket_pow` is absent) |
+| `web_ticket_invalid` | 20 | high | `tampering` | `ticket-malformed` (bad encoding or signature, or claims the server never signs), `ticket-foreign` (another organization, key or origin), `ticket-expired`, `ticket-reused`, `ticket-pow-invalid` |
+
+Both are web signals whose weights a customer can edit. Native reports never carry `ticket` or `ticket_pow`; one that does is refused with HTTP `400` (`code: "invalid_request"`, `details[0].field == "ticket"`).
+
+**Web SDK rules.**
+
+- Start the ticket request when collection starts, in parallel, so it adds no round trip.
+- Use a held `next_ticket` instead when one is held and has more than 10 seconds left before `expires_at`.
+- If the ticket request fails, send the report without a ticket. Never block or fail `identify()` on it.
+- Keep tickets in memory only; never write them to storage.
+
+### 1.7 Proof of Work on the Web Ticket
+
+A per public key setting, `web_ticket_pow_bits`, an integer from `0` to `22`, default `0` (off), set through the key create and update APIs. When it is above `0`, the signed ticket carries the bit count (`pow_bits_u8`), so the server stays stateless, and the ticket answer adds `pow_bits`.
+
+The client finds the smallest decimal nonce string `n`, counting from `"0"` upward, such that
+
+```text
+SHA256(ticketASCII || ":" || n)
+```
+
+has at least `pow_bits` leading zero bits, and sends it as top-level `ticket_pow` beside `ticket`. `n` is canonical decimal: `"0"`, or digits with no leading zero, at most 20 digits.
+
+- Hash synchronously in JavaScript, not one `await` per hash.
+- Solve off the main thread when a Worker is available, otherwise in time slices.
+- Start solving as soon as the ticket arrives, in parallel with collection.
+- Budget: 1500 ms. When it runs out, send the report without `ticket_pow` (which fires `web_ticket_missing` with `ticket-pow-missing`).
+
+The server verifies with one hash. Vector: with ticket `abc` and 8 bits, checking every nonce from `"0"` upward, the first that passes is `"181"`. About 16 bits costs roughly 30 ms on a phone; above about 20 many devices run out of the budget and send no proof.
+
 ---
 
 ## 2. `Idempotency-Key` Header Rules
@@ -139,7 +220,9 @@ On the server, `CaptureBody` retains exact wire bytes and extracts `IdentifyIn.S
 
 ```text
 signalsDigest     = SHA256(signalsBytes)
-deviceTokenDigest = SHA256(deviceTokenBytes) // 32 zero bytes (0x00) when device_token is absent
+deviceTokenDigest = SHA256(readDigest || writeDigest) // 32 zero bytes when both tokens are absent
+readDigest        = SHA256(readTokenBytes)            // 32 zero bytes when device_token is absent
+writeDigest       = SHA256(writeTokenBytes)           // 32 zero bytes when device_token_write is absent
 envelopeDigest    = SHA256(tagUTF8              || "\x00" ||
                            sdkPlatformUTF8      || "\x00" ||
                            sdkVersionUTF8       || "\x00" ||
@@ -163,7 +246,7 @@ Exact input byte encodings:
 - `challengeTicketASCII`: Exact ASCII `base64url` string carried in `attest.challenge` (not base64-decoded), followed by `0x00`.
 - `installIDUTF8`: 36-byte lowercase ASCII UUIDv4 string carried in `attest.install_id`, followed by `0x00`.
 - `idempotencyKeyUTF8`: Exact ASCII string from the `Idempotency-Key` HTTP header, followed by `0x00`.
-- `deviceTokenDigest`: 32 raw bytes. When `attest.device_token` is present and non-empty, `SHA256(Base64Decode(attest.device_token))`; when `attest.device_token` is absent or `""`, 32 zero bytes (`0x00 * 32`). No trailing `0x00` separator follows fixed-width digests.
+- `deviceTokenDigest`: 32 raw bytes. `readDigest` is `SHA256(Base64Decode(attest.device_token))`, and `writeDigest` is `SHA256(Base64Decode(attest.device_token_write))`; a token that is absent or `""` contributes 32 zero bytes (`0x00 * 32`) in its place. When either token is present, `deviceTokenDigest = SHA256(readDigest || writeDigest)`. When both are absent, `deviceTokenDigest` is 32 zero bytes. No trailing `0x00` separator follows fixed-width digests. Vectors: read token ASCII `read-token-bytes` and write token ASCII `write-token-bytes` give `c3a06cc18593f3c526c58bd7b1670f8f4ffc8fcfaeaee97460b777d6137ece23`; the read token alone gives `88b7e591bbb678f946dcfe3deb7ef46a2d2971dbc8ae29f181c4ea2b537d9ae9`.
 - `envelopeDigest`: 32 raw bytes of `SHA256` over five fields, each followed by one `0x00`:
   - `tagUTF8`: the UTF-8 bytes of the top-level `tag` string exactly as sent (after JSON string decoding); the empty string (zero bytes) when `tag` is omitted.
   - `sdkPlatformUTF8`: the UTF-8 bytes of `sdk.platform` exactly as sent, including a bridge name such as `"react-native-android"`. This is not `authenticatedPlatform`.
@@ -194,7 +277,7 @@ The fixed-width tail of `framedPreimage` is 96 bytes: `deviceTokenDigest || enve
 - **Assertion (`"app_attest_assert"`)**: Passes `statementDigest` as `clientDataHash` to `DCAppAttestService.shared.generateAssertion(keyId, clientDataHash: statementDigest)`. The server computes `nonce = SHA256(authenticatorData || statementDigest)`, verifies the ECDSA P-256 signature over `nonce` (`SHA256(nonce)`), requires `authenticatorData.flags & 0x40 == 0` (attested credential data flag cleared on assertions), verifies the RP ID hash, and atomically enforces strictly monotonic `counter > previous_counter`.
 - **Continuity Proof (`prev_key_id` + `prev_assertion`)**: When an install already has an owner key and a new key registers, the `"app_attest_register"` request carries `prev_key_id` (the standard Base64 key identifier of the previous confirmed key) and `prev_assertion` (an assertion generated by that key with `clientDataHash = statementDigest` of this very request). The server verifies `prev_assertion` against the stored public key of `prev_key_id` with the same checks as a normal assertion, the strictly monotonic counter included, and requires that `prev_key_id` currently owns the install. It then retires the previous key and transfers ownership to the new key without `install-id-hijack`. A registration for an owned install without a valid proof from the owner fails with `install-id-hijack`.
 - **30-Day Ownership Lapse**: An App Attest key that has not been used for 30 days stops owning its install. A new key can then register for that install without a continuity proof, so a device that lost its key state is not locked out.
-- **DeviceCheck Binding**: When `device_token` is present, its decoded bytes are hashed into `deviceTokenDigest` inside `framedPreimage`, binding the Apple `DCDevice` token to the App Attest signature and `signalsBytes`.
+- **DeviceCheck Binding**: When the challenge offer sets `device_check`, the SDK generates two `DCDevice` tokens and sends them as `device_token` and `device_token_write`. Both are hashed into `deviceTokenDigest` inside `framedPreimage` (section 3.2), binding them to the App Attest signature and `signalsBytes`. When the evidence verifies, the server holds both, sealed, for one hour. `POST /api/v1/events/{request_id}/device-check/query` spends the read token and `PUT /api/v1/events/{request_id}/device-check` spends the write token, each with the same-request retry rule, so one identification supports one read and one write. A write on an event that carried no `device_token_write` answers HTTP `404` (`code: "device_check_not_held"`).
 - **Replacement Backoff**: Because `attestKey` calls Apple servers and increments Apple's 30-day key metric, iOS never deletes keys inline per call; `"rekey_required"` or `403 attestation_key_unknown` schedules replacement on a subsequent collection under persistent storm backoff (`immediate -> 7d -> 14d -> 30d`, resetting after `90d` of key stability).
 
 ### 4.3 Google Play Integrity (`play_integrity_token`)
@@ -230,3 +313,16 @@ Field invariants:
   - `bits 3..7`: reserved (`0`)
 - **`header_and_claims`**: Exact byte slice from byte `0` (`0x03`) through the end of `rand_16B` (`59 + key_id_len_u8` bytes).
 - **Single-Use Redemption**: After verifying `version == 0x03`, `key_id_len_u8 <= 32`, constant-time `HMAC_SHA256`, `org_uuid_16B == caller.OrganizationID`, `sdk_key_uuid_16B == caller.SDKKeyID`, and `now <= exp_unix_u32_be`, the server atomically claims `chall:v3:<hex(rand_16B)>` in Redis for the ticket's remaining TTL. First redemption with non-empty `Idempotency-Key` records `retry_hash = SHA256(idempotencyKey || "\x00" || signalsDigest)`. Subsequent presentations succeed only when `Idempotency-Key` is non-empty and `retry_hash` matches identically; otherwise `attestation_failed` (`reason: "challenge-replayed"`) fires.
+
+---
+
+## 6. Consuming an Event Once
+
+`POST /api/v1/events/{request_id}/consume`, secret key only, marks one identification event as consumed, so a request ID handed from a page or an app to the customer's backend backs one decision only:
+
+- First call: HTTP `200` with `{"request_id":"...","consumed_at":"<RFC 3339>","first":true}`.
+- Any later call: HTTP `409` (`code: "event_already_consumed"`), with the first consume's time in `details[0]` as `{"field":"consumed_at","issue":"<RFC 3339>"}`.
+- Unknown event, or one older than 30 days: HTTP `404` (`code: "event_not_found"`). An event still being recorded: HTTP `404` (`code: "event_pending"`) with `Retry-After`.
+- The claim is atomic and per organization. It is stored with the event, read back as `consumed_at` on `GET /api/v1/events/{request_id}`, and erased with the event.
+
+Every server SDK wraps the read and the consume in `events.verify(requestId, options)`, with options `maxAgeSeconds` (default `300`), `tag` (optional) and `consume` (default `true`). It reads the event and returns `{ok, reason, event}`, where `reason` is empty when `ok` and otherwise the first failing check, in this order: `not_found`, `too_old`, `tag_mismatch`, `unidentifiable`, `unscored`, `already_consumed`. Consumption runs last, and only when every other check passed. `verify` never decides on the score: the score policy stays the caller's. `events.consume(requestId)` calls the route alone.

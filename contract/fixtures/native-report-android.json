@@ -1,5 +1,6 @@
 {
   "budget_ms": 1200,
+  "digest_salt_id": "",
   "elapsed_ms": 179,
   "integrity": {
     "native_methods": [

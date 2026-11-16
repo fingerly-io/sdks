@@ -91,10 +91,10 @@
       "reattest_attempt": 0,
       "signals_utf8": "{\"schema\":2,\"budget_ms\":1200,\"elapsed_ms\":88,\"sources\":{\"identity\":{\"status\":\"ok\",\"ms\":1,\"value\":{\"install_id\":\"f47ac10b-58cc-4372-a567-0e02b2c3d479\"}},\"hardware\":{\"status\":\"ok\",\"ms\":1,\"value\":{\"machine\":\"iPhone16,1\",\"gpu_family_max\":9}}},\"integrity\":{\"native_symbols\":[],\"objc_methods\":[]}}",
       "signals_digest_hex": "0209d8b998b085ba77ccea88ee03ec5d6f42defe43e87dc0966ebd7bc36a8d31",
-      "device_token_digest_hex": "44433004fb3802135c6708aad87914d4536d965fdc8285b27fa4e091238b9035",
+      "device_token_digest_hex": "10df33329ce3d401b809478d27b19c94c3517c5db3a85f23b9de7e752ea74eef",
       "envelope_digest_hex": "ecc90780c39508c1260fdac4dd800374b3d11d6304ce0d100ff414a728fb138b",
       "preimage_byte_length": 309,
-      "statement_digest_hex": "5a25fdf526272ba1483a071917a734c4fcf25bd6cc22b7531fba5c6a84de5b8e"
+      "statement_digest_hex": "66d1258c0b82186b24e284f9c0be7a7421a580eeaf3e43d0771f038bd5ade250"
     }
   ]
 }
