@@ -4,8 +4,24 @@
  * A page inside a customer's own app is the app reading the device. Apple's
  * agreement forbids an app to "derive any data from a device for the purpose
  * of uniquely identifying it", naming the properties of a web browser among
- * that data, so the browser SDK collects nothing there. Use the iOS or Android
- * SDK in an app instead.
+ * that data, so the browser SDK runs no device-fingerprinting source there.
+ * Use the iOS or Android SDK in an app instead.
+ *
+ * What it does collect in an app is the embedded profile
+ * (`EMBEDDED_SAFE_SOURCES` in `@fingerly/core`), which exists so the server
+ * can tell a genuine app WebView from a desktop or automated browser that
+ * claims to be one:
+ *
+ * - `embedding`: the kind of app detected (`{ kind }`), nothing else.
+ * - `engine`, `math`, `errors`: how the JavaScript engine behaves (error
+ *   message lengths, maths results, CSS support), no device values.
+ * - `navigator`: `user_agent`, `platform` and `webdriver` only.
+ * - `worker_realm`: the worker's `user_agent` and `platform` only.
+ * - `automation`: `webdriver` and the names of automation globals present.
+ * - the integrity block: which natives and descriptors were tampered with.
+ *
+ * Core count, device memory, languages, time zone, plugins, screen, GPU,
+ * canvas, audio, fonts and storage are not read in an app.
  *
  * The rules are the table in the server's ADR 0024 (Appendix B), which the
  * server applies to every report as well. Rows shared with the server are

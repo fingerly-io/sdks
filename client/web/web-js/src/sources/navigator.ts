@@ -13,6 +13,7 @@ import {
   type VendorSignal,
 } from '@fingerly/core'
 
+import { detectEmbedding } from '../embedding.js'
 import { attempt, compact } from '../util.js'
 
 interface NavigatorUAData {
@@ -32,6 +33,17 @@ export const navigatorSource: Source<NavigatorSignal> = {
       deviceMemory?: number
       pdfViewerEnabled?: boolean
       userAgentData?: NavigatorUAData
+    }
+
+    // The embedded WebView profile (`WEB-07`): only what the server's
+    // embedded-claim contradiction check reads. No core count, memory,
+    // languages, plugin counts or other device values.
+    if (detectEmbedding()) {
+      return compact<NavigatorSignal>({
+        user_agent: attempt(() => nav.userAgent),
+        platform: attempt(() => nav.platform),
+        webdriver: attempt(() => nav.webdriver),
+      })
     }
 
     return compact<NavigatorSignal>({

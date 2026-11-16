@@ -147,11 +147,28 @@ describe('load() in an app (F-01 DPLA-safe embedded subset)', () => {
     expect(report.sources.math?.status).toBe('ok')
     expect(report.sources.errors?.status).toBe('ok')
     expect(report.sources.navigator?.status).toBe('ok')
-    expect(report.sources.timing?.status).toBe('ok')
     expect(report.sources.automation?.status).toBe('ok')
+
+    // WEB-07: no device values in the embedded profile.
+    expect(Object.keys(report.sources.navigator?.value as object).sort()).toEqual(
+      ['platform', 'user_agent', 'webdriver'].sort(),
+    )
+    const wire = JSON.stringify(report)
+    for (const field of [
+      'hardware_concurrency',
+      'device_memory',
+      'unmasked_renderer',
+      'unmasked_vendor',
+      'timezone',
+      'languages',
+    ]) {
+      expect(wire, `${field} must not be collected in an app`).not.toContain(`"${field}"`)
+    }
 
     // Device-fingerprinting sources were skipped:
     for (const forbidden of [
+      SOURCE.timing,
+      SOURCE.permissions,
       SOURCE.canvas,
       SOURCE.audio,
       SOURCE.fonts,

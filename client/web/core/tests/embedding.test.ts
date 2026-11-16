@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { FingerlyClient, resetEmbeddingWarning, type FingerlyClientOptions } from '../src/client.js'
 import { ConsentError } from '../src/consent.js'
-import { SOURCE } from '../src/signals.js'
+import { EMBEDDED_SAFE_SOURCES, SOURCE } from '../src/signals.js'
 import type { Source } from '../src/source.js'
 import type { SubmitResponse, Transport } from '../src/transport.js'
 
@@ -55,14 +55,20 @@ afterEach(() => {
   resetEmbeddingWarning()
 })
 
+describe('the embedded WebView profile (WEB-07)', () => {
+  it('is exactly the documented source list', () => {
+    expect([...EMBEDDED_SAFE_SOURCES].sort()).toEqual(
+      ['automation', 'embedding', 'engine', 'errors', 'math', 'navigator', 'worker_realm'].sort(),
+    )
+  })
+})
+
 describe('an in-app web view (F-01 DPLA-safe subset)', () => {
   it('runs non-identifying runtime + lies integrity sources while skipping device-fingerprinting sources', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
 
     const safeIds = [
       SOURCE.engine,
-      SOURCE.timing,
-      SOURCE.permissions,
       SOURCE.automation,
       SOURCE.math,
       SOURCE.errors,
@@ -70,6 +76,8 @@ describe('an in-app web view (F-01 DPLA-safe subset)', () => {
       SOURCE.workerRealm,
     ]
     const skippedIds = [
+      SOURCE.timing,
+      SOURCE.permissions,
       SOURCE.canvas,
       SOURCE.audio,
       SOURCE.fonts,
@@ -88,12 +96,12 @@ describe('an in-app web view (F-01 DPLA-safe subset)', () => {
     ]
 
     const safeEntries = safeIds.map((id) =>
-      countingSource(id, id === SOURCE.engine || id === SOURCE.timing ? 'prerequisite' : 'collect'),
+      countingSource(id, id === SOURCE.engine ? 'prerequisite' : 'collect'),
     )
     const skippedEntries = skippedIds.map((id) =>
       countingSource(
         id,
-        'collect',
+        id === SOURCE.timing ? 'prerequisite' : 'collect',
         id === SOURCE.storageDurability ? { optIn: 'extended-incognito' } : {},
       ),
     )

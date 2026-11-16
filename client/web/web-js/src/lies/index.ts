@@ -14,6 +14,7 @@ import {
   type SignalOutcome,
 } from '@fingerly/core'
 
+import { detectEmbedding } from '../embedding.js'
 import { windowOrNull } from '../util.js'
 import { findRedefinedProperties } from './descriptors.js'
 import { borrowRealmToString, findPatchedNatives } from './natives.js'
@@ -57,7 +58,7 @@ export function inspectIntegrity(sources: Record<string, SignalOutcome>): Integr
     lies.push({ id: 'natives', kind: 'unverified_realm', detail: 'inspection-threw' })
   }
   try {
-    lies.push(...findRedefinedProperties(w, realm.stringify))
+    lies.push(...findRedefinedProperties(w, realm.stringify, { readValues: !detectEmbedding() }))
   } catch {
     lies.push({ id: 'descriptors', kind: 'unverified_realm', detail: 'inspection-threw' })
   }

@@ -71,14 +71,21 @@ export const SOURCE = {
 export type SourceId = (typeof SOURCE)[keyof typeof SOURCE]
 
 /**
- * Non-identifying runtime/integrity sources permitted to run inside detected
- * in-app WebViews under Apple DPLA §3.3.3(B) (`F-01`), catching spoofed
- * desktop/headless WebView claims while skipping device-fingerprinting sources.
+ * The embedded WebView profile (`F-01`, `WEB-07`): the only sources that run
+ * inside a detected in-app WebView, plus the `embedding` marker and the
+ * integrity block. Each one is there because the server's embedded-claim
+ * contradiction check reads it:
+ *
+ * - `engine`, `math`, `errors`: engine behaviour, no device values.
+ * - `navigator`: reduced to `user_agent`, `platform` and `webdriver`.
+ * - `worker_realm`: reduced to the worker's `user_agent` and `platform`.
+ * - `automation`: webdriver and automation globals.
+ *
+ * Core count, device memory, languages, time zone and GPU strings are not read
+ * in this profile by any source.
  */
 export const EMBEDDED_SAFE_SOURCES: ReadonlySet<string> = new Set<string>([
   SOURCE.engine,
-  SOURCE.timing,
-  SOURCE.permissions,
   SOURCE.automation,
   SOURCE.math,
   SOURCE.errors,

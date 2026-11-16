@@ -105,7 +105,6 @@ export function isRfpCanvasBlocked(ctx?: SourceContext): boolean {
 export const timingSource: Source<TimingSignal> = {
   id: SOURCE.timing,
   stage: 'prerequisite',
-  embeddedSafe: true,
   timeoutMs: 50,
   run(ctx) {
     const w = requireWindow()
@@ -161,7 +160,6 @@ function permissionStatus(
 export const permissionsSource: Source<PermissionsSignal> = {
   id: SOURCE.permissions,
   stage: 'collect',
-  embeddedSafe: true,
   timeoutMs: 150,
   async run() {
     const w = requireWindow()
