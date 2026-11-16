@@ -58,11 +58,17 @@
       "install_id": "550e8400-e29b-41d4-a716-446655440000",
       "idempotency_key": "idem_0199a963e40070008000",
       "device_token": "",
+      "tag": "order-1001",
+      "sdk_platform": "react-native-android",
+      "sdk_version": "0.3.0",
+      "consent": "granted",
+      "reattest_attempt": 1,
       "signals_utf8": "{\"schema\":2,\"budget_ms\":1200,\"elapsed_ms\":142.50,\"sources\":{\"identity\":{\"status\":\"ok\",\"ms\":1,\"value\":{\"install_id\":\"550e8400-e29b-41d4-a716-446655440000\"}}},\"integrity\":{\"native_methods\":[{\"method\":\"java.io.File!exists\",\"declared\":1,\"native\":1}]}}",
       "signals_digest_hex": "4da1f773dad0f6686ecc3bfc9f12892d564115f1ccc501ae3f51305e5aee781d",
       "device_token_digest_hex": "0000000000000000000000000000000000000000000000000000000000000000",
-      "preimage_byte_length": 281,
-      "statement_digest_hex": "03a6e56ca764228e2f382ef41853fa693afe949c04662082c450749681a3ac5c"
+      "envelope_digest_hex": "da162e16aa75c8eb93b4798a5a16eb4d615e3034b6ec51d6749e3b2e28e56f9d",
+      "preimage_byte_length": 313,
+      "statement_digest_hex": "cbbf7276ca5c549ed18a98c0cae14f0a465f0d15559a0eda7b5b4ae7b69f1a69"
     },
     {
       "name": "ios_with_device_token",
@@ -78,11 +84,17 @@
       "install_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
       "idempotency_key": "idem_ios_0199a963e4007001",
       "device_token": "YXBwbGUtZGV2aWNlY2hlY2stdG9rZW4tYnl0ZXMtdjM=",
+      "tag": "",
+      "sdk_platform": "ios",
+      "sdk_version": "0.3.0",
+      "consent": "granted",
+      "reattest_attempt": 0,
       "signals_utf8": "{\"schema\":2,\"budget_ms\":1200,\"elapsed_ms\":88,\"sources\":{\"identity\":{\"status\":\"ok\",\"ms\":1,\"value\":{\"install_id\":\"f47ac10b-58cc-4372-a567-0e02b2c3d479\"}},\"hardware\":{\"status\":\"ok\",\"ms\":1,\"value\":{\"machine\":\"iPhone16,1\",\"gpu_family_max\":9}}},\"integrity\":{\"native_symbols\":[],\"objc_methods\":[]}}",
       "signals_digest_hex": "0209d8b998b085ba77ccea88ee03ec5d6f42defe43e87dc0966ebd7bc36a8d31",
       "device_token_digest_hex": "44433004fb3802135c6708aad87914d4536d965fdc8285b27fa4e091238b9035",
-      "preimage_byte_length": 277,
-      "statement_digest_hex": "1ef2d5f709ffcc9f7892f01e131d9e0b4093d12eeee713341491a600513405a5"
+      "envelope_digest_hex": "ecc90780c39508c1260fdac4dd800374b3d11d6304ce0d100ff414a728fb138b",
+      "preimage_byte_length": 309,
+      "statement_digest_hex": "5a25fdf526272ba1483a071917a734c4fcf25bd6cc22b7531fba5c6a84de5b8e"
     }
   ]
 }

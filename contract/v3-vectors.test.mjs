@@ -68,10 +68,22 @@ function decodeTicket(challengeBase64Url, hmacKeyUtf8) {
   }
 }
 
-function computeStatement({ domainSeparator, platform, challenge, installId, idempotencyKey, deviceToken, signalsBytes }) {
+// envelopeDigest = SHA256(tag 0x00 sdk.platform 0x00 sdk.version 0x00 consent 0x00 reattest_attempt 0x00)
+function computeEnvelopeDigest({ tag, sdkPlatform, sdkVersion, consent, reattestAttempt }) {
+  return sha256(
+    Buffer.concat(
+      [tag ?? '', sdkPlatform, sdkVersion, consent, String(reattestAttempt ?? 0)].map((field) =>
+        Buffer.from(`${field}\x00`, 'utf8'),
+      ),
+    ),
+  )
+}
+
+function computeStatement({ domainSeparator, platform, challenge, installId, idempotencyKey, deviceToken, envelope, signalsBytes }) {
   const signalsDigest = sha256(signalsBytes)
   const deviceTokenDigest =
     deviceToken === '' ? Buffer.alloc(32, 0) : sha256(Buffer.from(deviceToken, 'base64'))
+  const envelopeDigest = computeEnvelopeDigest(envelope)
 
   const framedPreimage = Buffer.concat([
     Buffer.from(`${domainSeparator}\x00`, 'utf8'),
@@ -80,6 +92,7 @@ function computeStatement({ domainSeparator, platform, challenge, installId, ide
     Buffer.from(`${installId}\x00`, 'utf8'),
     Buffer.from(`${idempotencyKey}\x00`, 'utf8'),
     deviceTokenDigest,
+    envelopeDigest,
     signalsDigest,
   ])
 
@@ -87,9 +100,33 @@ function computeStatement({ domainSeparator, platform, challenge, installId, ide
   return {
     signalsDigestHex: signalsDigest.toString('hex'),
     deviceTokenDigestHex: deviceTokenDigest.toString('hex'),
+    envelopeDigestHex: envelopeDigest.toString('hex'),
     preimageByteLength: framedPreimage.length,
     statementDigestHex: statementDigest.toString('hex'),
   }
+}
+
+function vectorEnvelope(vec) {
+  return {
+    tag: vec.tag,
+    sdkPlatform: vec.sdk_platform,
+    sdkVersion: vec.sdk_version,
+    consent: vec.consent,
+    reattestAttempt: vec.reattest_attempt,
+  }
+}
+
+function vectorStatement(vec, overrides = {}) {
+  return computeStatement({
+    domainSeparator: manifest.domain_separator,
+    platform: vec.platform,
+    challenge: vec.challenge,
+    installId: vec.install_id,
+    idempotencyKey: vec.idempotency_key,
+    deviceToken: vec.device_token,
+    envelope: { ...vectorEnvelope(vec), ...overrides },
+    signalsBytes: Buffer.from(vec.signals_utf8, 'utf8'),
+  })
 }
 
 // Mirrors server/tests/unit/archive_fields_test.go contractFields()
@@ -164,21 +201,46 @@ test('v3-manifest metadata and golden challenge tickets', () => {
   }
 })
 
-test('v3-manifest golden vectors match signalsDigest, deviceTokenDigest, preimage length, and statementDigest', () => {
+test('v3-manifest golden vectors match signalsDigest, deviceTokenDigest, envelopeDigest, preimage length, and statementDigest', () => {
   for (const vec of manifest.golden_vectors) {
-    const result = computeStatement({
-      domainSeparator: manifest.domain_separator,
-      platform: vec.platform,
-      challenge: vec.challenge,
-      installId: vec.install_id,
-      idempotencyKey: vec.idempotency_key,
-      deviceToken: vec.device_token,
-      signalsBytes: Buffer.from(vec.signals_utf8, 'utf8'),
-    })
+    const result = vectorStatement(vec)
     assert.equal(result.signalsDigestHex, vec.signals_digest_hex, `${vec.name}: signals_digest_hex`)
     assert.equal(result.deviceTokenDigestHex, vec.device_token_digest_hex, `${vec.name}: device_token_digest_hex`)
+    assert.equal(result.envelopeDigestHex, vec.envelope_digest_hex, `${vec.name}: envelope_digest_hex`)
     assert.equal(result.preimageByteLength, vec.preimage_byte_length, `${vec.name}: preimage_byte_length`)
     assert.equal(result.statementDigestHex, vec.statement_digest_hex, `${vec.name}: statement_digest_hex`)
+  }
+})
+
+test('envelopeDigest frames tag, sdk, consent and reattest_attempt with NUL terminators', () => {
+  const android = manifest.golden_vectors.find((v) => v.name === 'android_no_token')
+  const ios = manifest.golden_vectors.find((v) => v.name === 'ios_with_device_token')
+  assert.ok(android && ios)
+  assert.equal(
+    computeEnvelopeDigest(vectorEnvelope(android)).toString('hex'),
+    sha256(Buffer.from('order-1001\x00react-native-android\x000.3.0\x00granted\x001\x00', 'utf8')).toString('hex'),
+  )
+  // An omitted tag hashes as "" and an omitted reattest_attempt as "0".
+  assert.equal(
+    computeEnvelopeDigest({ sdkPlatform: 'ios', sdkVersion: '0.3.0', consent: 'granted' }).toString('hex'),
+    ios.envelope_digest_hex,
+  )
+})
+
+test('changing tag, sdk.platform, sdk.version, consent or reattest_attempt changes statementDigest', () => {
+  for (const vec of manifest.golden_vectors) {
+    const signed = vectorStatement(vec).statementDigestHex
+    const mutations = {
+      'tag changed': { tag: `${vec.tag}x` },
+      'tag one byte changed': { tag: vec.tag === '' ? 'a' : `${vec.tag.slice(0, -1)}2` },
+      'sdk.platform changed': { sdkPlatform: `${vec.sdk_platform}-x` },
+      'sdk.version one byte changed': { sdkVersion: vec.sdk_version.replace(/0$/, '1') },
+      'consent changed': { consent: 'denied' },
+      'reattest_attempt changed': { reattestAttempt: vec.reattest_attempt === 1 ? 0 : 1 },
+    }
+    for (const [name, override] of Object.entries(mutations)) {
+      assert.notEqual(vectorStatement(vec, override).statementDigestHex, signed, `${vec.name}: ${name}`)
+    }
   }
 })
 
@@ -199,6 +261,7 @@ test('JSON re-serialization mutates trailing float zeros and invalidates stateme
     installId: v1.install_id,
     idempotencyKey: v1.idempotency_key,
     deviceToken: v1.device_token,
+    envelope: vectorEnvelope(v1),
     signalsBytes: Buffer.from(reserialized, 'utf8'),
   })
   assert.notEqual(mutated.signalsDigestHex, v1.signals_digest_hex)

@@ -19,7 +19,7 @@ Both `POST /api/v1/ingest` and `POST /api/v1/identify` accept the same top-level
 | `consent` | `string` | required | End-user collection consent state. Must equal `"granted"`. |
 | `signals` | `object` (raw UTF-8 JSON) | required | Raw platform telemetry report (`schema: 2` on iOS and Android per [native-report.md](./native-report.md)). Verified as raw UTF-8 wire bytes before JSON decoding. |
 | `attest` | `AttestEnvelope` | conditional | Hardware and platform attestation proof. Omitted on Web; optional on native when `require_attestation == false`; required on native when `require_attestation == true`. |
-| `tag` | `string` | optional | Opaque caller correlation label stored with the event. |
+| `tag` | `string` | optional | Opaque caller correlation label stored with the event. On native attested requests it is bound into `statementDigest` with `sdk` and `consent` (section 3.2). |
 
 ### 1.2 `AttestEnvelope` Fields
 
@@ -39,7 +39,7 @@ When `attest` is present, it is a JSON object with the following fields:
 | `prev_key_id` | `string` | optional | 64-character lowercase hex SHA-256 of the retiring Android signing key's SPKI DER during 24-hour key rollover (`K1 -> K2`). |
 | `prev_signature` | `string` | optional | Standard Base64 ASN.1 DER `SHA256withECDSA` signature produced by `prev_key_id` over the identical `framedPreimage`, proving same-device key custody during rollover. |
 | `play_integrity_token` | `string` | optional | Google Play Integrity standard token (at most 16 KiB) whose `requestDetails.requestHash` equals `hex(statementDigest)` (64-character lowercase hex). |
-| `reattest_attempt` | `int` | optional | Bounded integer in `0..1` (`0` when omitted). Set to `1` when Android performs its single allowed inline key renewal within one `identify()` call. |
+| `reattest_attempt` | `int` | optional | Bounded integer in `0..1` (`0` when omitted). Set to `1` when Android performs its single allowed inline key renewal within one `identify()` call. Bound into `statementDigest` through `envelopeDigest` (section 3.2). |
 
 ### 1.3 Response Body (`IdentifyOut`)
 
@@ -99,12 +99,18 @@ On the server, `CaptureBody` retains exact wire bytes and extracts `IdentifyIn.S
 ```text
 signalsDigest     = SHA256(signalsBytes)
 deviceTokenDigest = SHA256(deviceTokenBytes) // 32 zero bytes (0x00) when device_token is absent
+envelopeDigest    = SHA256(tagUTF8              || "\x00" ||
+                           sdkPlatformUTF8      || "\x00" ||
+                           sdkVersionUTF8       || "\x00" ||
+                           consentUTF8          || "\x00" ||
+                           reattestAttemptASCII || "\x00")
 framedPreimage    = "fingerly:v3:identify\x00" ||
                     authenticatedPlatform       || "\x00" ||
                     challengeTicketASCII        || "\x00" ||
                     installIDUTF8               || "\x00" ||
                     idempotencyKeyUTF8          || "\x00" ||
                     deviceTokenDigest           ||
+                    envelopeDigest              ||
                     signalsDigest
 statementDigest   = SHA256(framedPreimage)
 ```
@@ -117,8 +123,18 @@ Exact input byte encodings:
 - `installIDUTF8`: 36-byte lowercase ASCII UUIDv4 string carried in `attest.install_id`, followed by `0x00`.
 - `idempotencyKeyUTF8`: Exact ASCII string from the `Idempotency-Key` HTTP header, followed by `0x00`.
 - `deviceTokenDigest`: 32 raw bytes. When `attest.device_token` is present and non-empty, `SHA256(Base64Decode(attest.device_token))`; when `attest.device_token` is absent or `""`, 32 zero bytes (`0x00 * 32`). No trailing `0x00` separator follows fixed-width digests.
+- `envelopeDigest`: 32 raw bytes of `SHA256` over five fields, each followed by one `0x00`:
+  - `tagUTF8`: the UTF-8 bytes of the top-level `tag` string exactly as sent (after JSON string decoding); the empty string (zero bytes) when `tag` is omitted.
+  - `sdkPlatformUTF8`: the UTF-8 bytes of `sdk.platform` exactly as sent, including a bridge name such as `"react-native-android"`. This is not `authenticatedPlatform`.
+  - `sdkVersionUTF8`: the UTF-8 bytes of `sdk.version` exactly as sent.
+  - `consentUTF8`: the UTF-8 bytes of `consent` exactly as sent (always `"granted"` on an accepted request).
+  - `reattestAttemptASCII`: `attest.reattest_attempt` as decimal ASCII digits with no sign or leading zeros (`"0"` or `"1"`); `"0"` when the member is omitted.
+
+  The API refuses a control character (U+0000 to U+001F, U+007F) in `tag`, `sdk.platform` and `sdk.version` with 400 `invalid_request`, and any `consent` other than `"granted"` with `consent_required`, before attestation is verified, so no framed field can contain the `0x00` terminator. The server recomputes `envelopeDigest` from the request's own decoded `tag`, `sdk` and `consent` members and from `attest.reattest_attempt`; a change to any of them after signing fails verification with `attestation_failed`. A client hashes exactly the strings it serializes into the body.
 - `signalsDigest`: 32 raw bytes of `SHA256(signalsBytes)`.
 - `statementDigest`: 32 raw bytes of `SHA256(framedPreimage)`.
+
+The fixed-width tail of `framedPreimage` is 96 bytes: `deviceTokenDigest || envelopeDigest || signalsDigest`. Golden vectors in [v3-manifest.json](./v3-manifest.json) carry the envelope inputs (`tag`, `sdk_platform`, `sdk_version`, `consent`, `reattest_attempt`) and `envelope_digest_hex` for each statement.
 
 ---
 
