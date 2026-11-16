@@ -2,8 +2,14 @@
  * Hardened native-function & WebIDL receiver-brand tamper inspection (`F-11`).
  *
  * Captures `Function.prototype.toString`, `Object.getOwnPropertyDescriptor`,
- * `Object.getPrototypeOf`, and `Reflect.apply` at module initialization time so
- * late page-injected scripts cannot blind the inspector.
+ * `Object.getPrototypeOf`, and `Reflect.apply` at module initialization time.
+ * That protects against a script that runs after the SDK loads and replaces
+ * one of them. It gives no protection against a script that ran before: the
+ * captured reference is then the replacement, and comparing the current value
+ * with it compares the replacement with itself. Only the borrowed fresh realm
+ * (`borrowRealmToString`) can see an earlier replacement, so that realm is
+ * itself checked before it is trusted, and an unverified one is reported as
+ * an `unverified_realm` lie.
  */
 
 import type { Lie } from '@fingerly/core'
@@ -105,9 +111,142 @@ function prototypeGetter(proto: object | undefined, prop: string): unknown {
   return attempt(() => INITIAL_GET_OWN_PROP_DESC(proto, prop)?.get)
 }
 
+/**
+ * The getter (or, when it was replaced by a plain value, that value) of
+ * `prop` on `holder` or its prototype chain. A [Replaceable] window attribute
+ * such as `devicePixelRatio` becomes an own data property when a page assigns
+ * to it; returning the value then makes the target report `not-native`.
+ */
+export function accessorOf(holder: unknown, prop: string): unknown {
+  let current: unknown = holder
+  for (let depth = 0; depth < 8 && current !== null && current !== undefined; depth++) {
+    const desc = attempt(() => INITIAL_GET_OWN_PROP_DESC(current as object, prop))
+    if (desc) return desc.get ?? (('value' in desc) ? desc.value : undefined)
+    current = attempt(() => INITIAL_GET_PROTOTYPE_OF(current as object))
+  }
+  return undefined
+}
+
 const GL_BRAND_ARGS: readonly (readonly unknown[])[] = [[0x1f00], [0x9245], [0x9246]]
 
+/** The `Math` functions the `math` source calls. */
+const MATH_FUNCTIONS = [
+  'acos', 'acosh', 'asin', 'asinh', 'atan', 'atanh', 'cbrt', 'cos', 'cosh', 'exp',
+  'expm1', 'log', 'log1p', 'pow', 'sin', 'sinh', 'sqrt', 'tan', 'tanh',
+] as const
+
+type AnyGlobal = Window & typeof globalThis & Record<string, unknown>
+
+function member(w: Window & typeof globalThis, ctor: string, prop: string): unknown {
+  const holder = (w as AnyGlobal)[ctor] as { prototype?: Record<string, unknown> } | undefined
+  return holder?.prototype?.[prop]
+}
+
 const TARGETS: readonly NativeTarget[] = [
+  // The primitives this layer itself depends on to borrow a fresh realm.
+  {
+    path: 'Document.prototype.createElement',
+    expectedName: 'createElement',
+    brandArgsList: [['div']],
+    resolve: (w) => member(w, 'Document', 'createElement'),
+  },
+  {
+    path: 'Node.prototype.appendChild',
+    expectedName: 'appendChild',
+    brandArgsList: [[]],
+    resolve: (w) => member(w, 'Node', 'appendChild'),
+  },
+  {
+    path: 'HTMLIFrameElement.prototype.contentWindow',
+    expectedName: 'contentWindow',
+    isGetter: true,
+    brandArgsList: [[]],
+    resolve: (w) =>
+      prototypeGetter(
+        ((w as AnyGlobal).HTMLIFrameElement as { prototype?: object } | undefined)?.prototype,
+        'contentWindow',
+      ),
+  },
+  // The window accessors every navigator and screen read goes through.
+  {
+    path: 'window.navigator',
+    expectedName: 'navigator',
+    isGetter: true,
+    resolve: (w) => accessorOf(w, 'navigator'),
+  },
+  {
+    path: 'window.screen',
+    expectedName: 'screen',
+    isGetter: true,
+    resolve: (w) => accessorOf(w, 'screen'),
+  },
+  {
+    path: 'window.devicePixelRatio',
+    expectedName: 'devicePixelRatio',
+    isGetter: true,
+    resolve: (w) => accessorOf(w, 'devicePixelRatio'),
+  },
+  {
+    path: 'window.matchMedia',
+    expectedName: 'matchMedia',
+    resolve: (w) => (w as AnyGlobal).matchMedia,
+  },
+  // What `worker_realm` builds its worker from (`WEB-03`).
+  {
+    path: 'Worker',
+    expectedName: 'Worker',
+    resolve: (w) => (w as AnyGlobal).Worker,
+  },
+  {
+    path: 'Blob',
+    expectedName: 'Blob',
+    resolve: (w) => (w as AnyGlobal).Blob,
+  },
+  {
+    path: 'URL.createObjectURL',
+    expectedName: 'createObjectURL',
+    resolve: (w) => ((w as AnyGlobal).URL as { createObjectURL?: unknown } | undefined)?.createObjectURL,
+  },
+  {
+    path: 'OffscreenCanvas',
+    expectedName: 'OffscreenCanvas',
+    resolve: (w) => (w as AnyGlobal).OffscreenCanvas,
+  },
+  ...MATH_FUNCTIONS.map(
+    (name): NativeTarget => ({
+      path: `Math.${name}`,
+      expectedName: name,
+      resolve: () => (Math as unknown as Record<string, unknown>)[name],
+    }),
+  ),
+  {
+    path: 'Intl.DateTimeFormat.prototype.resolvedOptions',
+    expectedName: 'resolvedOptions',
+    brandArgsList: [[]],
+    resolve: () => Intl?.DateTimeFormat?.prototype?.resolvedOptions,
+  },
+  {
+    path: 'NavigatorUAData.prototype.getHighEntropyValues',
+    expectedName: 'getHighEntropyValues',
+    resolve: (w) => member(w, 'NavigatorUAData', 'getHighEntropyValues'),
+  },
+  {
+    path: 'StorageManager.prototype.getDirectory',
+    expectedName: 'getDirectory',
+    resolve: (w) => member(w, 'StorageManager', 'getDirectory'),
+  },
+  {
+    path: 'WebGLRenderingContext.prototype.getShaderPrecisionFormat',
+    expectedName: 'getShaderPrecisionFormat',
+    brandArgsList: [[0x8b31, 0x8df2]],
+    resolve: (w) => member(w, 'WebGLRenderingContext', 'getShaderPrecisionFormat'),
+  },
+  {
+    path: 'WebGLRenderingContext.prototype.getSupportedExtensions',
+    expectedName: 'getSupportedExtensions',
+    brandArgsList: [[]],
+    resolve: (w) => member(w, 'WebGLRenderingContext', 'getSupportedExtensions'),
+  },
   {
     path: 'Function.prototype.toString',
     expectedName: 'toString',
@@ -255,47 +394,130 @@ const TARGETS: readonly NativeTarget[] = [
  * `<iframe>` when allowed by the document and CSP, falling back to the
  * module-init `INITIAL_FN_TO_STRING` (`clean: false`) when blocked.
  */
-export function borrowRealmToString(): {
+export interface BorrowedRealm {
   stringify: RealmStringifier
   clean: boolean
-} {
-  if (typeof document === 'undefined') {
-    return { stringify: createRealmStringifier(INITIAL_FN_TO_STRING), clean: false }
+  /**
+   * Why the realm is not clean, when a check failed rather than the borrow
+   * being impossible: `borrow-primitive-not-native`, `realm-not-distinct`,
+   * `stringifier-implausible` or `inspection-threw`.
+   */
+  reason?: string
+}
+
+function unverified(reason?: string): BorrowedRealm {
+  return {
+    stringify: createRealmStringifier(INITIAL_FN_TO_STRING),
+    clean: false,
+    ...(reason === undefined ? {} : { reason }),
   }
-  const host = document.body ?? document.documentElement
-  if (!host || typeof document.createElement !== 'function') {
-    return { stringify: createRealmStringifier(INITIAL_FN_TO_STRING), clean: false }
+}
+
+/** A function whose own source text holds a marker no native function has. */
+function fingerlyRealmProbe(): string {
+  return 'fingerly-realm-probe-7c1e'
+}
+
+/**
+ * Whether `fn` reads as the native `name` through the module-load stringifier.
+ * Used for the borrow primitives themselves, before any fresh realm exists.
+ */
+function looksNative(fn: unknown, name: string, isGetter = false): boolean {
+  if (typeof fn !== 'function') return false
+  const source = attempt(() => INITIAL_REFLECT_APPLY(INITIAL_FN_TO_STRING, fn, []) as unknown)
+  return typeof source === 'string' && isNativeFunctionSource(fn, source, name, isGetter)
+}
+
+/**
+ * Whether `stringify` behaves like a genuine `Function.prototype.toString`: it
+ * must reproduce a known non-native function's own source and describe itself
+ * as native. A substitute that answers one constant string for everything,
+ * which is what a replaced `contentWindow` can hand back, fails here.
+ */
+function plausibleStringifier(stringify: RealmStringifier, own: unknown): boolean {
+  const probe = stringify(fingerlyRealmProbe)
+  if (!probe.ok || !probe.source.includes('fingerly-realm-probe-7c1e')) return false
+  if (probe.source.includes('[native code]')) return false
+  const self = stringify(own)
+  return self.ok && isNativeFunctionSource(own, self.source, 'toString', false)
+}
+
+/**
+ * Borrows `Function.prototype.toString` from a fresh same-origin sandboxed
+ * `<iframe>` when allowed by the document and CSP, falling back to the
+ * module-init `INITIAL_FN_TO_STRING` (`clean: false`) when blocked.
+ *
+ * The borrow itself goes through `createElement`, `appendChild` and the
+ * `contentWindow` getter, which an earlier script could have replaced
+ * (`WEB-04`). Each is checked before use, the frame's window must be a realm
+ * other than this one, and the borrowed stringifier must behave like a real
+ * one. Any failed check leaves the realm unverified, which is reported.
+ */
+export function borrowRealmToString(): BorrowedRealm {
+  try {
+    return borrowRealm()
+  } catch {
+    return unverified('inspection-threw')
   }
+}
+
+function borrowRealm(): BorrowedRealm {
+  if (typeof document === 'undefined') return unverified()
+  const g = globalThis as AnyGlobal
+  const doc = document
+
+  const createElement = attempt(() => member(g, 'Document', 'createElement'))
+  const appendChild = attempt(() => member(g, 'Node', 'appendChild'))
+  const iframeProto = attempt(
+    () => (g.HTMLIFrameElement as { prototype?: object } | undefined)?.prototype,
+  )
+  const contentWindowGetter = prototypeGetter(iframeProto, 'contentWindow')
+
+  if (
+    typeof createElement !== 'function' ||
+    typeof appendChild !== 'function' ||
+    typeof contentWindowGetter !== 'function'
+  ) {
+    return unverified()
+  }
+  if (
+    !looksNative(createElement, 'createElement') ||
+    !looksNative(appendChild, 'appendChild') ||
+    !looksNative(contentWindowGetter, 'contentWindow', true)
+  ) {
+    return unverified('borrow-primitive-not-native')
+  }
+
+  const host = attempt(() => doc.body ?? doc.documentElement)
+  if (!host) return unverified()
 
   const frame = attempt(() => {
-    const element = document.createElement('iframe')
+    const element = INITIAL_REFLECT_APPLY(createElement, doc, ['iframe']) as HTMLIFrameElement
     element.setAttribute('sandbox', 'allow-same-origin')
     element.style.display = 'none'
-    host.appendChild(element)
+    INITIAL_REFLECT_APPLY(appendChild, host, [element])
     return element
   })
-
-  if (!frame) {
-    return { stringify: createRealmStringifier(INITIAL_FN_TO_STRING), clean: false }
-  }
+  if (!frame) return unverified()
 
   try {
-    const borrowed = attempt(
-      () =>
-        (frame.contentWindow as (Window & typeof globalThis) | null)?.Function?.prototype?.toString,
+    const frameWindow = attempt(
+      () => INITIAL_REFLECT_APPLY(contentWindowGetter, frame, []) as (Window & typeof globalThis) | null,
     )
-    if (typeof borrowed === 'function') {
-      // Verify the borrowed `toString` works before detaching the frame, because
-      // some DOM environments clear `contentWindow` intrinsics on removal; if it
-      // stops working after removal we keep a pre-bound snapshot check below.
-      const candidate = createRealmStringifier(borrowed)
-      frame.remove()
-      const probe = candidate(INITIAL_FN_TO_STRING)
-      if (probe.ok) {
-        return { stringify: candidate, clean: true }
-      }
-    }
-    return { stringify: createRealmStringifier(INITIAL_FN_TO_STRING), clean: false }
+    if (!frameWindow) return unverified()
+    if ((frameWindow as unknown) === (globalThis as unknown)) return unverified('realm-not-distinct')
+
+    const borrowed = attempt(() => frameWindow.Function?.prototype?.toString)
+    if (typeof borrowed !== 'function') return unverified()
+    if (borrowed === INITIAL_FN_TO_STRING) return unverified('realm-not-distinct')
+
+    // Check the borrowed `toString` before detaching the frame, because some
+    // DOM environments clear `contentWindow` intrinsics on removal.
+    const candidate = createRealmStringifier(borrowed)
+    if (!plausibleStringifier(candidate, borrowed)) return unverified('stringifier-implausible')
+    attempt(() => frame.remove())
+    if (!candidate(INITIAL_FN_TO_STRING).ok) return unverified()
+    return { stringify: candidate, clean: true }
   } finally {
     attempt(() => frame.remove())
   }
@@ -314,14 +536,18 @@ function markPatched(patched: string[], path: string): void {
 
 export function findPatchedNatives(
   w: Window & typeof globalThis,
-  realm = borrowRealmToString(),
+  realm: BorrowedRealm = borrowRealmToString(),
 ): NativeReport {
   const patched: string[] = []
   const lies: Lie[] = []
-  const { stringify, clean } = realm
+  const { stringify, clean, reason } = realm
 
   if (!clean) {
-    lies.push({ id: 'realm', kind: 'unverified_realm' })
+    lies.push(
+      reason === undefined
+        ? { id: 'realm', kind: 'unverified_realm' }
+        : { id: 'realm', kind: 'unverified_realm', detail: reason },
+    )
   }
 
   for (const targetSpec of TARGETS) {

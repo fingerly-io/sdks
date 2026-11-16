@@ -98,6 +98,18 @@ function budgetOf(schedule: ScheduleOptions): number {
   return typeof budget === 'number' && Number.isFinite(budget) ? budget : DEFAULT_BUDGET_MS
 }
 
+/**
+ * What the report carries when the tamper layer itself failed. A getter that
+ * throws during inspection is recorded as a lie, so identification still
+ * submits a report instead of rejecting (`WEB-04`).
+ */
+function integrityFailure(): IntegrityReport {
+  return {
+    patched_natives: [],
+    lies: [{ id: 'integrity', kind: 'unverified_realm', detail: 'inspection-threw' }],
+    engine: {},
+  }
+}
 
 /** Once per page is enough to tell an integrator; every call would be noise. */
 let embeddingWarned = false
@@ -332,9 +344,16 @@ export class FingerlyClient {
       }
     }
 
-    const integrity = this.#options.integrity
-      ? this.#options.integrity({ sources: outcomes })
-      : EMPTY_INTEGRITY
+    // The tamper layer reads page globals that an earlier script controls. A
+    // getter that throws there must not reject identification (`WEB-04`).
+    let integrity: IntegrityReport
+    try {
+      integrity = this.#options.integrity
+        ? this.#options.integrity({ sources: outcomes })
+        : EMPTY_INTEGRITY
+    } catch {
+      integrity = integrityFailure()
+    }
 
     return {
       schema: SCHEMA_VERSION,

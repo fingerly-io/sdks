@@ -131,6 +131,8 @@ function makeSyntheticWindow() {
     ['availWidth', 1920],
     ['availHeight', 1055],
     ['colorDepth', 24],
+    ['pixelDepth', 24],
+    ['orientation', 'landscape-primary'],
   ] as const) {
     Object.defineProperty(FakeScreen.prototype, prop, {
       get: makeBrandedGetter(prop, screenBrand, val),
@@ -152,6 +154,8 @@ function makeSyntheticWindow() {
   const WebGLRenderingContext = makeCtor('WebGLRenderingContext', {
     getParameter: makeBrandedMethod('getParameter', glBrand),
     getExtension: makeBrandedMethod('getExtension', glBrand),
+    getShaderPrecisionFormat: makeBrandedMethod('getShaderPrecisionFormat', glBrand),
+    getSupportedExtensions: makeBrandedMethod('getSupportedExtensions', glBrand),
   })
   const WebGL2RenderingContext = makeCtor('WebGL2RenderingContext', {
     getParameter: makeBrandedMethod('getParameter', gl2Brand),
@@ -171,7 +175,24 @@ function makeSyntheticWindow() {
   })
   const StorageManager = makeCtor('StorageManager', {
     estimate: makeBrandedMethod('estimate', storageBrand),
+    getDirectory: makeBrandedMethod('getDirectory', storageBrand),
   })
+  const domBrand = Symbol('Document')
+  const nodeBrand = Symbol('Node')
+  const iframeBrand = Symbol('HTMLIFrameElement')
+  const Document = makeCtor('Document', { createElement: makeBrandedMethod('createElement', domBrand) })
+  const Node = makeCtor('Node', { appendChild: makeBrandedMethod('appendChild', nodeBrand) })
+  const HTMLIFrameElement = makeCtor('HTMLIFrameElement', {}, {
+    contentWindow: { get: makeBrandedGetter('contentWindow', iframeBrand, null), configurable: true },
+  })
+  const NavigatorUAData = makeCtor('NavigatorUAData', {
+    getHighEntropyValues: makeBrandedMethod('getHighEntropyValues', Symbol('NavigatorUAData')),
+  })
+  const Worker = makeCtor('Worker', {})
+  const Blob = makeCtor('Blob', {})
+  const OffscreenCanvas = makeCtor('OffscreenCanvas', {})
+  const createObjectURL = makeBrandedMethod('createObjectURL', Symbol('URL'))
+  const matchMedia = makeBrandedMethod('matchMedia', Symbol('Window'))
   const Element = makeCtor('Element', {
     getBoundingClientRect: makeBrandedMethod('getBoundingClientRect', elemBrand),
   })
@@ -198,9 +219,18 @@ function makeSyntheticWindow() {
     return INITIAL_FN_TO_STRING.call(this)
   })
 
+  const windowBrand = Symbol('Window')
   const w = {
-    navigator: navigatorInstance,
-    screen: screenInstance,
+    [windowBrand]: true,
+    Document,
+    Node,
+    HTMLIFrameElement,
+    NavigatorUAData,
+    Worker,
+    Blob,
+    OffscreenCanvas,
+    URL: { createObjectURL },
+    matchMedia,
     Navigator: FakeNavigator,
     Screen: FakeScreen,
     Permissions,
@@ -216,6 +246,14 @@ function makeSyntheticWindow() {
     HTMLElement,
     Performance,
   } as unknown as Window & typeof globalThis
+  // The window accessors are getters, as on a real window.
+  for (const [prop, value] of [
+    ['navigator', navigatorInstance],
+    ['screen', screenInstance],
+    ['devicePixelRatio', 2],
+  ] as const) {
+    Object.defineProperty(w, prop, { get: makeBrandedGetter(prop, windowBrand, value), configurable: true })
+  }
 
   return { w, stringify, nativeSources }
 }
