@@ -283,6 +283,23 @@ test('native-report.md preserves archive_fields_test.go machine-parser invariant
   assert.equal(androidFixture.sources.cloned.value.is_managed_profile, false)
   assert.equal(androidFixture.sources.cloned.value.is_device_protected_storage, false)
   assert.equal(androidFixture.sources.tls.value.root_key_sha256, 'YSoUL4CBzo5aJ/ES9gSZTsavsgtHsiLLnTG+BKUdork=')
+  // Android name digests are SHA-256 truncated to 128 bits; signature_digest stays hash64.
+  const nameDigest = /^[0-9a-f]{32}$/
+  const androidValues = androidFixture.sources
+  for (const digest of [
+    ...androidValues.instrumentation.value.library_hashes,
+    ...androidValues.instrumentation.value.thread_hashes,
+    ...androidValues.tls.value.chain_subject_tokens.flat(),
+    ...androidValues.app.value.signer_subject_tokens.flat(),
+    androidValues.images.value.digest,
+  ]) {
+    assert.match(digest, nameDigest)
+  }
+  assert.match(androidValues.app.value.signature_digest, /^[0-9a-f]{16}$/)
+  for (const removed of ['kernel_digest', 'build_host_digest', 'build_user_digest']) {
+    assert.equal(androidValues.system.value[removed], undefined)
+  }
+  assert.equal(androidValues.tls.value.root_digest, undefined)
 
   const iosFixture = JSON.parse(readFileSync(resolve(root, 'fixtures/native-report-ios.json'), 'utf8'))
   assert.equal(iosFixture.sources.hardware.value.gpu_family_max, 7)
