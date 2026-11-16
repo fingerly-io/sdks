@@ -14,7 +14,7 @@ import {
   type SourceContext,
 } from '@fingerly/core'
 
-import { compact } from '../util.js'
+import { attempt, compact } from '../util.js'
 import { acquireCanvas2D } from './render.js'
 import { isRfpCanvasBlocked } from './runtime.js'
 
@@ -27,24 +27,34 @@ interface BraveNavigator {
 
 const TIMED_OUT = Symbol('timed-out')
 
-async function askBrave(nav: BraveNavigator): Promise<boolean | undefined> {
-  if (typeof nav.brave?.isBrave !== 'function') return undefined
+type BraveApi = NonNullable<ShieldsSignal['brave_api']>
+
+/** What `navigator.brave.isBrave()` did, as an observation (`WEB-02`). */
+async function askBrave(nav: BraveNavigator): Promise<BraveApi> {
+  const brave = attempt(() => nav.brave)
+  if (brave === undefined || brave === null) return 'absent'
+  const isBrave = attempt(() => brave.isBrave)
+  if (typeof isBrave !== 'function') return 'not-function'
 
   try {
     const answer = await Promise.race([
-      nav.brave.isBrave(),
+      isBrave.call(brave),
       new Promise<symbol>((resolve) => setTimeout(() => resolve(TIMED_OUT), VENDOR_API_MS)),
     ])
-    return answer === TIMED_OUT ? undefined : answer === true
+    if (answer === TIMED_OUT) return 'timeout'
+    return answer === true ? 'true' : 'false'
   } catch {
-    return undefined
+    return 'threw'
   }
 }
 
-function claimsBrave(nav: BraveNavigator): boolean | undefined {
-  const brands = nav.userAgentData?.brands
+/** The brand names the browser lists, in order (`WEB-02`). */
+function brandsOf(nav: BraveNavigator): string[] | undefined {
+  const brands = attempt(() => nav.userAgentData?.brands)
   if (!Array.isArray(brands)) return undefined
-  return brands.some((entry) => entry?.brand === 'Brave')
+  return brands
+    .map((entry) => attempt(() => entry?.brand))
+    .filter((brand): brand is string => typeof brand === 'string')
 }
 
 const CANARY_COLOURS = [
@@ -54,7 +64,19 @@ const CANARY_COLOURS = [
 
 const CANARY_SIZE = 8
 
-function canvasNoise(ctx: SourceContext | undefined): boolean | undefined {
+/**
+ * The canary readback compared with what was drawn: how many pixels came back
+ * different and by how much. The page's `canvas_noise` boolean is derived
+ * from these, and they go on the wire with it so the server can derive it
+ * too (`WEB-02`).
+ */
+interface CanaryReading {
+  pixels: number
+  mismatched: number
+  maxDelta: number
+}
+
+function readCanary(ctx: SourceContext | undefined): CanaryReading | undefined {
   if (typeof document === 'undefined') return undefined
   try {
     const pair = acquireCanvas2D(ctx, CANARY_SIZE, CANARY_SIZE)
@@ -70,21 +92,25 @@ function canvasNoise(ctx: SourceContext | undefined): boolean | undefined {
     }
 
     const pixels = context.getImageData(0, 0, CANARY_SIZE, CANARY_SIZE).data
-    for (let index = 0; index < CANARY_SIZE * CANARY_SIZE; index++) {
+    let mismatched = 0
+    let maxDelta = 0
+    const total = CANARY_SIZE * CANARY_SIZE
+    for (let index = 0; index < total; index++) {
       const x = index % CANARY_SIZE
       const y = Math.floor(index / CANARY_SIZE)
       const [r, g, b] = CANARY_COLOURS[(x + y) % 2]!
       const at = index * 4
-      if (
-        pixels[at] !== r ||
-        pixels[at + 1] !== g ||
-        pixels[at + 2] !== b ||
-        pixels[at + 3] !== 255
-      ) {
-        return true
-      }
+      const deltas = [
+        Math.abs((pixels[at] ?? 0) - r),
+        Math.abs((pixels[at + 1] ?? 0) - g),
+        Math.abs((pixels[at + 2] ?? 0) - b),
+        Math.abs((pixels[at + 3] ?? 0) - 255),
+      ]
+      const worst = Math.max(...deltas)
+      if (worst > 0) mismatched += 1
+      if (worst > maxDelta) maxDelta = worst
     }
-    return false
+    return { pixels: total, mismatched, maxDelta }
   } catch {
     return undefined
   }
@@ -102,10 +128,21 @@ export const shieldsSource: Source<ShieldsSignal> = {
     if (typeof navigator === 'undefined') throw new UnsupportedSignal('no-navigator')
     const nav = navigator as Navigator & BraveNavigator
 
+    const braveApi = await askBrave(nav)
+    const brands = brandsOf(nav)
+    const canary = readCanary(ctx)
+
+    // The three booleans are the page's reading; the fields after them are
+    // the observations behind each one (`WEB-02`).
     return compact<ShieldsSignal>({
-      brave: await askBrave(nav),
-      brave_claimed: claimsBrave(nav),
-      canvas_noise: canvasNoise(ctx),
+      brave: braveApi === 'true' ? true : braveApi === 'false' ? false : undefined,
+      brave_claimed: brands === undefined ? undefined : brands.includes('Brave'),
+      canvas_noise: canary === undefined ? undefined : canary.mismatched > 0,
+      brave_api: braveApi,
+      brands,
+      canary_pixels: canary?.pixels,
+      canary_mismatched: canary?.mismatched,
+      canary_max_delta: canary?.maxDelta,
     })
   },
 }

@@ -185,10 +185,28 @@ export interface WorkerRealmSignal {
   unmasked_renderer?: string
 }
 
+/**
+ * Browser countermeasures. The three booleans are the page's reading; the
+ * fields after them are the observations each reading rests on, so the server
+ * can derive the same conclusion itself (`WEB-02`).
+ */
 export interface ShieldsSignal {
   brave?: boolean
   brave_claimed?: boolean
   canvas_noise?: boolean
+  /**
+   * What `navigator.brave.isBrave()` did: `true` or `false` (its answer),
+   * `timeout`, `threw`, `not-function` (present but not callable) or `absent`.
+   */
+  brave_api?: 'true' | 'false' | 'timeout' | 'threw' | 'not-function' | 'absent'
+  /** The brand names in `navigator.userAgentData.brands`, in order. */
+  brands?: string[]
+  /** Canary pixels read back, out of 64 drawn (8x8). Absent when the readback failed. */
+  canary_pixels?: number
+  /** How many of those pixels differ from the colour drawn, in any channel. */
+  canary_mismatched?: number
+  /** The largest absolute difference in any one channel, 0 to 255. */
+  canary_max_delta?: number
 }
 
 export interface ScreenSignal {

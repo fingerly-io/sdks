@@ -137,3 +137,57 @@ describe('canvas noise canary & shared 2D context', () => {
     expect(createElementSpy).not.toHaveBeenCalled()
   })
 })
+
+describe('the observations behind the shields booleans (WEB-02)', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('sends the canary comparison next to canvas_noise', async () => {
+    withCanvas(fakeCanvas((value, index) => (index === 41 || index === 42 ? value + 3 : value)))
+    const value = await shieldsSource.run({} as never)
+    expect(value).toMatchObject({
+      canvas_noise: true,
+      canary_pixels: 64,
+      canary_mismatched: 1,
+      canary_max_delta: 3,
+    })
+  })
+
+  it('an honest readback has zero mismatched pixels', async () => {
+    withCanvas(fakeCanvas())
+    expect(await shieldsSource.run({} as never)).toMatchObject({
+      canvas_noise: false,
+      canary_pixels: 64,
+      canary_mismatched: 0,
+      canary_max_delta: 0,
+    })
+  })
+
+  it('sends what isBrave() did and the brand list next to brave and brave_claimed', async () => {
+    withCanvas(fakeCanvas())
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      brave: { isBrave: async () => true },
+      userAgentData: { brands: [{ brand: 'Not.A/Brand' }, { brand: 'Brave' }, { brand: 'Chromium' }] },
+    })
+    expect(await shieldsSource.run({} as never)).toMatchObject({
+      brave: true,
+      brave_claimed: true,
+      brave_api: 'true',
+      brands: ['Not.A/Brand', 'Brave', 'Chromium'],
+    })
+  })
+
+  it.each([
+    ['absent', {}],
+    ['not-function', { brave: { isBrave: 'yes' } }],
+    ['threw', { brave: { isBrave: () => Promise.reject(new Error('no')) } }],
+    ['false', { brave: { isBrave: async () => 'maybe' } }],
+  ])('records brave_api %s', async (expected, extra) => {
+    withCanvas(fakeCanvas())
+    vi.stubGlobal('navigator', { ...navigator, ...extra })
+    const value = await shieldsSource.run({} as never)
+    expect(value.brave_api).toBe(expected)
+    if (expected === 'false') expect(value.brave).toBe(false)
+    else expect(value).not.toHaveProperty('brave')
+  })
+})
