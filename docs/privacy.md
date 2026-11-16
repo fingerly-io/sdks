@@ -175,9 +175,11 @@ integrity verification and fraud scoring only.
   security patch level, verified-boot properties, SoC/board/ABIs/RAM, display
   geometry, free storage ratio, boolean sensor presence and whether all sensors
   are AOSP-vendored (`only_platform_vendors`, never raw vendor lists), audio
-  routing, locale/timezone, accessibility scale/timeout counts (never which
-  accessibility services are enabled, and never scored as automation), battery
-  state, and whether a lockscreen or biometry hardware is present (never
+  routing, locale/timezone, accessibility scale/timeout counts, one boolean
+  saying whether any accessibility service is enabled (never which services;
+  the server uses it only as one hint that the device's settings were changed
+  at some point, so it never raises a score and is never scored as
+  automation), battery state, and whether a lockscreen or biometry hardware is present (never
   prompting).
 - App, network & TLS (`app`, `identity`, `network`, `tls`): package name,
   version code, 64-hex signing certificate SHA-256, installing store,
@@ -313,6 +315,12 @@ bridges.
   `localhost`.
 - **Consent defaults to `pending`** (§4), satisfying App Store Review Guideline
   5.1.1(ii) and Google Play SDK data-safety requirements.
+- **Google Play Data safety: the accessibility boolean.** The Android SDK sends
+  one boolean saying whether any accessibility service is enabled on the
+  device, never which services. The server uses it only as one hint that the
+  device's settings were changed at some point, and it never raises a score.
+  Account for it with the other device data the SDK sends (§3) when you fill
+  in the Data safety form.
 
 ## 4. Consent: what you must do
 
