@@ -41,9 +41,9 @@ the sources of a tier the report claims to have run are required; `fast` is alwa
 
 **Status words** are `ok`, `unsupported`, `blocked`, `timeout` and `error`. Anything else is not a report a client wrote.
 
-**Cohort safety.** `services/velocity.go` builds the velocity cohort from every *scalar* key of `hardware`,
-`display` and `app`. So no new scalar goes in those three sources. New fields live elsewhere, or are arrays
-(`scalarText` ignores arrays). No new field enters native identity, which stays `identity.install_id` only.
+**Cohort safety.** `domain/risk/archive_fields.go` builds the velocity cohort from invariant scalar keys of `hardware`,
+`system` and `app` (`display` pixel fields are excluded because orientation and split-screen mutate them). No new field
+enters native identity, which stays `identity.install_id` only.
 
 **Free text.** No names from outside system trees, no other app's name, no raw data directory, no installer
 package, no accessibility service name. Where the raw value is free text it travels as `hash64`.
@@ -142,7 +142,7 @@ read move to the server.
 | `cpu_hardware` | string | raw `/proc/cpuinfo` Hardware | unchanged; now the only input for the virtual CPU rule |
 | `cpu_implementer`, `cpu_part` | string | | unchanged |
 
-### display (fast; in the velocity cohort)
+### display (fast)
 
 | Field | Type | Status |
 |---|---|---|
@@ -262,6 +262,7 @@ read move to the server.
 | `ro_debuggable` | string | raw value, at most 8 | new |
 | `ro_secure` | string | raw value, at most 8 | new |
 | `property_store_refused` | bool | only ever `true`; present only when the property store refused a read | new |
+| `stat_access_mismatch` | bool | `Os.access` vs `File.exists` divergence across root/framework probe paths | new |
 | `system_mounts` | object[] | at most 8; see below | new |
 | `mount_framework_lines` | int | 0 to 1024; see below | new |
 | `mount_anomalies` | string[] | | removed |
@@ -426,7 +427,7 @@ timestamp, and reports Google's verdicts. Its absence is never evidence.
 
 | Field | Type | Bounds | Status |
 |---|---|---|---|
-| `native_methods` | object[] | at most 8, see below | new |
+| `native_methods` | object[] | at most 32, see below | new |
 | `patched_natives` | string[] | always empty on Android | removed |
 | `lies` | object[] | | removed (server derives, 8.12) |
 | `engine` | object | | removed (server derives, 8.12) |
@@ -461,7 +462,7 @@ Removed entirely. See section 6.
 | `memory_bytes` | int64 | removed (iOS ADR 0001) |
 | `physical_cpu`, `logical_cpu`, `cpu_family`, `cpu_subfamily`, `cacheline`, `l1d_cache`, `l1i_cache`, `l2_cache`, `page_size`, `byte_order` | int | removed (iOS ADR 0001) |
 
-### display (fast; in the velocity cohort)
+### display (fast)
 
 | Field | Type | Status |
 |---|---|---|
@@ -691,22 +692,25 @@ when that evidence verifies, and the customer's backend spends it once to read o
 
 | Field | Type | Bounds | Status |
 |---|---|---|---|
-| `native_symbols` | object[] | at most 16; see below | new |
-| `objc_methods` | object[] | at most 12; see below | new |
+| `native_symbols` | object[] | at most 32; see below | new |
+| `objc_methods` | object[] | at most 32; see below | new |
+| `got_slots` | object[] | at most 32; see below | new |
 | `patched_natives` | string[] | | removed |
 | `lies` | object[] | | removed |
 | `engine` | object | | removed |
 
 `native_symbols`: one entry per watched function that `dlsym` resolves and `dladdr` places:
-`{ "symbol": string, "image": ImageRef, "tree": string, "prologue": string?, "branch_image": ImageRef?, "branch_resolved": bool? }`.
-`tree` uses the `image_trees` vocabulary. `prologue` is the 16 bytes at `dli_saddr` as 32 hex characters, read with
+`{ "symbol": string, "image": ImageRef, "tree": string, "prologue": string?, "branch_image": ImageRef?, "branch_tree": string?, "branch_resolved": bool? }`.
+`tree` and `branch_tree` use the `image_trees` vocabulary (`unresolved` when `dladdr` cannot place the branch target). `prologue` is the 16 bytes at `dli_saddr` as 32 hex characters, read with
 `vm_read_overwrite`, sent only when `tree` is `usr_lib`, `system_library`, `library_apple` or `sim_root` and the read succeeded.
-`branch_resolved` and `branch_image` are sent only when the first instruction is `B imm26` (top six bits `000101`):
-whether `dladdr` placed the target, and which image it is. The client does the branch arithmetic because the server has no
+`branch_resolved`, `branch_image` and `branch_tree` are sent when the prologue branches out of line (e.g. `B imm26` or `ADRP+ADD+BR`):
+whether `dladdr` placed the target, which image it is, and which tree owns it. The client does the branch arithmetic because the server has no
 address map. Nothing here needs a private API, and system bytes are the same on every device on one OS build.
 
-`objc_methods`: one entry per watched method that resolves: `{ "method": "NSFileManager fileExistsAtPath:", "image": ImageRef?, "tree": string }`,
-with `tree` set to `unresolved` when `dladdr` cannot place the implementation.
+`objc_methods`: one entry per watched method that resolves: `{ "method": "NSFileManager fileExistsAtPath:", "image": ImageRef?, "tree": string, "isa_swizzled": bool?, "msg_forward": bool? }`,
+with `tree` set to `unresolved` when `dladdr` cannot place the implementation, `isa_swizzled` true when a singleton instance's runtime `object_getClass` disagrees with its declared class, and `msg_forward` true when the method implementation points to `_objc_msgForward`.
+
+`got_slots`: optional Mach-O `__DATA_CONST,__got` / `__la_symbol_ptr` slot bindings for watched C imports: `{ "symbol": string, "image": ImageRef?, "tree": string }`, using the `image_trees` vocabulary (`unresolved` when `dladdr` cannot place the bound pointer).
 
 ### device
 

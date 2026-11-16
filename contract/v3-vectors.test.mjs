@@ -144,7 +144,7 @@ test('v3-manifest metadata and golden challenge tickets', () => {
     attestation_failed: 30,
     device_inconsistent: 18,
     report_incomplete: 16,
-    tampering: 8,
+    tampering: 15,
     custom_root_ca: 0,
     secondary_user_profile: 0,
   })
