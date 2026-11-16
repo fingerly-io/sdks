@@ -160,7 +160,7 @@ Every web `IdentifyOut` carries the same object as `next_ticket`. A duplicate re
 | Signal | Weight | Confidence | Group | Reasons |
 |---|---|---|---|---|
 | `web_ticket_missing` | 4 | low | `report_incomplete` | `ticket-missing` (no ticket), `ticket-pow-missing` (the ticket asks for proof of work and `ticket_pow` is absent) |
-| `web_ticket_invalid` | 20 | high | `tampering` | `ticket-malformed` (bad encoding or signature, or claims the server never signs), `ticket-foreign` (another organization, key or origin), `ticket-expired`, `ticket-reused`, `ticket-pow-invalid` |
+| `web_ticket_invalid` | 20 | high | `browser_tampering` | `ticket-malformed` (bad encoding or signature, or claims the server never signs), `ticket-foreign` (another organization, key or origin), `ticket-expired`, `ticket-reused`, `ticket-pow-invalid` |
 
 Both are web signals whose weights a customer can edit. Native reports never carry `ticket` or `ticket_pow`; one that does is refused with HTTP `400` (`code: "invalid_request"`, `details[0].field == "ticket"`).
 
