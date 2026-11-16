@@ -150,18 +150,31 @@ export const TICKET_GRACE_MS = 250
 interface HeldTicket {
   ticket: string
   expiresAtMs: number
+  /**
+   * Whether the ticket answered an explicit ticket request rather than
+   * arriving as an answer's `next_ticket`. A requested ticket can carry
+   * evidence the server attached to that round (it may have needed a
+   * challenge and a retry, so it often arrives after the report has gone),
+   * so it is kept over a `next_ticket` while both are usable.
+   */
+  requested: boolean
   /** The proof of work, solving since the ticket arrived; never rejects. */
   pow?: Promise<string | undefined>
+}
+
+/** Whether a held ticket still has more than [[TICKET_MARGIN_MS]] left. */
+function usable(ticket: HeldTicket): boolean {
+  return ticket.expiresAtMs - Date.now() > TICKET_MARGIN_MS
 }
 
 /**
  * A ticket as it arrives. When it asks for proof of work, solving starts
  * here, at once, so it runs beside collection.
  */
-function heldTicket(value: unknown): HeldTicket | undefined {
+function heldTicket(value: unknown, requested: boolean): HeldTicket | undefined {
   const read = readTicket(value)
   if (!read) return undefined
-  const held: HeldTicket = { ticket: read.ticket, expiresAtMs: Date.parse(read.expires_at) }
+  const held: HeldTicket = { ticket: read.ticket, expiresAtMs: Date.parse(read.expires_at), requested }
   const bits = read.pow_bits
   if (bits !== undefined) {
     held.pow = Promise.resolve()
@@ -354,7 +367,7 @@ export class FingerlyClient {
     // (for example the score on a key that hides it) stays absent.
     const answer = ownCopy(response)
     if (this.platform === 'web') {
-      const next = heldTicket(answer.next_ticket)
+      const next = heldTicket(answer.next_ticket, false)
       if (next) this.holdTicket(next)
     }
     const visitorId = typeof answer.visitor_id === 'string' ? answer.visitor_id : ''
@@ -394,7 +407,7 @@ export class FingerlyClient {
     // Single use: a held ticket is taken, so a concurrent call cannot send it too.
     const held = this.#heldTicket
     this.#heldTicket = undefined
-    if (held && held.expiresAtMs - Date.now() > TICKET_MARGIN_MS) return Promise.resolve(held)
+    if (held && usable(held)) return Promise.resolve(held)
 
     const transport = this.transport
     if (typeof transport.ticket !== 'function') return Promise.resolve(undefined)
@@ -402,7 +415,7 @@ export class FingerlyClient {
       return Promise.resolve(
         transport.ticket({ v: 3, op: 'ticket', sdk: { platform: 'web', version: SDK_VERSION } }, signal),
       ).then(
-        (answer: FreshnessTicket) => heldTicket(answer),
+        (answer: FreshnessTicket) => heldTicket(answer, true),
         () => undefined,
       )
     } catch {
@@ -410,9 +423,25 @@ export class FingerlyClient {
     }
   }
 
+  /**
+   * Keeps one ticket for the next report. A usable requested ticket wins over
+   * a `next_ticket`, whichever arrived first and whichever expires later:
+   * expiry has whole-second resolution, so a requested ticket that arrives
+   * late would otherwise lose to the `next_ticket` of the report it missed.
+   * Between two of the same kind, the later expiry wins.
+   */
   private holdTicket(ticket: HeldTicket): void {
     const current = this.#heldTicket
-    if (!current || ticket.expiresAtMs > current.expiresAtMs) this.#heldTicket = ticket
+    if (!current || !usable(current)) {
+      this.#heldTicket = ticket
+      return
+    }
+    if (!usable(ticket)) return
+    if (ticket.requested !== current.requested) {
+      if (ticket.requested) this.#heldTicket = ticket
+      return
+    }
+    if (ticket.expiresAtMs > current.expiresAtMs) this.#heldTicket = ticket
   }
 
   /**

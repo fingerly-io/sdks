@@ -204,6 +204,100 @@ describe('web freshness ticket (R8)', () => {
     expect(ticket).toHaveBeenCalledTimes(1)
   })
 
+  it('keeps a late requested ticket over the next_ticket that arrives after it', async () => {
+    let deliver!: (value: FreshnessTicket) => void
+    let release!: () => void
+    const answered = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const ticket = vi.fn<NonNullable<Transport['ticket']>>(
+      () =>
+        new Promise<FreshnessTicket>((resolve) => {
+          deliver = resolve
+        }),
+    )
+    let reports = 0
+    const submit = vi.fn<Transport['submit']>(async () => {
+      reports++
+      if (reports === 1) await answered
+      // The answer's next_ticket expires later than the requested ticket.
+      return { request_id: `r${reports}`, next_ticket: fresh(`next${reports}`, 300_000) }
+    })
+    const c = client({ submit, ticket })
+
+    const first = c.identify()
+    await vi.waitFor(() => expect(submit).toHaveBeenCalledTimes(1))
+    expect(submit.mock.calls[0]![0]).not.toHaveProperty('ticket')
+    // The requested ticket lands after the grace window, before the answer.
+    deliver(fresh('requested', 200_000))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    release()
+    await first
+
+    await c.identify()
+    expect(submit.mock.calls[1]![0].ticket).toBe('requested')
+    expect(ticket).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps a late requested ticket over a next_ticket held before it', async () => {
+    let deliver!: (value: FreshnessTicket) => void
+    const ticket = vi.fn<NonNullable<Transport['ticket']>>(
+      () =>
+        new Promise<FreshnessTicket>((resolve) => {
+          deliver = resolve
+        }),
+    )
+    const submit = vi.fn<Transport['submit']>(async () => ({
+      request_id: 'r',
+      next_ticket: fresh('next', 300_000),
+    }))
+    const c = client({ submit, ticket })
+
+    await c.identify()
+    expect(submit.mock.calls[0]![0]).not.toHaveProperty('ticket')
+    // next_ticket is already held; the requested ticket expires earlier.
+    deliver(fresh('requested', 200_000))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    await c.identify()
+    expect(submit.mock.calls[1]![0].ticket).toBe('requested')
+    // The next report takes the newer next_ticket again.
+    await c.identify()
+    expect(submit.mock.calls[2]![0].ticket).toBe('next')
+    expect(ticket).toHaveBeenCalledTimes(1)
+  })
+
+  it('takes a usable next_ticket over a requested ticket inside the margin', async () => {
+    let deliver!: (value: FreshnessTicket) => void
+    const ticket = vi.fn<NonNullable<Transport['ticket']>>(
+      () =>
+        new Promise<FreshnessTicket>((resolve) => {
+          deliver = resolve
+        }),
+    )
+    const submit = vi.fn<Transport['submit']>(async () => ({
+      request_id: 'r',
+      next_ticket: fresh('next', 300_000),
+    }))
+    const c = client({ submit, ticket })
+
+    await c.identify()
+    deliver(fresh('requested', TICKET_MARGIN_MS - 1_000))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    await c.identify()
+    expect(submit.mock.calls[1]![0].ticket).toBe('next')
+  })
+
+  it('still sends without waiting past the grace window for a requested ticket', async () => {
+    const ticket = vi.fn<NonNullable<Transport['ticket']>>(() => new Promise<FreshnessTicket>(() => {}))
+    const submit = vi.fn<Transport['submit']>(async () => ({ request_id: 'r' }))
+    const started = Date.now()
+    await client({ submit, ticket }).identify()
+    expect(Date.now() - started).toBeLessThan(TICKET_GRACE_MS + 1_000)
+    expect(submit.mock.calls[0]![0]).not.toHaveProperty('ticket')
+  })
+
   it('keeps an unsent ticket when the report never goes out', async () => {
     const ticket = vi.fn<NonNullable<Transport['ticket']>>(async () => fresh(asked()))
     const submit = vi.fn<Transport['submit']>(async () => ({ request_id: 'r' }))
