@@ -6,9 +6,10 @@
   without the signal report, which `collect()` returns.
 - Web freshness ticket: the ticket request starts with collection, in
   parallel, and a held `next_ticket` with more than 10 seconds left is used
-  instead. When the request fails or is slow the report goes without a
-  ticket; `identify()` never waits on it or fails because of it. Tickets live
-  in memory only.
+  instead. When the request fails or is slower than 250 ms after collection
+  the report goes without a ticket; `identify()` never waits longer or fails
+  because of it. A requested ticket that arrives late is kept for the next
+  report, ahead of a `next_ticket`. Tickets live in memory only.
 - Proof of work: when a ticket carries `pow_bits`, the smallest decimal
   nonce whose `SHA256(ticket:nonce)` has that many leading zero bits is sent
   as `ticket_pow`. Solving starts when the ticket arrives, runs in a blob
