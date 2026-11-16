@@ -22,6 +22,14 @@ export interface FingerlyRequestIdProps {
    * that identifies at submit time instead.
    */
   immediate?: boolean
+  /**
+   * Correlation tag echoed on the event, such as `signup:${attemptId}` where
+   * `attemptId` is a random value your server issued with this form. The
+   * backend compares the event's `tag` with the one it expects, so a
+   * `requestId` from another page or session is refused. Never put a
+   * personal identifier in a tag.
+   */
+  tag?: string
 }
 
 /**
@@ -42,8 +50,8 @@ export interface FingerlyRequestIdProps {
  *
  * Read it back with `readRequestId(formData)` from `@fingerly/next/server`.
  */
-export function FingerlyRequestId({ name, immediate = true }: FingerlyRequestIdProps = {}): ReactNode {
-  const { requestId } = useIdentify({ immediate })
+export function FingerlyRequestId({ name, immediate = true, tag }: FingerlyRequestIdProps = {}): ReactNode {
+  const { requestId } = useIdentify({ immediate, ...(tag === undefined ? {} : { tag }) })
 
   return (
     <input

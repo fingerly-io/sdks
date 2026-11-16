@@ -280,6 +280,14 @@ describe('FingerlyRequestId', () => {
     expect(container.querySelector('input')?.getAttribute('name')).toBe('risk_ref')
   })
 
+  it('sends the tag the backend will check the event against', async () => {
+    render(provider(<FingerlyRequestId tag="signup:att_42" />))
+    await act(async () => undefined)
+
+    expect(identifyMock).toHaveBeenCalledTimes(1)
+    expect(identifyMock).toHaveBeenCalledWith({ tag: 'signup:att_42' })
+  })
+
   it('defaults to pending, leaving the field empty and sending nothing', async () => {
     environment.NEXT_PUBLIC_FINGERLY_API_KEY = 'pk_from_env'
     const { container } = render(
