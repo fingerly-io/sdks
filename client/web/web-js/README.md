@@ -124,18 +124,17 @@ build.
 
 - **CSP-safe `worker_realm`:** To catch anti-detect extensions that patch
   `window.navigator` or WebGL in the document realm while leaving
-  `DedicatedWorkerGlobalScope` untouched, `worker_realm` runs a `<= 60 ms`
-  `Blob` worker, explicitly loses its temporary `OffscreenCanvas` WebGL context,
-  terminates the worker, and revokes the `Blob` URL. Before calling
-  `new Worker`, it inspects `<meta http-equiv="Content-Security-Policy">`
-  (`worker-src` -> `child-src` -> `default-src`) and skips cleanly with
-  `blocked / csp-meta` if `blob:` is disallowed; if an HTTP CSP header blocks
-  `blob:` workers, the `SecurityError` / `securitypolicyviolation` is memoized
-  for the rest of the page session so repeat calls never emit duplicate CSP
-  reports.
-- **`'unsafe-eval'`:** Without `'unsafe-eval'`, one `new Function('')` probe in
-  `errors` is refused once by the browser and its two syntax-message checks are
-  skipped cleanly.
+  `DedicatedWorkerGlobalScope` untouched, `worker_realm` runs a short-lived
+  `Blob` worker inside the collection budget, explicitly loses its temporary
+  `OffscreenCanvas` WebGL context, terminates the worker, and revokes the
+  `Blob` URL. If your policy disallows `blob:` workers, the attempt is refused
+  once and the source reports `blocked`: `csp-meta` when an enforced
+  `<meta http-equiv="Content-Security-Policy">` in `<head>` disallows them,
+  `csp-blocked` when an HTTP header does. The refusal is remembered for the
+  rest of the page session, so a strict policy produces at most one violation
+  per page, never one per call. To let the check run, add `worker-src blob:`.
+- **`'unsafe-eval'` is not needed:** no source evaluates a string as code, so a
+  policy without `'unsafe-eval'` produces no violation report from the SDK.
 
 Firefox prints a console deprecation warning when WebGL reads
 `WEBGL_debug_renderer_info`; it comes from the browser, changes nothing for the

@@ -5,16 +5,34 @@
  * `window.navigator` and `WebGLRenderingContext` in the main document realm
  * while forgetting `DedicatedWorkerGlobalScope` (or vice-versa).
  *
+ * Statuses, kept distinct so the server can weigh each one (`WEB-03`):
+ * - `unsupported` / `no-worker`: the page has no `Worker`, `Blob` or
+ *   `URL.createObjectURL`.
+ * - `blocked` / `csp-meta`: starting the worker was refused, and a
+ *   `<meta http-equiv="Content-Security-Policy">` that is a child of `<head>`
+ *   disallows `blob:` workers. A `<meta>` anywhere else is not an enforced
+ *   policy and is ignored, and a `<meta>` alone never stops the attempt: the
+ *   attempt is what shows the policy is real.
+ * - `blocked` / `csp-blocked`: starting the worker was refused by a policy
+ *   delivered some other way (an HTTP header).
+ * - `blocked` / `worker-error`: the worker started and then failed.
+ * - `timeout` / `worker-timeout`: the worker did not answer in time.
+ *
+ * `Worker`, `Blob` and `URL.createObjectURL` are read from the page, so the
+ * integrity layer inspects all three (`lies/natives.ts`).
+ *
  * Safety & CSP invariants:
- * 1. Pre-checks `<meta http-equiv="Content-Security-Policy">` (`worker-src` ->
- *    `child-src` -> `default-src`). When `blob:` is disallowed, throws
- *    `BlockedSignal('csp-meta')` without invoking `new Worker`.
- * 2. Memoizes CSP `SecurityError` / `securitypolicyviolation` per page session
- *    so strict-CSP HTTP headers never emit repeat violation reports.
- * 3. Bounds worker execution to `60ms`, explicitly loses any temporary
- *    `OffscreenCanvas` WebGL context inside the worker before posting, and
- *    always calls `worker.terminate()` and `URL.revokeObjectURL(blobUrl)` in
- *    `finally`.
+ * 1. Memoizes a CSP refusal per page session so a strict policy produces at
+ *    most one violation per page, never one per call.
+ * 2. Waits for the answer for as long as the collection budget allows (up to
+ *    `WORKER_WAIT_MS`). A cold worker start on a
+ *    busy page takes longer than the old fixed 60 ms limit, so a clean page
+ *    timed out on its first call.
+ * 3. Explicitly loses any temporary `OffscreenCanvas` WebGL context inside the
+ *    worker before posting, and always calls `worker.terminate()` and
+ *    `URL.revokeObjectURL(blobUrl)` in `finally`.
+ * 4. In the embedded WebView profile (`WEB-07`) the worker reads only its user
+ *    agent and platform: no core count, memory, languages, time zone or GPU.
  */
 
 import {
@@ -26,32 +44,50 @@ import {
   type WorkerRealmSignal,
 } from '@fingerly/core'
 
+import { detectEmbedding } from '../embedding.js'
 import { attempt, compact, requireWindow } from '../util.js'
 
-const WORKER_TIMEOUT_MS = 60
+/**
+ * The longest wait for the worker's answer. The actual wait is whatever is
+ * left of the collection budget (less a small margin so the source reports
+ * `worker-timeout` itself), capped here.
+ */
+const WORKER_WAIT_MS = 330
+const WORKER_WAIT_FLOOR_MS = 60
+const WORKER_WAIT_MARGIN_MS = 15
 
-let sessionCspBlocked = false
+function workerWaitMs(budgetRemainingMs: number): number {
+  const left = Number.isFinite(budgetRemainingMs) ? budgetRemainingMs - WORKER_WAIT_MARGIN_MS : WORKER_WAIT_MS
+  return Math.max(WORKER_WAIT_FLOOR_MS, Math.min(WORKER_WAIT_MS, left))
+}
+
+let sessionCspBlocked: 'csp-meta' | 'csp-blocked' | undefined
 
 /** Test-only helper to clear the session-memoized CSP `SecurityError` flag. */
 export function resetWorkerRealmCspCache(): void {
-  sessionCspBlocked = false
+  sessionCspBlocked = undefined
 }
 
-const WORKER_SCRIPT = `(function () {
+function workerScript(full: boolean): string {
+  return `(function (full) {
   var out = {};
   try {
     if (typeof navigator !== 'undefined') {
       if (typeof navigator.userAgent === 'string') out.user_agent = navigator.userAgent;
       if (typeof navigator.platform === 'string') out.platform = navigator.platform;
-      if (typeof navigator.hardwareConcurrency === 'number') out.hardware_concurrency = navigator.hardwareConcurrency;
-      if (typeof navigator.deviceMemory === 'number') out.device_memory = navigator.deviceMemory;
-      if (Array.isArray(navigator.languages)) out.languages = Array.prototype.slice.call(navigator.languages);
+      if (full && typeof navigator.hardwareConcurrency === 'number') out.hardware_concurrency = navigator.hardwareConcurrency;
+      if (full && typeof navigator.deviceMemory === 'number') out.device_memory = navigator.deviceMemory;
+      if (full && Array.isArray(navigator.languages)) out.languages = Array.prototype.slice.call(navigator.languages);
     }
   } catch (_) {}
+  if (!full) { self.postMessage(out); return; }
   try {
-    var tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    if (typeof tz === 'string' && tz) out.timezone = tz;
+    var tz0 = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (typeof tz0 === 'string' && tz0) out.timezone = tz0;
   } catch (_) {}
+  // The navigator values first: a first WebGL context can take longer than
+  // the whole collection budget on a cold page.
+  self.postMessage({ partial: true, values: out });
   try {
     if (typeof OffscreenCanvas !== 'undefined') {
       var canvas = new OffscreenCanvas(1, 1);
@@ -75,7 +111,8 @@ const WORKER_SCRIPT = `(function () {
     }
   } catch (_) {}
   self.postMessage(out);
-})();`
+})(${full ? 'true' : 'false'});`
+}
 
 function policyAllowsBlobWorker(policyText: string): boolean {
   const directives = new Map<string, string[]>()
@@ -96,15 +133,22 @@ function policyAllowsBlobWorker(policyText: string): boolean {
   return effective.some((token) => token === 'blob:' || token.startsWith('blob:'))
 }
 
-function metaCspDisallowsBlobWorker(doc: Document | undefined): boolean {
-  if (!doc || typeof doc.querySelectorAll !== 'function') return false
-  const metas = attempt(() => Array.from(doc.querySelectorAll('meta[http-equiv]')))
-  if (!metas) return false
+/**
+ * Whether a CSP `<meta>` that the browser enforces disallows `blob:` workers.
+ * A policy `<meta>` is applied only when it is a child of `<head>`; one in
+ * `<body>` (or anywhere else) is not a policy and is ignored (`WEB-03`).
+ */
+function headMetaDisallowsBlobWorker(doc: Document | undefined): boolean {
+  const head = attempt(() => doc?.head)
+  if (!head) return false
+  const children = attempt(() => Array.from(head.children))
+  if (!children) return false
 
-  for (const meta of metas) {
-    const equiv = meta.getAttribute('http-equiv')?.trim().toLowerCase()
+  for (const meta of children) {
+    if (attempt(() => meta.tagName.toLowerCase()) !== 'meta') continue
+    const equiv = attempt(() => meta.getAttribute('http-equiv')?.trim().toLowerCase())
     if (equiv !== 'content-security-policy') continue
-    const content = meta.getAttribute('content')
+    const content = attempt(() => meta.getAttribute('content'))
     if (typeof content === 'string' && !policyAllowsBlobWorker(content)) {
       return true
     }
@@ -119,12 +163,15 @@ function isCspSecurityError(error: unknown): boolean {
   return msg.includes('content security policy') || msg.includes('securityerror')
 }
 
-function normalizeWorkerPayload(raw: unknown): WorkerRealmSignal {
+function normalizeWorkerPayload(raw: unknown, full: boolean): WorkerRealmSignal {
   if (!raw || typeof raw !== 'object') return {}
   const data = raw as Record<string, unknown>
+  const user_agent = typeof data.user_agent === 'string' ? data.user_agent : undefined
+  const platform = typeof data.platform === 'string' ? data.platform : undefined
+  if (!full) return compact<WorkerRealmSignal>({ user_agent, platform })
   return compact<WorkerRealmSignal>({
-    user_agent: typeof data.user_agent === 'string' ? data.user_agent : undefined,
-    platform: typeof data.platform === 'string' ? data.platform : undefined,
+    user_agent,
+    platform,
     hardware_concurrency:
       typeof data.hardware_concurrency === 'number' && Number.isFinite(data.hardware_concurrency)
         ? data.hardware_concurrency
@@ -140,6 +187,7 @@ function normalizeWorkerPayload(raw: unknown): WorkerRealmSignal {
     unmasked_vendor: typeof data.unmasked_vendor === 'string' ? data.unmasked_vendor : undefined,
     unmasked_renderer:
       typeof data.unmasked_renderer === 'string' ? data.unmasked_renderer : undefined,
+    gpu_unanswered: data.gpu_unanswered === true ? true : undefined,
   })
 }
 
@@ -147,17 +195,13 @@ export const workerRealmSource: Source<WorkerRealmSignal> = {
   id: SOURCE.workerRealm,
   stage: 'collect',
   embeddedSafe: true,
-  timeoutMs: 80,
+  timeoutMs: WORKER_WAIT_MS + WORKER_WAIT_MARGIN_MS + 5,
   async run(ctx) {
     const w = requireWindow()
     const doc = attempt(() => w.document)
 
-    if (metaCspDisallowsBlobWorker(doc)) {
-      throw new BlockedSignal('csp-meta')
-    }
-
     if (sessionCspBlocked) {
-      throw new BlockedSignal('csp-blocked')
+      throw new BlockedSignal(sessionCspBlocked)
     }
 
     if (
@@ -170,7 +214,17 @@ export const workerRealmSource: Source<WorkerRealmSignal> = {
       throw new UnsupportedSignal('no-worker')
     }
 
-    const blobUrl = URL.createObjectURL(new Blob([WORKER_SCRIPT], { type: 'text/javascript' }))
+    // The head policy names the refusal; it never prevents the attempt.
+    const refusal: 'csp-meta' | 'csp-blocked' = headMetaDisallowsBlobWorker(doc)
+      ? 'csp-meta'
+      : 'csp-blocked'
+    const refused = () => {
+      sessionCspBlocked = refusal
+      return new BlockedSignal(refusal)
+    }
+
+    const full = !detectEmbedding()
+    const blobUrl = URL.createObjectURL(new Blob([workerScript(full)], { type: 'text/javascript' }))
     let worker: Worker | undefined
     let onCspViolation: ((event: Event) => void) | undefined
 
@@ -178,10 +232,7 @@ export const workerRealmSource: Source<WorkerRealmSignal> = {
       try {
         worker = new Worker(blobUrl)
       } catch (error) {
-        if (isCspSecurityError(error)) {
-          sessionCspBlocked = true
-          throw new BlockedSignal('csp-blocked')
-        }
+        if (isCspSecurityError(error)) throw refused()
         throw error
       }
 
@@ -201,10 +252,21 @@ export const workerRealmSource: Source<WorkerRealmSignal> = {
 
         const onAbort = () =>
           settle(() => reject(ctx.signal?.reason ?? new TimedOutSignal('aborted')))
-        const timer = setTimeout(
-          () => settle(() => reject(new TimedOutSignal('worker-timeout'))),
-          WORKER_TIMEOUT_MS,
-        )
+        // When the wait ends, yield once more before giving up: on a busy page
+        // the worker's answer can already be queued behind the main thread.
+        // If only the first message arrived, report it with `gpu_unanswered`.
+        let partial: Record<string, unknown> | undefined
+        const timer = setTimeout(() => {
+          setTimeout(
+            () =>
+              settle(() =>
+                partial
+                  ? resolve({ ...partial, gpu_unanswered: true })
+                  : reject(new TimedOutSignal('worker-timeout')),
+              ),
+            0,
+          )
+        }, workerWaitMs(attempt(() => ctx.budgetRemainingMs()) ?? WORKER_WAIT_MS))
 
         ctx.signal?.addEventListener('abort', onAbort, { once: true })
 
@@ -218,28 +280,37 @@ export const workerRealmSource: Source<WorkerRealmSignal> = {
             directive.startsWith('child-src') ||
             directive.startsWith('default-src')
           ) {
-            sessionCspBlocked = true
-            settle(() => reject(new BlockedSignal('csp-blocked')))
+            settle(() => reject(refused()))
           }
         }
         doc?.addEventListener('securitypolicyviolation', onCspViolation)
 
         activeWorker.onmessage = (event: MessageEvent) => {
+          const data = event?.data as { partial?: unknown; values?: unknown } | undefined
+          if (data && data.partial === true) {
+            partial = data.values && typeof data.values === 'object' ? (data.values as Record<string, unknown>) : {}
+            return
+          }
           settle(() => resolve(event?.data))
         }
         activeWorker.onerror = (event: ErrorEvent) => {
           event?.preventDefault?.()
           const message = String(event?.message ?? '').toLowerCase()
-          if (message.includes('content security policy') || message.includes('securityerror')) {
-            sessionCspBlocked = true
-            settle(() => reject(new BlockedSignal('csp-blocked')))
+          // An enforced head policy that disallows blob workers explains a
+          // start-up error, whatever message the browser gives it.
+          if (
+            refusal === 'csp-meta' ||
+            message.includes('content security policy') ||
+            message.includes('securityerror')
+          ) {
+            settle(() => reject(refused()))
             return
           }
           settle(() => reject(new BlockedSignal('worker-error')))
         }
       })
 
-      return normalizeWorkerPayload(raw)
+      return normalizeWorkerPayload(raw, full)
     } finally {
       if (doc && onCspViolation) {
         attempt(() => doc.removeEventListener('securitypolicyviolation', onCspViolation!))

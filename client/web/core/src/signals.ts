@@ -177,12 +177,23 @@ export interface ErrorsSignal {
 export interface WorkerRealmSignal {
   user_agent?: string
   platform?: string
+  /** Not collected in the embedded WebView profile. */
   hardware_concurrency?: number
+  /** Not collected in the embedded WebView profile. */
   device_memory?: number
+  /** Not collected in the embedded WebView profile. */
   languages?: string[]
+  /** Not collected in the embedded WebView profile. */
   timezone?: string
+  /** Not collected in the embedded WebView profile. */
   unmasked_vendor?: string
+  /** Not collected in the embedded WebView profile. */
   unmasked_renderer?: string
+  /**
+   * The worker answered with its navigator values but not, within the budget,
+   * with the GPU strings (a cold first WebGL context). Absent otherwise.
+   */
+  gpu_unanswered?: boolean
 }
 
 /**
