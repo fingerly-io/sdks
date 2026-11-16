@@ -76,9 +76,8 @@ The upstream request carries only the headers in sections 3.1 and 3.2, plus tran
 | `X-Fingerly-Host` | Proxy ingress host | The incoming `Host` observed at the proxy, distinct from the upstream `Host`. |
 | `X-Fingerly-User-Agent` | Visitor user agent | The incoming `User-Agent`, so the server scores the visitor's agent rather than the proxy's HTTP client. |
 | `X-Fingerly-Proxy-Version` | Proxy runtime telemetry | Static `<impl>/<version>` (for example `cloudflare-worker/0.3.0`, `nginx/1.0.0`, `node/0.3.0`). |
-| `X-Fingerly-Edge-TLS-Version` | Edge TLS protocol | Worker only: `request.cf.tlsVersion` (for example `TLSv1.3`). |
-| `X-Fingerly-Edge-TLS-Cipher` | Edge TLS cipher suite | Worker only: `request.cf.tlsCipher`. |
-| `X-Fingerly-Edge-HTTP-Proto` | Edge HTTP protocol | Worker only: `request.cf.httpProtocol` (for example `HTTP/2`). |
+
+No proxy forwards details of the visitor's TLS or HTTP connection, such as the Worker's `request.cf.tlsVersion`, `request.cf.tlsCipher` or `request.cf.httpProtocol`. Current browsers and common scripting clients negotiate the same TLS 1.3 suites, so these values cannot tell them apart, and the values that stand out come mostly from TLS-inspecting middleboxes and older WebViews.
 
 ### 3.2 Forwarded Client Headers
 
