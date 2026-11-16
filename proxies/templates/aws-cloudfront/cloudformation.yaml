@@ -154,8 +154,9 @@ Resources:
           }
           for (var cookie in request.cookies) delete request.cookies[cookie];
 
-          // 3. Restore validated x-fingerly-sdk-platform when matched.
-          if (sdkPlatform) headers['x-fingerly-sdk-platform'] = { value: sdkPlatform };
+          // 3. Restore validated x-fingerly-sdk-platform only when Origin is absent:
+          // one channel only, as on the API, which refuses a request carrying both.
+          if (sdkPlatform && !origin) headers['x-fingerly-sdk-platform'] = { value: sdkPlatform };
 
           // 4. Reject with 400 missing_origin iff both Origin and validated sdkPlatform are empty.
           if (!origin && !sdkPlatform) {

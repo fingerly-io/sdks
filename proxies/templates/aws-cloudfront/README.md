@@ -95,7 +95,8 @@ the viewer's headers (`Content-Type`, `X-Api-Key`, `Idempotency-Key`,
 every other viewer header, so cookies, `Authorization`, `Referer`, forwarding
 headers, application headers and any visitor-sent `x-fingerly-*` header never
 reach the API. Validated lowercase `x-fingerly-sdk-platform` is restored when
-matched, plus the `x-fingerly-*` headers the function sets (the client
+matched and `Origin` is absent (one channel header goes upstream, never both),
+plus the `x-fingerly-*` headers the function sets (the client
 address, `x-fingerly-origin` only when `Origin` is present, `x-fingerly-host`,
 the user agent and `x-fingerly-proxy-version: aws-cloudfront/1.0.0`, which the
 dashboard shows per proxy) and the proxy key from the origin's custom header.

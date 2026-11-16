@@ -63,7 +63,8 @@ from the visitor.
 Upstream, to `https://api.fingerly.io/api/v1/ingest` only, on headers built
 from scratch: `content-type`, `x-api-key`, `idempotency-key`, `user-agent`,
 `sec-fetch-*` and `sec-ch-ua*` when present, validated lowercase
-`x-fingerly-sdk-platform` when matched, and the `x-fingerly-*` headers the
+`x-fingerly-sdk-platform` when matched and `Origin` is absent (one channel
+header goes upstream, never both), and the `x-fingerly-*` headers the
 middleware sets itself (the proxy key, the client address, `x-fingerly-origin`
 only when `Origin` is present, `x-fingerly-host`, the user agent and
 `x-fingerly-proxy-version: vercel/1.0.0`, which the dashboard shows per proxy).

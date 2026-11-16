@@ -491,6 +491,21 @@ describe.each(targets)('$kind template', (target) => {
     }
   })
 
+  it('sends one channel header: a valid platform beside Origin is dropped and only x-fingerly-origin goes upstream', async () => {
+    for (const platform of ['ios', 'android', 'react-native', 'flutter-android', 'lynx-ios']) {
+      upstreamCalls = []
+      const result = await target.call({
+        headers: { ...visitor, 'x-fingerly-sdk-platform': platform },
+        ip: TRUSTED_IP,
+      })
+      expect(result.status, platform).toBe(200)
+      expect(upstreamCalls).toHaveLength(1)
+      const sent = upstreamCalls[0]!.headers
+      expect(sent.get('x-fingerly-origin'), platform).toBe('https://shop.example')
+      expect(sent.get('x-fingerly-sdk-platform'), platform).toBeNull()
+    }
+  })
+
   it('never forwards cookies or authorization', async () => {
     await target.call({ headers: visitor, ip: TRUSTED_IP })
     const sent = upstreamCalls[0]!.headers

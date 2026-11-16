@@ -40,8 +40,9 @@ to the container.
 - Applies the sanitize-and-restore header sequence: captures incoming
   `x-fingerly-sdk-platform` only when it matches the exact lowercase native SDK
   allowlist, strips every incoming `x-fingerly-*` header alongside `Cookie` and
-  `Authorization`, restores validated `x-fingerly-sdk-platform` when matched,
-  and rejects immediately with `400` (`missing_origin`, marked `no-store`) when
+  `Authorization`, restores validated `x-fingerly-sdk-platform` only when it
+  matched and `Origin` is absent (a request with `Origin` goes upstream with
+  `x-fingerly-origin` only: one channel header, never both), and rejects immediately with `400` (`missing_origin`, marked `no-store`) when
   both `Origin` and validated `x-fingerly-sdk-platform` are absent (never
   synthesizing `x-fingerly-origin` from `Host` or the request URL).
 - Sends only `content-type`, `x-api-key`, `idempotency-key`, `user-agent`,

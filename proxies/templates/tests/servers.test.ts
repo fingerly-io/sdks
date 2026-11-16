@@ -286,9 +286,9 @@ const relayReady = { path: '/k7x2qm4a', when: (response: Response) => response.s
 const NGINX_LOAD_MODULE = 'load_module modules/ngx_http_js_module.so;'
 
 const NGINX_PLATFORM_MAP = [
-  'map $http_x_fingerly_sdk_platform $fingerly_platform {',
+  'map "$http_origin:$http_x_fingerly_sdk_platform" $fingerly_platform {',
   '    default "";',
-  '    "~^(ios|android|react-native|react-native-ios|react-native-android|flutter|flutter-ios|flutter-android|lynx-ios|lynx-android|capacitor|kotlin-multiplatform)$" $http_x_fingerly_sdk_platform;',
+  '    "~^:(ios|android|react-native|react-native-ios|react-native-android|flutter|flutter-ios|flutter-android|lynx-ios|lynx-android|capacitor|kotlin-multiplatform)$" $1;',
   '}',
   '',
 ].join('\n')
@@ -678,6 +678,22 @@ describe.skipIf(!docker).each(templates)('$kind template', (template) => {
       expect(seen.headers['x-fingerly-sdk-platform']).toBe(platform)
       expect(seen.headers['x-fingerly-origin']).toBeUndefined()
       expect(seen.headers['x-fingerly-edge-tls-version']).toBeUndefined()
+    }
+  })
+
+  it('sends one channel header: a valid platform beside Origin is dropped and only x-fingerly-origin goes upstream', async () => {
+    for (const platform of ['ios', 'android', 'react-native-ios']) {
+      stub.seen = []
+      const response = await fetch(`${proxy!.base}/k7x2qm4a`, {
+        method: 'POST',
+        headers: { ...visitorHeaders, 'x-fingerly-sdk-platform': platform },
+        body: '{}',
+      })
+      expect(response.status, `${platform}: ${proxy!.logs()}`).toBe(200)
+      expect(stub.seen).toHaveLength(1)
+      const seen = stub.seen[0]!
+      expect(seen.headers['x-fingerly-origin']).toBe('https://shop.example')
+      expect(seen.headers['x-fingerly-sdk-platform']).toBeUndefined()
     }
   })
 

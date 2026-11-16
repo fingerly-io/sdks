@@ -103,8 +103,12 @@ www.example.com {
 			# X-Fingerly-Origin only when Origin was sent; never synthesized from Host.
 			@sentorigin not vars {http.vars.fingerly_origin} ""
 			request_header @sentorigin X-Fingerly-Origin {http.vars.fingerly_origin}
-			# The validated platform, restored only when it matched.
-			@hasplatform not vars {http.vars.fingerly_platform} ""
+			# The validated platform, restored only when it matched and Origin
+			# was not sent: one channel header goes upstream, never both.
+			@hasplatform {
+				not vars {http.vars.fingerly_platform} ""
+				vars {http.vars.fingerly_origin} ""
+			}
 			request_header @hasplatform X-Fingerly-SDK-Platform {http.vars.fingerly_platform}
 
 			# The one URL this block can reach. Single-pass browser and native SDK

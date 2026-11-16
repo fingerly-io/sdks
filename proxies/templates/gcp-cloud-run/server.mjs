@@ -240,8 +240,10 @@ export function createRelay(env = process.env) {
         'x-fingerly-user-agent': header(req, 'user-agent') ?? '',
         'x-fingerly-proxy-version': `${PRESET.kind}/${VERSION}`,
       })
+      // One channel only: a browser Origin wins over a platform claim, as on
+      // the API, which refuses a proxied request carrying both.
       if (origin) headers.set('x-fingerly-origin', origin)
-      if (sdkPlatform) headers.set('x-fingerly-sdk-platform', sdkPlatform)
+      else if (sdkPlatform) headers.set('x-fingerly-sdk-platform', sdkPlatform)
       const host = header(req, 'host')
       if (host) headers.set('x-fingerly-host', host)
       for (const name of FORWARDED_CLIENT_HEADERS) {

@@ -38,9 +38,9 @@ every other path and method is refused.
    load_module modules/ngx_http_js_module.so;
 
    # In http:
-   map $http_x_fingerly_sdk_platform $fingerly_platform {
+   map "$http_origin:$http_x_fingerly_sdk_platform" $fingerly_platform {
        default "";
-       "~^(ios|android|react-native|react-native-ios|react-native-android|flutter|flutter-ios|flutter-android|lynx-ios|lynx-android|capacitor|kotlin-multiplatform)$" $http_x_fingerly_sdk_platform;
+       "~^:(ios|android|react-native|react-native-ios|react-native-android|flutter|flutter-ios|flutter-android|lynx-ios|lynx-android|capacitor|kotlin-multiplatform)$" $1;
    }
 
    server {
@@ -104,7 +104,8 @@ Upstream, to `https://api.fingerly.io/api/v1/ingest` only: `content-type`,
 when present, plus the `x-fingerly-*` headers the proxy sets itself (the proxy
 key, the client address, `x-fingerly-origin` from `Origin` when present,
 `x-fingerly-sdk-platform` when matched by the lowercase `$fingerly_platform`
-map, `x-fingerly-host`, the user agent and
+map, which keeps it only for a request without `Origin` (one channel header
+goes upstream, never both), `x-fingerly-host`, the user agent and
 `x-fingerly-proxy-version: nginx/1.0.0`, which the dashboard shows per proxy).
 Requests missing both `Origin` and a valid `X-Fingerly-SDK-Platform` answer
 `400` (`missing_origin`) without synthesizing `x-fingerly-origin`.

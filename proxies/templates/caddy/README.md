@@ -94,7 +94,8 @@ Every other incoming header is removed first, so cookies, `Authorization`,
 `Referer`, forwarding headers, application headers and any visitor-sent
 `X-Fingerly-*` header never reach the API, and Caddy's own
 `X-Forwarded-*` and `Via` are removed too. Validated lowercase
-`X-Fingerly-SDK-Platform` is restored when present, plus the `x-fingerly-*`
+`X-Fingerly-SDK-Platform` is restored when present and `Origin` was not sent
+(one channel header goes upstream, never both), plus the `x-fingerly-*`
 headers the proxy sets itself (the proxy key, the client address,
 `X-Fingerly-Origin` only when `Origin` was sent, `X-Fingerly-Host`, the user
 agent and `x-fingerly-proxy-version: caddy/1.0.0`, which the dashboard shows
