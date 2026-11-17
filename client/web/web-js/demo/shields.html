@@ -443,15 +443,15 @@
     if (typeof Fingerly === 'undefined') return { error: 'bundle not loaded' }
     try {
       const client = await Fingerly.load({ apiKey: 'demo', consent: 'granted' })
-      const result = await client.identify({ submit: false })
-      const sources = result.report && result.report.sources
+      const report = await client.collect({ incognitoDetection: 'extended' })
+      const sources = report && report.sources
       const pick = (id) => {
         const outcome = sources && sources[id]
         if (!outcome) return null
         return { status: outcome.status, ms: outcome.ms, reason: outcome.reason, value: outcome.value }
       }
       return {
-        suspectLevel: result.suspectLevel,
+        suspectLevel: null,
         storage: pick('storage'),
         storage_durability: pick('storage_durability'),
         shields: pick('shields'),

@@ -26,6 +26,9 @@ driven by Turborepo) for the browser SDK and its framework bindings, and it moun
 SDKs, the server SDKs and the Cloudflare Worker proxy as git submodules, each of them an
 independently versioned repository.
 
+The browser SDK and its bindings, the mobile SDKs and bridges, the Node.js SDK and the Cloudflare
+Worker proxy are at `0.3.0`, on wire contract `v: 3`.
+
 Pick the SDK for your platform below. Each one has its own README and a page on
 [docs.fingerly.io](https://docs.fingerly.io/docs/sdks).
 
@@ -78,6 +81,11 @@ The native iOS and Android SDKs are closed binaries under the Fingerly SDK Licen
 `sdk-ios` and `sdk-android` repositories hold the install notes and the licence, not source. The
 React Native, Flutter and Lynx bridges are open source under Apache-2.0.
 
+On Android, two optional sibling artifacts sit next to `io.fingerly:fingerly:0.3.0`:
+`io.fingerly:fingerly-app-checks:0.3.0` (opt-in package visibility) and
+`io.fingerly:fingerly-play-integrity:0.3.0` (Play Integrity token binding). Neither is added to
+the core artifact.
+
 ### Server
 
 Each server SDK reads stored events, verifies webhooks and ships a same-origin proxy. All of them
@@ -120,6 +128,9 @@ The templates are not published to a registry: copy the files for your platform 
 [template README](proxies/templates/README.md)). The kind is what each template sends as
 `x-fingerly-proxy-version`, which the dashboard shows per proxy.
 
+The Cloudflare Worker (`0.3.0`) forwards the SDK's `POST /api/v1/ingest` submissions byte for
+byte, along with the edge's TLS metadata.
+
 ## Getting started
 
 1. Create a Fingerly project and an SDK key. See [API keys](https://docs.fingerly.io/docs/api-keys)
@@ -139,36 +150,40 @@ The templates are not published to a registry: copy the files for your platform 
    // 'granted' only once you have consent (or know none is required for this
    // visitor; see docs/privacy.md §4), or load with the default and call
    // fingerly.setConsent('granted') from your consent tool.
-   const fingerly = await load({ apiKey: 'fly_pk_production_…', consent: 'granted' })
+   const fingerly = await load({
+     apiKey: 'fly_pk_production_…',
+     consent: 'granted',
+     incognitoDetection: 'standard', // the default; 'extended' adds a check that writes to storage
+   })
    const result = await fingerly.identify({ tag: 'checkout' })
-   const { requestId, visitorId, suspectScore, suspectLevel } = result
+   const { requestId, visitorId, identifiable, suspectScore, suspectLevel } = result
 
+   // visitorId is "" whenever identifiable is false, inside an app's web view,
+   // or when an unmatched web report is high-risk.
    // suspectScore and suspectLevel can be null: not scored, or hidden by the key.
    if (suspectLevel === 'high') {
      // an interface hint only: your backend reads the event and decides
    }
 
-   // The authoritative score above never changes. Slower checks continue
-   // as an immutable sidecar that applications may observe when useful.
-   const deferred = await result.deferred
+   // Collect the report locally, without sending anything:
+   const localReport = await fingerly.collect()
    ```
 
-`identify()` collects and submits to `POST /api/v1/ingest`, resolving with the server's answer:
-`visitorId` and, by default, `suspectScore` and `suspectLevel` come back with the submission.
-The score and level are a convenience for trying the product, and a per-key setting hides them,
-which looks the same as unscored. Signals are never sent to a browser or an app. Security
-decisions belong on your backend, reading the event by request ID, or from webhooks. Pass
-`{ submit: false }` to collect without sending anything. Only the raw report comes back then: the
-server's fields are empty, and `suspectScore` is `null` rather than `0`, because nobody scored
-it.
+`identify()` collects in a single pass (a `350 ms` wall-clock budget by default) and submits once
+to `POST /api/v1/ingest`, with no follow-up requests. It resolves with the server's answer:
+`requestId`, `visitorId`, `identifiable` and, unless `hide_client_score` on the key hides them,
+`suspectScore` and `suspectLevel`. A hidden score looks the same as an unscored one. `visitorId`
+is `""` and `visitorIsNew` is `false` whenever `identifiable` is `false`, when the report came
+from an app's web view, or when an unmatched web submission is high-risk. Each browser report
+carries a single-use freshness ticket from the server, so a recorded report cannot be replayed.
 
-The default browser run answers within a 300ms initial budget, then continues the slower checks
-under a separate 1200ms budget. Their result is archived against the request but never changes
-identity, score, billing, or webhooks.
+`collect()` assembles the `SignalReport` locally and sends nothing; it still requires consent to
+be `granted`.
 
-The SDK decides nothing. Every check runs server-side over the stored report, where the rules
-can improve without every customer redeploying an SDK. The answer in the page can be edited by
-whoever controls it, so decide on your backend from the stored event.
+Signals are never sent to a browser or an app. The SDK decides nothing: every check runs
+server-side over the stored report, where the rules can improve without every customer
+redeploying an SDK. The answer in the page can be edited by whoever controls it, so decide on
+your backend from the stored event, read by `requestId`, or from webhooks.
 
 ## How the pieces fit
 
@@ -183,25 +198,29 @@ flowchart LR
 ```
 
 <details>
-<summary>One envelope, three platforms</summary>
+<summary>One <code>v: 3</code> envelope, three platforms</summary>
 
-A browser, an iPhone and an Android phone submit the same report envelope, with the same shape on
-every platform. What differs is what each platform can report.
+A browser, an iPhone and an Android phone submit the same single-pass `v: 3` envelope to
+`POST /api/v1/ingest`: `v: 3`, `sdk`, `consent`, `signals` (a `SignalReport` carrying `schema`,
+`budget_ms`, `elapsed_ms`, `sources` and `integrity`), an optional `attest` on the native mobile
+platforms, and an optional `tag`. What differs is what each platform can report.
 
 That is what lets the Fingerly API have one reader and one set of rules. The canonical TypeScript
 shape lives in `client/web/types/src/index.ts`; `client/web/core` re-exports it, while
 `client/mobile/ios/Sources/Fingerly/Core/Types.swift` and `client/mobile/android/.../core/Types.kt`
-are literal ports of it, field for field, because both ends were already written.
+mirror it directly.
 
 A native report carries raw measurements only, on the contract in
 [`contract/native-report.md`](contract/native-report.md). No client holds a weight, a threshold or
 a verdict: the server derives every result from what it received, under the customer's weights,
-so a rule can change without an app update. A report claiming a verdict is ignored.
+so a rule can change without an app update.
 
 A modified app can still forge raw input, and the server can only score what it receives.
-Hardware attestation is what resists that: Android key attestation and iOS App Attest are checked
-by the server against the platform vendor's roots, and an event records `attested`,
-`not_attested` or `failed`.
+Hardware attestation is what resists that: the native SDKs sign the exact report bytes with a
+hardware-backed key (Android key attestation, with optional Play Integrity, and iOS App Attest
+with DeviceCheck), and the server checks the signature against the platform vendor's roots. The
+next challenge comes back with each answer, so a steady-state mobile identification is one round
+trip.
 
 </details>
 
@@ -213,9 +232,9 @@ separate repositories (see [`.gitmodules`](.gitmodules)):
 | Path | What it is | Where it lives |
 | --- | --- | --- |
 | `client/web/web-js` | Vanilla browser SDK | This repository |
-| `client/web/core` | Framework-agnostic client device and event core (TypeScript), shared by the browser SDKs | This repository |
+| `client/web/core` | Framework-agnostic single-pass `v: 3` client kernel (TypeScript): scheduling, consent and transport, shared by the browser SDKs | This repository |
 | `client/web/{react,vue,svelte,angular,next,nuxt}` | Framework bindings, built on `web-js`, `vue` and `react` | This repository |
-| `client/web/types` | Canonical TypeScript wire contracts (`@fingerly/types`) | Submodule: [`sdk-types`](https://github.com/fingerly-io/sdk-types) |
+| `client/web/types` | Canonical TypeScript `v: 3` wire contracts (`@fingerly/types`), used by the browser SDKs and the TypeScript mobile bridges | Submodule: [`sdk-types`](https://github.com/fingerly-io/sdk-types) |
 | `client/mobile/ios` | Native iOS SDK (Swift) | Submodule: `sdk-ios-binary`, a private source repository. Customers use [`sdk-ios`](https://github.com/fingerly-io/sdk-ios) |
 | `client/mobile/android` | Native Android SDK (Kotlin) | Submodule: `sdk-android-binary`, a private source repository. Customers use [`sdk-android`](https://github.com/fingerly-io/sdk-android) |
 | `client/mobile/react-native` | React Native bridge | Submodule: [`sdk-react-native`](https://github.com/fingerly-io/sdk-react-native) |
@@ -231,7 +250,7 @@ separate repositories (see [`.gitmodules`](.gitmodules)):
 | `server/php` | PHP server SDK | Submodule: [`sdk-php`](https://github.com/fingerly-io/sdk-php) |
 | `proxies/cloudflare` | Cloudflare Worker proxy | Submodule: [`cloudflare-worker-proxy`](https://github.com/fingerly-io/cloudflare-worker-proxy), with its own workspace |
 | `proxies/templates` | Ready-made proxy templates: private, never published, here for their tests | This repository |
-| `contract` | API contract synced from the Fingerly API's OpenAPI spec; the sync point for the API shape across every SDK and panel consumer. Server SDKs vendor snapshots so they can build and test independently | This repository |
+| `contract` | API contract synced from the Fingerly API's OpenAPI spec (`v3-envelope.md`, `v3-manifest.json`, `native-report.md`); the sync point for the API shape across every SDK and panel consumer. Server SDKs vendor snapshots so they can build and test independently. `node contract/sync.mjs` also copies the contract files the Android and iOS tests read into each repository's own `contract/`, and `--check` fails when a copy drifts | This repository |
 | `docs` | Collection notice and browser notes ([`privacy.md`](docs/privacy.md), [`hardened-browsers.md`](docs/hardened-browsers.md), [`private-browsing-matrix.md`](docs/private-browsing-matrix.md)) | This repository |
 | `scripts` | Release and pack-check scripts | This repository |
 
@@ -243,22 +262,29 @@ SDKs are not driven by Turborepo.
 <details>
 <summary>What each package is built on</summary>
 
-- `client/web/core`: the framework-agnostic core shared by the browser SDKs. It contains no DOM
-  code and is compiled against the worker lib so that it cannot acquire any.
-- `client/web/web-js`: the vanilla browser SDK.
+- `client/web/core`: the framework-agnostic single-pass `v: 3` kernel shared by the browser SDKs:
+  the scheduler (a `350 ms` default budget), consent gating, the in-app web view filter and a
+  one-request transport. It contains no DOM code and is compiled against the worker lib so that
+  it cannot acquire any.
+- `client/web/web-js`: the vanilla browser SDK: the browser sources, `incognitoDetection`
+  (`'standard'` or `'extended'`), and the tamper layer that checks whether the browser is lying
+  about them.
 - `client/web/vue`: Vue 3 plugin and composables ([README](client/web/vue/README.md)). One shared
   identification per app, readonly reactive state, SSR-safe.
 - `client/web/{react,svelte,angular,nuxt,next}`: implemented framework bindings, built on
   `web-js`, `vue` and `react`.
-- `client/mobile/ios`: the native iOS SDK. Customers get the compiled framework as the Swift
-  package [sdk-ios](https://github.com/fingerly-io/sdk-ios); React Native and Lynx download the
-  same XCFramework during `pod install`, while Flutter supports both CocoaPods and Swift Package
-  Manager.
-- `client/mobile/android`: the native Android SDK. One dependency (coroutines), no JNI, and two
-  install-time permissions that prompt nobody. Publishes an AAR as `io.fingerly:fingerly`, which
-  is what the three bridges depend on. Both native SDKs are closed binaries under the Fingerly SDK
-  License, distributed from `https://maven.fingerly.io` (the Android Maven repository, with the
-  iOS artifact under `/ios/`).
+- `client/mobile/ios`: the native iOS SDK. Customers get the compiled `Fingerly.xcframework` as the
+  Swift package [sdk-ios](https://github.com/fingerly-io/sdk-ios) or through CocoaPods; React
+  Native and Lynx download the same XCFramework during `pod install`, while Flutter supports both
+  CocoaPods and Swift Package Manager. It keeps its state in the app's Application Support
+  container, excluded from backups, with nothing in the Keychain or `UserDefaults`, and ships a
+  privacy manifest.
+- `client/mobile/android`: the native Android SDK. One dependency (coroutines), no JNI, no
+  `<queries>` declarations, and two install-time permissions that prompt nobody. Publishes an AAR
+  as `io.fingerly:fingerly`, which is what the three bridges depend on, plus the two optional
+  sibling artifacts. Both native SDKs are closed binaries under the Fingerly SDK License,
+  distributed from `https://maven.fingerly.io` (the Android Maven repository, with the iOS
+  artifact under `/ios/`).
 - `client/mobile/react-native`, `client/mobile/flutter`, `client/mobile/lynx`: standalone bridges
   to the native SDKs, not second implementations, and open source under Apache-2.0. All three
   are thin on purpose: most of what matters on a phone is only reachable from native code, so the
@@ -278,9 +304,9 @@ mirroring the Node SDK's architecture, and each is maintained in its own reposit
   served under both ASGI and WSGI, because Python has two server standards where JavaScript has
   one `Request`/`Response`. Python 3.9+, one runtime dependency (`httpx`); uv and ruff for
   tooling.
-- `server/go`: named for its import path rather than the `sdk-*` convention, as `stripe-go` is.
-  Go 1.22+ and nothing outside the standard library. The proxy is a single `http.Handler`,
-  because `net/http` is the one standard every Go router takes, so it needs no adapters.
+- `server/go`: named for its import path rather than the `sdk-*` convention. Go 1.22+ and nothing
+  outside the standard library. The proxy is a single `http.Handler`, because `net/http` is the
+  one standard every Go router takes, so it needs no adapters.
 - `server/java`: Java 11 bytecode built on a 17 toolchain; `jackson-databind` is the only runtime
   dependency. Publishes four artifacts, because Java has three server standards in active use:
   `fingerly-server` plus a `-jakarta`, `-javax` and `-webflux` adapter, each taking its server API
@@ -319,13 +345,13 @@ mirroring the Node SDK's architecture, and each is maintained in its own reposit
 Clone and fetch the submodules the JavaScript workspace needs. The native SDK sources are
 private, so a full recursive clone only works with access to them:
 
-```
+```sh
 git clone https://github.com/fingerly-io/sdks.git
 cd sdks
-git submodule update --init -- client/web/types server/node client/mobile/react-native client/mobile/lynx
+git submodule update --init -- client/web/types server/node client/mobile/react-native client/mobile/lynx proxies/cloudflare
 ```
 
-```
+```sh
 pnpm install
 pnpm build
 pnpm test
@@ -340,15 +366,16 @@ dependencies first for both `lint` and `test`.
 
 The iOS SDK is a separate toolchain and is not driven by Turborepo:
 
-```
+```sh
 cd client/mobile/ios
+swift test --filter ReadmeExamplesTests
 xcodebuild test -scheme Fingerly -destination 'platform=iOS Simulator,name=iPhone 16e'
 ./Example/run.sh                    # builds, installs and launches on a booted simulator
 ```
 
 Flutter is a separate Dart package:
 
-```
+```sh
 cd client/mobile/flutter
 flutter pub get
 flutter analyze
@@ -357,7 +384,7 @@ flutter test
 
 Lynx is a separate library and example app inside the pnpm workspace:
 
-```
+```sh
 pnpm --dir client/mobile/lynx test
 pnpm --dir client/mobile/lynx build
 pnpm --dir client/mobile/lynx/example build
@@ -376,7 +403,7 @@ Bump the package's `version` and merge to `main`. The Release workflow
 ([`.github/workflows/release.yml`](.github/workflows/release.yml), steps in
 [`scripts/release-npm.mjs`](scripts/release-npm.mjs)) then publishes every npm package whose
 version is not on the registry yet, in dependency order, and tags each one with a GitHub Release
-named like `@fingerly/core@0.2.0`. A push that changes no version does nothing. Before publishing
+named like `@fingerly/core@0.3.0`. A push that changes no version does nothing. Before publishing
 it installs from the lockfile, builds, lints, runs the tests and `pnpm check:packs`, then packs
 every tarball and inspects it. A manual run can leave packages out with its `exclude` input.
 
@@ -410,15 +437,17 @@ Every submission carries `"consent": "granted"`, and the API refuses anything el
 
 **The browser SDK is not for apps.** Do not embed `@fingerly/web-js` or a framework binding in an
 app's web view (iOS or macOS `WKWebView`, Android `WebView`, Capacitor, Cordova, Ionic, React
-Native WebView, Flutter, Electron); use the iOS or Android SDK, or the React Native, Flutter or
-Lynx bridge. Inside an app the browser SDK collects nothing and the server matches nothing
+Native WebView, Flutter WebView, Electron); use the iOS or Android SDK, or the React Native,
+Flutter or Lynx bridge. Inside an app's web view the browser SDK runs only checks that identify
+no one, and the server returns `visitorId: ""`
 ([`docs/privacy.md`](docs/privacy.md) §3.3).
 
 ### The SDK never asks the visitor for anything
 
 No permission prompt, no picker, no dialog: not on any browser, not for any signal. A fraud check
 that interrupts a checkout with a permission dialog has destroyed the thing it was protecting,
-and a visitor who is asked has been told they are being measured.
+and a visitor who is asked has been told they are being measured. That holds in Tor Browser and
+in Firefox with its strictest privacy settings too.
 
 A test in the repository (`client/web/web-js/tests/no-permission-prompts.test.ts`) enforces this
 against the source tree, so it cannot regress quietly.

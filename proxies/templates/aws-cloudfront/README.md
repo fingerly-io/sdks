@@ -2,10 +2,10 @@
 
 A CloudFront Function and a cache behavior for the distribution that already
 serves your site. The behavior answers one path the Fingerly dashboard issued,
-on your own domain, and sends only the browser SDK's submissions to the
-Fingerly API as its origin. It is not an open proxy: the origin is
-`api.fingerly.io`, the function rewrites every request to one URL on it, and
-every other method is refused.
+on your own domain, and sends single-pass browser and native SDK submissions as
+raw bytes to the Fingerly API as its origin. It is not an open proxy: the
+origin is `api.fingerly.io`, the function rewrites every request to one URL on
+it, and every other method is refused.
 
 - `function.js`: the function (runtime `cloudfront-js-2.0`), associated with
   both the viewer request and the viewer response event of the behavior.
@@ -18,7 +18,8 @@ every other method is refused.
    the key it shows once. Note the path it issued, such as `/k7x2qm4a`.
 2. Create the function: **CloudFront > Functions > Create function**, runtime
    `cloudfront-js-2.0`. Paste `function.js`, replace `/k7x2qm4a` in `PATH` with
-   your path, save and publish.
+   your path and `production` in `PUBLIC_KEY_SAMPLE` with your proxy key's
+   environment, save and publish.
 3. Add an origin to your distribution: origin domain `api.fingerly.io`,
    protocol **HTTPS only**, and a custom header named `x-fingerly-proxy-key`
    whose value is the key. CloudFront always overwrites a viewer-sent header of
@@ -87,26 +88,47 @@ sets it; should it ever not be one IPv4 or IPv6 address, the function answers
 
 ## What it sends and relays
 
-Upstream, to `https://api.fingerly.io/api/v1/ingest` only: the viewer's request
-with every cookie, `Authorization` and any visitor-sent `x-fingerly-*` header
-removed, plus the `x-fingerly-*` headers the function sets (the client
-address, the page origin, the user agent and
-`x-fingerly-proxy-version: aws-cloudfront/1.0.0`, which the dashboard shows per
-proxy) and the proxy key from the origin's custom header. Other methods answer
-`405` with `Allow: POST`.
+Upstream, to `https://api.fingerly.io/api/v1/ingest` only: an allowlist of
+the viewer's headers (`Content-Type`, `X-Api-Key`, `Idempotency-Key`,
+`User-Agent`, `Sec-Fetch-Site`, `Sec-Fetch-Mode`, `Sec-Fetch-Dest`,
+`Sec-CH-UA`, `Sec-CH-UA-Mobile`, `Sec-CH-UA-Platform`); the function deletes
+every other viewer header, so cookies, `Authorization`, `Referer`, forwarding
+headers, application headers and any visitor-sent `x-fingerly-*` header never
+reach the API. Validated lowercase `x-fingerly-sdk-platform` is restored when
+matched and `Origin` is absent (one channel header goes upstream, never both),
+plus the `x-fingerly-*` headers the function sets (the client
+address, `x-fingerly-origin` only when `Origin` is present, `x-fingerly-host`,
+the user agent and `x-fingerly-proxy-version: aws-cloudfront/1.0.0`, which the
+dashboard shows per proxy) and the proxy key from the origin's custom header.
+CloudFront itself adds its own `X-Forwarded-For`, `Via` and `X-Amz-Cf-Id` to
+every origin request; the API does not read them. Requests missing both
+`Origin` and a valid `x-fingerly-sdk-platform` answer `400` (`missing_origin`)
+without synthesizing `x-fingerly-origin`. Other methods answer `405` with
+`Allow: POST`.
+
+The function never sees the proxy key, so the key's environment is written
+into it, in `PUBLIC_KEY_SAMPLE`. The dashboard fills it in; if you copy
+`function.js` yourself, change `production` there to the environment of your
+proxy key. A request whose `X-Api-Key` is missing or is not a `fly_pk_` key of
+that environment (a secret `fly_sk_` key included) answers `401` and is not
+forwarded.
 
 CloudFront Functions cannot read request bodies, so the body passes through
 unchanged and CloudFront's own request limits apply rather than a 1 MiB cap.
-The API enforces its own limit. The key lives in the origin configuration, so
-unlike the code templates there is no key check in the function. Without the
-origin header the API refuses every call with `401 proxy_key_missing`, because
-the function still sends the visitor headers and only a proxy key may. Add it
-before routing traffic.
+The API enforces its own limit. The proxy key lives in the origin
+configuration, so unlike the code templates there is no proxy key check in the
+function. Without the origin header the API refuses every call with
+`401 proxy_key_missing`, because the function still sends the visitor headers
+and only a proxy key may. Add it before routing traffic.
 
 Back to the page: the viewer response event keeps only `content-type`,
 `x-request-id`, `ratelimit-limit`, `ratelimit-remaining` and `retry-after`
 (and the framing headers CloudFront manages), drops every cookie and sets
-`cache-control: no-store`. CloudFront adds its own `Via` and `X-Cache` style
+`cache-control: no-store`. An API redirect (`3xx`), or any status outside
+`200` to `599`, becomes `502` with none of the origin's headers, so its
+`Location` never reaches the page. A viewer response function cannot replace
+the body, so whatever body the origin sent with such an answer still passes.
+CloudFront adds its own `Via` and `X-Cache` style
 headers after the function runs; none of them names Fingerly. The API itself
 sends nothing naming Fingerly to proxied callers, and the server tests that, so
 the allowlist is defense in depth.

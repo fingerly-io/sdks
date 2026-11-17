@@ -9,11 +9,42 @@
 // The path the dashboard issued. Keep it equal to the cache behavior's path pattern.
 var PATH = '/k7x2qm4a';
 var VERSION = '1.0.0';
-// Where the origin (api.fingerly.io) receives both of the browser SDK's calls;
-// the API tells them apart by their bodies.
+// Where the origin (api.fingerly.io) receives single-pass browser and native SDK submissions.
 var UPSTREAM_URI = '/api/v1/ingest';
 
-// The response headers relayed to the page. A blocker can match a response
+// The environment of the proxy key in the origin's custom header. The function
+// never sees that key, so the environment is written here, inside a sample
+// public key: the dashboard fills it in; if you copy this file by hand, change
+// `production` to `staging` or `development` to match your proxy key. A caller
+// whose X-Api-Key is not a public key of this environment (a secret `fly_sk_`
+// key included) is answered 401 and nothing is forwarded.
+var PUBLIC_KEY_SAMPLE = 'fly_pk_production_…';
+var ENVIRONMENT = /^fly_pk_(production|staging|development)_/.exec(PUBLIC_KEY_SAMPLE);
+var PUBLIC_KEY = ENVIRONMENT ? new RegExp('^fly_pk_' + ENVIRONMENT[1] + '_[A-Za-z0-9_-]+$') : null;
+
+// The viewer request headers forwarded upstream, and nothing else: the
+// contract's client allowlist (proxy.md section 3.2). `Origin` goes on only
+// as `x-fingerly-origin`. Everything not named here (cookies, `Authorization`,
+// `Referer`, forwarding headers, application headers) is deleted.
+var FORWARDED_HEADERS = {
+  'content-type': true,
+  'x-api-key': true,
+  'idempotency-key': true,
+  'user-agent': true,
+  'sec-fetch-site': true,
+  'sec-fetch-mode': true,
+  'sec-fetch-dest': true,
+  'sec-ch-ua': true,
+  'sec-ch-ua-mobile': true,
+  'sec-ch-ua-platform': true,
+  // Read only by CloudFront; the origin request policy never sends it on.
+  'host': true
+};
+
+// Exact lowercase platform names accepted on the native SDK channel.
+var SDK_PLATFORM = /^(ios|android|react-native|react-native-ios|react-native-android|flutter|flutter-ios|flutter-android|lynx-ios|lynx-android|capacitor|kotlin-multiplatform)$/;
+
+// The response headers relayed to the caller. A blocker can match a response
 // header by name, so an allowlist is what guarantees nothing on the way back
 // names Fingerly, whatever the API sends in future.
 var RELAYED_HEADERS = {
@@ -39,7 +70,7 @@ var IPV4 = /^(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])(\.(25[0-5]|2[0-4][0-9
 var IPV6 = /^[0-9A-Fa-f:.]{2,45}$/;
 
 function isIpLiteral(value) {
-  return typeof value === 'string' && (IPV4.test(value) || (IPV6.test(value) && value.indexOf(':') !== -1));
+  return typeof value === 'string' && value.indexOf('%') === -1 && (IPV4.test(value) || (IPV6.test(value) && value.indexOf(':') !== -1));
 }
 
 function plain(statusCode, statusDescription, extra) {
@@ -48,13 +79,34 @@ function plain(statusCode, statusDescription, extra) {
   return { statusCode: statusCode, statusDescription: statusDescription, headers: headers };
 }
 
+function jsonError(statusCode, statusDescription, code, message) {
+  return {
+    statusCode: statusCode,
+    statusDescription: statusDescription,
+    headers: {
+      'content-type': { value: 'application/json' },
+      'cache-control': { value: 'no-store' }
+    },
+    body: '{"error":{"code":"' + code + '","message":"' + message + '"}}'
+  };
+}
+
 function relayResponse(response) {
   var headers = response.headers;
+  // A redirect, or any status outside 200 to 599, is answered 502 with none
+  // of the origin's headers. A viewer response function cannot replace the
+  // body, so whatever body the origin sent with it still passes.
+  var status = response.statusCode;
+  var relayable = status >= 200 && status <= 599 && (status < 300 || status > 399);
   for (var name in headers) {
-    if (!RELAYED_HEADERS[name] && !TRANSPORT_HEADERS[name]) delete headers[name];
+    if (!relayable || (!RELAYED_HEADERS[name] && !TRANSPORT_HEADERS[name])) delete headers[name];
   }
   for (var cookie in response.cookies) delete response.cookies[cookie];
   headers['cache-control'] = { value: 'no-store' };
+  if (!relayable) {
+    response.statusCode = 502;
+    response.statusDescription = 'Bad Gateway';
+  }
   return response;
 }
 
@@ -67,12 +119,35 @@ async function handler(event) {
   if (request.method !== 'POST') return plain(405, 'Method Not Allowed', { 'allow': { value: 'POST' } });
 
   var headers = request.headers;
-  // Forged x-fingerly-* headers go; the origin custom header adds the proxy
-  // key back after this function runs.
+  // 1. Capture incoming x-fingerly-sdk-platform only if single-valued and matching exact lowercase allowlist.
+  var rawPlatform = headers['x-fingerly-sdk-platform'];
+  var sdkPlatform = rawPlatform && (!rawPlatform.multiValue || rawPlatform.multiValue.length === 1) && SDK_PLATFORM.test(rawPlatform.value)
+    ? rawPlatform.value
+    : '';
+
+  var origin = headers.origin && headers.origin.value ? headers.origin.value : '';
+
+  // 2. Keep only the allowlisted viewer headers: every x-fingerly-* header,
+  // authorization, cookies and anything else the viewer sent is dropped.
   for (var name in headers) {
-    if (name.indexOf('x-fingerly-') === 0 || name === 'authorization') delete headers[name];
+    if (!FORWARDED_HEADERS[name]) delete headers[name];
   }
   for (var cookie in request.cookies) delete request.cookies[cookie];
+
+  // 3. Restore validated x-fingerly-sdk-platform only when Origin is absent:
+  // one channel only, as on the API, which refuses a request carrying both.
+  if (sdkPlatform && !origin) headers['x-fingerly-sdk-platform'] = { value: sdkPlatform };
+
+  // 4. Reject with 400 missing_origin iff both Origin and validated sdkPlatform are empty.
+  if (!origin && !sdkPlatform) {
+    return jsonError(400, 'Bad Request', 'missing_origin', 'Origin or X-Fingerly-SDK-Platform header is required');
+  }
+
+  if (!PUBLIC_KEY) return plain(503, 'Service Unavailable', {});
+  var publicKey = headers['x-api-key'];
+  if (!publicKey || (publicKey.multiValue && publicKey.multiValue.length !== 1) || !PUBLIC_KEY.test(publicKey.value)) {
+    return plain(401, 'Unauthorized', {});
+  }
 
   // The address CloudFront accepted the connection from, not a header.
   // CloudFront always sets it; anything else forwards nothing.
@@ -80,7 +155,8 @@ async function handler(event) {
     return plain(500, 'The client IP callback returned no valid address', {});
   }
   headers['x-fingerly-client-ip'] = { value: event.viewer.ip };
-  headers['x-fingerly-origin'] = { value: headers.origin ? headers.origin.value : 'https://' + headers.host.value };
+  if (origin) headers['x-fingerly-origin'] = { value: origin };
+  if (headers.host && headers.host.value) headers['x-fingerly-host'] = { value: headers.host.value };
   if (headers['user-agent']) headers['x-fingerly-user-agent'] = { value: headers['user-agent'].value };
   headers['x-fingerly-proxy-version'] = { value: 'aws-cloudfront/' + VERSION };
 

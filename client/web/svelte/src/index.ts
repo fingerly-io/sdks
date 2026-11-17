@@ -1,33 +1,27 @@
 /**
- * @fingerly/svelte - Svelte 5 bindings for the Fingerly SDK.
- *
- * One state per app, held in Svelte's context, read as plain reactive
- * properties. See the README for the whole surface with examples.
- *
- * Requires Svelte 5: the state is built with runes, which is what lets a
- * component read `fingerly.suspectLevel` and re-render, with no store and no `$`
- * prefix at the call site.
+ * @fingerly/svelte - Svelte 5 bindings for the Fingerly SDK (`0.3.0`, single-pass `v: 3`).
  */
 
 export { FINGERLY_KEY, setupFingerly, useFingerly } from './context.js'
 
 export { createFingerly, FingerlyServerError } from './state.svelte.js'
-export type { Fingerly, FingerlyOptions } from './state.svelte.js'
+export type { Fingerly, FingerlyOptions, IdentifyAnswer } from './state.svelte.js'
 
 export { useIdentify } from './hooks.svelte.js'
 export type { UseIdentifyOptions } from './hooks.svelte.js'
 
-// Re-exported so a component can name what it receives without also declaring
-// a dependency on the browser SDK.
 export type {
-  FingerlyWebEvent,
+  CollectOptions,
   Confidence,
   ConsentState,
+  IdentifyOptions,
   IdentifyResult,
+  IncognitoDetection,
   IntegrityReport,
   Lie,
   SignalOutcome,
   SignalReport,
   SignalStatus,
+  SuspectLevel,
 } from '@fingerly/web-js'
 export { ConsentError, TransportError } from '@fingerly/web-js'

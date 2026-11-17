@@ -36,6 +36,36 @@ browser, or one of the framework bindings built on it
 [Nuxt](https://www.npmjs.com/package/@fingerly/nuxt)). They install this
 package for you.
 
+## How it behaves
+
+- **One pass, one request.** Sources run in a single pass under a time budget
+  (`350 ms` by default, `DEFAULT_BUDGET_MS`), each with its own timeout, and
+  the report goes out as one `v: 3` envelope to `POST /api/v1/ingest`, with
+  idempotent retries and no follow-up requests.
+- **Consent first.** Consent starts as `pending`. Nothing runs before it is
+  `granted`, and withdrawing it aborts collection or submission in flight.
+- **Incognito detection.** `incognitoDetection: 'standard'` (the default)
+  writes nothing. `'extended'` also runs the opt-in probes that may write to
+  storage.
+- **In-app WebViews.** When the page runs inside an in-app WebView, only
+  non-identifying sources run.
+- **Unidentifiable visitors.** Whenever `identifiable` is `false`, `visitorId`
+  is `""` and `visitorIsNew` is `false`.
+- **Freshness ticket (web).** Each report carries a single-use `ticket` the
+  server issued, so a recorded report cannot be replayed. The answer's
+  `next_ticket` is held in memory for the next report; only when none is held
+  (or it has 10 seconds or less left) does the SDK ask for one, on the same
+  path as reports and in parallel with collection. A failed or slow ticket
+  request never blocks or fails `identify()`: the report goes without one.
+  Tickets are never written to storage. A custom `Transport` opts in by
+  implementing `ticket()`.
+- **Ticket proof of work.** When the SDK key asks for it, a ticket arrives with
+  `pow_bits`, and the SDK finds the smallest decimal nonce `n` such that
+  `SHA256(ticket + ":" + n)` starts with that many zero bits, sending it as
+  `ticket_pow`. Solving starts as soon as the ticket arrives, runs in a Worker
+  when the page allows one (in short time slices otherwise), and stops after
+  1500 ms, in which case the report goes without `ticket_pow`.
+
 ## Getting started
 
 Install it only when you are building a platform SDK on the kernel:
@@ -67,7 +97,7 @@ browser set). For a working example, start from the
 
 `FingerlyClientOptions` takes `apiKey`, `endpoints`, `fallbackToDefaultEndpoint`,
 `apiVersion`, `consent` (defaults to `pending`), `platform`, `sources`,
-`integrity`, `embedding`, `schedule` and `transport`. Consent works as in the
+`integrity`, `embedding`, `schedule`, `transport` and `incognitoDetection`. Consent works as in the
 browser SDK: until it is `granted` nothing runs and nothing is sent, and
 `identify()` and `collect()` reject with a `ConsentError`.
 

@@ -2,9 +2,7 @@
   import { setupFingerly, useIdentify } from '../src/index.js'
   import Score from './Score.svelte'
 
-  // submit: false - the playground collects and sends nothing, so no server
-  // answers: the raw report fills in and the score and level read hidden.
-  setupFingerly({ apiKey: 'pk_demo', submit: false })
+  setupFingerly({ apiKey: 'pk_demo', consent: 'granted' })
 
   const fingerly = useIdentify({ immediate: true, tag: 'svelte-playground' })
 </script>
@@ -21,9 +19,8 @@
   <div class="row"><span class="k">suspectScore</span><span class="v">{fingerly.suspectScore ?? 'hidden'}</span></div>
   <div class="row"><span class="k">suspectLevel</span><span class="v" class:hit={fingerly.suspectLevel === 'high'}>{fingerly.suspectLevel ?? 'hidden'}</span></div>
   <div class="row"><span class="k">requestId</span><span class="v">{fingerly.requestId ?? '— (submit: false)'}</span></div>
-  <div class="row"><span class="k">sources</span><span class="v">{fingerly.report ? Object.keys(fingerly.report.sources).length : '—'}</span></div>
-  <div class="row"><span class="k">elapsed_ms</span><span class="v">{fingerly.report?.elapsed_ms ?? '—'}</span></div>
-  <div class="row"><span class="k">engine</span><span class="v">{fingerly.report?.integrity.engine.observed ?? '—'}</span></div>
+  <div class="row"><span class="k">identified</span><span class="v">{fingerly.identified}</span></div>
+  <div class="row"><span class="k">report</span><span class="v">not kept in state (collect() to inspect)</span></div>
   {#if fingerly.error}
     <div class="row"><span class="k">error</span><span class="v hit">{fingerly.error.message}</span></div>
   {/if}

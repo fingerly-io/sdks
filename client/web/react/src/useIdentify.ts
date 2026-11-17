@@ -4,7 +4,7 @@
  * `useIdentify()` - the hook a page actually uses.
  */
 
-import { isSuspiciousLevel, type IdentifyResult } from '@fingerly/web-js'
+import { isSuspiciousLevel, type IncognitoDetection } from '@fingerly/web-js'
 import {
   use,
   useCallback,
@@ -15,53 +15,18 @@ import {
   useSyncExternalStore,
 } from 'react'
 
+import type { FingerlyState, IdentifyAnswer } from './store.js'
 import { useFingerly } from './useFingerly.js'
-import type { FingerlyState } from './store.js'
 
 export interface UseIdentifyOptions {
-  /**
-   * Identify as soon as the component mounts.
-   *
-   * Safe to pass in every component that wants it: the provider holds one
-   * shared identification, so the second and third callers get the first
-   * one's answer rather than starting their own submission. Safe under
-   * StrictMode for the same reason - the double mount React does in
-   * development to surface effect bugs costs nothing here.
-   *
-   * It runs in an effect, which is what makes it server-safe: effects do not
-   * run during SSR, so a Next.js page using this renders on the server and
-   * collects on the client without a guard of its own.
-   *
-   * It waits for consent. While `consent` is `pending` or `denied` nothing is
-   * started, and the identification begins once it becomes `granted`.
-   */
+  /** Identify as soon as the component mounts (after consent is `'granted'`). */
   immediate?: boolean
-  /**
-   * Suspend this component until the first identification finishes.
-   *
-   * Reads the identification with `use()`, so the nearest `<Suspense>`
-   * fallback shows while it collects and the nearest error boundary catches a
-   * failure. The alternative - rendering a spinner from `isLoading` - is still
-   * there and is still the default; this is for a component that has nothing
-   * meaningful to render until it has the answer.
-   *
-   * Client-only by construction: on the server there is no browser to collect
-   * from, so it renders the unidentified state exactly as `immediate` does
-   * and suspends after hydration instead.
-   *
-   * Consent-gated the same way as `immediate`: while consent is not granted it
-   * renders the unidentified state rather than suspending, and suspends once
-   * consent is granted.
-   */
+  /** Suspend this component until the first identification finishes. */
   suspend?: boolean
-  /**
-   * The customer's own correlation value, echoed back on the finished event.
-   *
-   * Accepts a getter as well as a string, so it can be
-   * `() => params.orderId` and be read at the moment of submission rather than
-   * at the moment the component rendered.
-   */
+  /** Opaque correlation label echoed on the event. */
   tag?: string | (() => string | undefined)
+  /** Opt-in extended incognito probe control (`'standard'` or `'extended'`). */
+  incognitoDetection?: IncognitoDetection
 }
 
 export interface UseIdentifyReturn extends FingerlyState {
@@ -69,52 +34,46 @@ export interface UseIdentifyReturn extends FingerlyState {
   isReady: boolean
   /**
    * True when the server scored this `medium` or `high` under the weights you
-   * set: the "should I even look?" flag, and not a policy. `null` when no
-   * server has answered or the level is absent (not identified yet, `submit:
-   * false`, unscored, or hidden by the key), which is not a clean result.
-   * Anything more nuanced reads `suspectLevel`, or your backend reads the signals.
+   * set; `null` when no server has answered or the level is absent. A UI hint
+   * only: the page is controlled by the visitor, so access decisions belong on
+   * your backend, which reads the event by `requestId` with the secret key.
    */
   isSuspicious: boolean | null
-  /** Collect, score and submit. Reuses a completed run unless `force`. */
-  identify: (options?: { tag?: string; force?: boolean }) => Promise<IdentifyResult>
+  /** Collect and submit. Reuses a completed run unless `force`. */
+  identify: (options?: {
+    tag?: string
+    incognitoDetection?: IncognitoDetection
+    force?: boolean
+  }) => Promise<IdentifyAnswer>
   /** Identify again from scratch, ignoring any previous result. */
-  refresh: (options?: { tag?: string }) => Promise<IdentifyResult>
+  refresh: (options?: {
+    tag?: string
+    incognitoDetection?: IncognitoDetection
+  }) => Promise<IdentifyAnswer>
 }
 
 const resolveTag = (tag: UseIdentifyOptions['tag']): string | undefined =>
   typeof tag === 'function' ? tag() : tag
 
-/**
- * Identify this visitor.
- *
- * ```tsx
- * const { suspectScore, suspectLevel, isSuspicious, isLoading, identify } = useIdentify({ immediate: true })
- * ```
- *
- * The state comes through `useSyncExternalStore`, so every component that
- * calls this sees the same identification at the same time - no tearing, and
- * no second submission.
- */
 export function useIdentify(options: UseIdentifyOptions = {}): UseIdentifyReturn {
   const fingerly = useFingerly()
 
   const state = useSyncExternalStore(fingerly.subscribe, fingerly.getState, fingerly.getServerState)
 
-  // The latest tag, kept where a callback can read it without being rebuilt
-  // when it changes. Synced in an effect rather than assigned during render
-  // because a render can be thrown away under concurrent rendering, and a
-  // discarded render must not leave its tag behind. Declared before the
-  // effect that identifies, so the tag is current by the time it runs.
   const tagRef = useRef(options.tag)
+  const incognitoRef = useRef(options.incognitoDetection)
   useEffect(() => {
     tagRef.current = options.tag
-  }, [options.tag])
+    incognitoRef.current = options.incognitoDetection
+  }, [options.tag, options.incognitoDetection])
 
   const identify = useCallback<UseIdentifyReturn['identify']>(
     (callOptions = {}) => {
       const tag = callOptions.tag ?? resolveTag(tagRef.current)
+      const incognitoDetection = callOptions.incognitoDetection ?? incognitoRef.current
       return fingerly.identify({
         ...(tag === undefined ? {} : { tag }),
+        ...(incognitoDetection === undefined ? {} : { incognitoDetection }),
         ...(callOptions.force === undefined ? {} : { force: callOptions.force }),
       })
     },
@@ -130,33 +89,33 @@ export function useIdentify(options: UseIdentifyOptions = {}): UseIdentifyReturn
   const consented = state.consent === 'granted'
 
   useEffect(() => {
-    // Keyed on consent as well, so a banner accepted after mount starts the
-    // identification that was waiting for it. Once: the store memoises the
-    // run, so consent flipping back and forth afterwards submits nothing more.
     if (!immediate || !consented) return
-    // The rejection is swallowed here rather than left to become an unhandled
-    // one: the failure is already in `error`, which is where a component that
-    // opted into `immediate` will look for it. A caller who wants to await the
-    // outcome calls identify() themselves.
-    // Marked automatic, so a failure's hold applies: a remount while the API
-    // is refusing must not send another identification.
     const tag = resolveTag(tagRef.current)
-    void fingerly.identify({ ...(tag === undefined ? {} : { tag }), automatic: true }).catch(() => undefined)
+    const incognitoDetection = incognitoRef.current
+    void fingerly
+      .identify({
+        ...(tag === undefined ? {} : { tag }),
+        ...(incognitoDetection === undefined ? {} : { incognitoDetection }),
+        automatic: true,
+      })
+      .catch(() => undefined)
   }, [immediate, consented, fingerly])
 
-  // Suspending reads the same memoised promise the store hands everyone else,
-  // which is what makes this legal: `use()` recognises a pending value by the
-  // promise's identity, and a fresh promise per render would suspend forever.
-  if (suspend && consented && typeof window !== 'undefined' && state.report === null) {
+  if (suspend && consented && typeof window !== 'undefined' && !state.identified) {
     const tag = resolveTag(tagRef.current)
-    use(fingerly.identify({ ...(tag === undefined ? {} : { tag }), automatic: true }))
+    const incognitoDetection = options.incognitoDetection
+    use(
+      fingerly.identify({
+        ...(tag === undefined ? {} : { tag }),
+        ...(incognitoDetection === undefined ? {} : { incognitoDetection }),
+        automatic: true,
+      }),
+    )
   }
 
-  const isReady = state.report !== null || state.error !== null
+  const isReady = state.identified || state.error !== null
   const isSuspicious = useMemo(() => isSuspiciousLevel(state.suspectLevel), [state.suspectLevel])
 
-  // What React DevTools shows beside the hook, so an inspected component says
-  // where the identification got to without expanding five fields.
   useDebugValue(
     isReady
       ? isSuspicious === null

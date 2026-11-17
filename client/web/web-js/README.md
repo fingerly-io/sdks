@@ -19,13 +19,16 @@
 
 ## What is this
 
-`@fingerly/web-js` is the Fingerly browser SDK. It reads the signals a browser
-exposes, sends them to Fingerly, and returns a stable visitor ID with a suspect
-score, so you can recognise returning visitors and spot automation, tampering
-and abuse. [Fingerly](https://fingerly.io) helps you protect signups, logins and
-payments from fraud and abuse.
+`@fingerly/web-js` is the Fingerly browser SDK (`0.3.0`, wire contract `v: 3`).
+It reads the signals a browser exposes in a single pass (`350 ms` by default),
+sends them to Fingerly in one request, and returns the server's answer: a
+`requestId`, a stable `visitorId`, whether the visitor is `identifiable`, and
+an optional `suspectScore` and `suspectLevel`. With it you can recognise
+returning visitors and spot automation, tampering and abuse.
+[Fingerly](https://fingerly.io) helps you protect signups, logins and payments
+from fraud and abuse.
 
-Using a framework? The bindings wrap this package and install it for you:
+Using a framework? The `0.3.0` bindings wrap this package and install it for you:
 [`@fingerly/react`](https://www.npmjs.com/package/@fingerly/react),
 [`@fingerly/vue`](https://www.npmjs.com/package/@fingerly/vue),
 [`@fingerly/next`](https://www.npmjs.com/package/@fingerly/next),
@@ -35,8 +38,10 @@ Using a framework? The bindings wrap this package and install it for you:
 
 > **Not for apps.** Do not embed this SDK in an app's web view (iOS or macOS
 > `WKWebView`, Android `WebView`, Capacitor, Cordova, Ionic, React Native WebView,
-> Flutter, Electron). Inside an app it collects nothing and the server matches
-> nothing; use the Fingerly iOS or Android SDK there. See section 3.3 of the
+> Flutter WebView, Electron). Inside an app's web view it runs only checks that
+> identify no one, and the server returns `visitorId: ""`. Use the Fingerly iOS
+> or Android SDK, or the React Native, Flutter or Lynx bridge, there. See
+> section 3.3 of the
 > [privacy notes](https://github.com/fingerly-io/sdks/blob/main/docs/privacy.md).
 
 ## Getting started
@@ -66,16 +71,48 @@ Using a framework? The bindings wrap this package and install it for you:
    fingerly.setConsent('granted')
 
    // When the visitor does something worth protecting: sign-up, login, checkout.
-   const { requestId, visitorId, suspectLevel } = await fingerly.identify({ tag: 'login' })
+   // The tag names this action; your backend checks it against the one it expects.
+   const { requestId } = await fingerly.identify({ tag: `login:${loginAttemptId}` })
    ```
 
-Loading collects nothing and sends nothing. Consent defaults to `pending`, and
-`identify()` rejects with a `ConsentError` until it is `granted`.
+4. **Decide on your backend.** Forward the request ID with the action, and let
+   your backend verify it and decide (see
+   [Decide on your backend](#decide-on-your-backend)):
+
+   ```ts
+   const { decision } = await (
+     await fetch('/api/login', {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+       body: JSON.stringify({ email, password, requestId }),
+     })
+   ).json()
+   ```
+
+Loading collects nothing and sends nothing. Consent defaults to `'pending'`, and
+`identify()` / `collect()` reject with a `ConsentError` until consent is
+`'granted'`.
+
+`identify()` runs one collection pass (`350 ms` default wall-clock budget) and
+posts once to `POST /api/v1/ingest`, with no follow-up requests. Each report
+carries a single-use freshness ticket from the server, so a recorded report
+cannot be replayed. The ticket for the next report comes back with each answer
+and is held in memory only; when none is held, a small ticket request to the
+same path runs in parallel with collection, and if it fails the report is sent
+without a ticket. When the SDK key asks for proof of work, the SDK solves it in
+a Worker (or in short time slices when the page's Content Security Policy
+refuses `blob:` workers) within 1500 ms, starting as soon as the ticket arrives.
+
+`visitorId` is `""` and `visitorIsNew` is `false` whenever `identifiable` is
+`false`, when the report came from an app's web view, or when an unmatched web
+report is high-risk.
 
 ## Contents
 
 - [Reading the answer](#reading-the-answer)
+- [Decide on your backend](#decide-on-your-backend)
 - [Consent](#consent)
+- [Incognito detection](#incognito-detection)
 - [Serve it from your own site](#serve-it-from-your-own-site)
 - [Options](#options)
 - [Errors](#errors)
@@ -90,14 +127,68 @@ Loading collects nothing and sends nothing. Consent defaults to `pending`, and
 ## Reading the answer
 
 This package collects and sends. Everything about the score is decided on the
-server, under the weights you set: `suspectLevel` is the band, and it is `null`
-when absent (unscored, or hidden by the SDK key), which is not a clean result.
+server, under the weights you set: `suspectLevel` (`'low' | 'medium' | 'high'`)
+is the band, and it and `suspectScore` are `null` when absent (unscored, or
+hidden by `hide_client_score` on the SDK key), which is not a clean result.
+They are a UI hint only: whoever controls the page controls every branch in it,
+so never gate an action on them in the browser.
 
 Send `requestId` to your server and read the signals and the full result there
 with a secret key (see the [server SDKs](https://docs.fingerly.io/docs/sdks)),
 rather than trusting what the page reports: the page runs code the visitor
-controls and is not told which signals fired. The walkthrough is in
-[server-side verification](https://docs.fingerly.io/docs/server-side-verification).
+controls and is not told which signals fired.
+
+## Decide on your backend
+
+The `requestId` the page sends is untrusted input until your backend has
+verified it. Read the stored event with a secret key and run the checks
+described in
+[server-side verification](https://docs.fingerly.io/docs/server-side-verification):
+
+```ts
+// server (Node.js), never in the page
+import { BlockList } from 'node:net'
+import { Fingerly, FingerlyAPIError } from '@fingerly/node'
+
+const fingerly = new Fingerly({ secretKey: process.env.FINGERLY_SECRET_KEY })
+const MAX_AGE_MS = 2 * 60 * 1000
+
+// expectedTag comes from your server session (`login:${loginAttemptId}` for
+// the attempt your server issued), never from the request body. clientIp is
+// the address of this post, as your framework resolves it.
+export async function decide(requestId: string, expectedTag: string, clientIp: string) {
+  let event
+  try {
+    event = await fingerly.events.get(requestId)                       // 1. it exists
+  } catch (error) {
+    if (error instanceof FingerlyAPIError && error.isPending) return 'retry'
+    if (error instanceof FingerlyAPIError && error.code === 'event_not_found') return 'refuse'
+    throw error
+  }
+  if (event.tag !== expectedTag) return 'refuse'                           // 2. this action
+  if (Date.now() - Date.parse(event.occurred_at) > MAX_AGE_MS) return 'refuse' // 3. recent
+  if (!event.identifiable || event.suspect_score === null) return 'refuse' // 4. identifiable and scored
+  if (event.suspect_level === 'high') return 'review'                      // 5. your policy
+  // 6. another network than this post: step up (for example a second factor)
+  if (!event.ip_network || !inNetwork(clientIp, event.ip_network)) return 'challenge'
+  if (event.suspect_level === 'medium') return 'challenge'
+  return 'allow'
+}
+
+// ip_network is the /24 (IPv4) or /40 (IPv6) the identification came from;
+// the API never returns the address itself.
+function inNetwork(ip: string, cidr: string): boolean {
+  const [base = '', bits = '0'] = cidr.split('/')
+  const type = base.includes(':') ? 'ipv6' : 'ipv4'
+  const list = new BlockList()
+  list.addSubnet(base, Number(bits), type)
+  return list.check(ip, type)
+}
+```
+
+One event can back more than one decision inside the recency window; for a flow
+that must be single use, record the `requestId` with the outcome and refuse one
+you have already seen.
 
 ## Consent
 
@@ -121,6 +212,19 @@ that this visitor needs none. See section 4 of the
 [privacy and consent](https://docs.fingerly.io/docs/privacy-and-consent) and
 [consent tools](https://docs.fingerly.io/docs/consent-tools).
 
+## Incognito detection
+
+`incognitoDetection` takes `'standard'` or `'extended'`. Set it on `load()`, or
+override it per `identify()` or `collect()` call.
+
+- `'standard'` (the default) detects private browsing without writing anything.
+- `'extended'` also runs an opt-in private-browsing check that writes to
+  storage, inside the same single-pass budget.
+
+In any mode the SDK never triggers a browser permission prompt, picker or
+dialog, including in Firefox and Tor Browser with their strictest privacy
+settings.
+
 ## Serve it from your own site
 
 Content blockers refuse requests to third-party hosts and to paths they know.
@@ -138,7 +242,8 @@ const fingerly = await load({
 
 The path is used exactly as given, with nothing appended. An array of paths
 or URLs is tried in order when one does not answer (a `404` or `405` moves on
-to the next at once).
+to the next at once). Pass `fallbackToDefaultEndpoint: true` only if you want
+`https://api.fingerly.io` tried after your custom endpoints fail.
 
 Pair it with a server SDK that mounts the proxy: see
 [proxy integrations](https://docs.fingerly.io/docs/proxy-integrations) and the
@@ -163,31 +268,38 @@ server SDK pages for
 | `endpoints` | `string \| string[]` | Ordered first-party ingestion URLs, posted to exactly as given: a root-relative path such as `/k7x2qm4a`, or an absolute URL. A bare origin such as `http://localhost:8099` is read as an API and gets the API's own path. No query or fragment. |
 | `fallbackToDefaultEndpoint` | `boolean` | Try the Fingerly API after your custom endpoints fail, as a last resort. |
 | `consent` | `'pending' \| 'granted' \| 'denied'` | Defaults to `pending`. |
+| `incognitoDetection` | `'standard' \| 'extended'` | Defaults to `standard`. See [Incognito detection](#incognito-detection). |
 | `apiVersion` | `string` | API route version. Defaults to `v1`. |
-| `schedule` | object | Overrides for the collection scheduler: `budgetMs`, `defaultSourceTimeoutMs`, `concurrency`, `tiers`, `signal`. |
+| `schedule` | object | Overrides for the collection scheduler: `budgetMs` (default `350`), `defaultSourceTimeoutMs`, `concurrency`, `filter`, `signal`. |
 | `transport` | `Transport` | Replaces the HTTP transport, for tests or a custom network stack. |
 | `sources` | array | Replaces the source set, for tests or a caller with a reason to run a subset. |
 
-`identify(options)` and `collect(options)` take `tag` (echoed back on the
-finished event, for your own correlation), `tiers`, `signal` (an `AbortSignal`
-that cancels collection and submission) and `submit`. With `submit: false`
-nothing is sent: the report is collected, and everything the server decides
-comes back empty (no `requestId`, no `visitorId`, `suspectScore` and
-`suspectLevel` null rather than zero). That is the honest answer rather than a
-gap, because nobody scored it. `collect()` runs the collectors and returns the
-report without submitting, and consent applies to it too.
+`identify(options)` takes `tag` (echoed back on the finished event, for your
+own correlation), `incognitoDetection` and `signal` (an `AbortSignal` that
+cancels collection and submission).
+
+`collect(options)` takes `incognitoDetection` and `signal`. It runs the
+collection and returns the `SignalReport` without sending anything, for
+example on a debug page:
+
+```ts
+const report = await fingerly.collect({ incognitoDetection: 'extended' })
+```
+
+Consent applies to `collect()` too: it rejects with `ConsentError` until consent
+is `'granted'`.
 
 ## Errors
 
-- `load()` rejects for a configuration mistake, such as a missing `apiKey`.
-  It never throws synchronously, so a misconfigured key cannot take the page
-  down with it.
-- `identify()` rejects with a `ConsentError` while consent is not `granted`,
-  and with a `TransportError` when the request cannot be completed. Branch on
-  its `status` and `retryable`. When the server asks for patience (`429` or
-  `503` with `Retry-After`), `retryAfterMs` says how long; a wait of up to two
-  seconds is taken care of before the error would be raised. A retry reuses
-  the first attempt's idempotency key, so it is never counted twice.
+- `load()` never throws synchronously. Missing or backend-only keys (`fly_sk_`,
+  `fly_px_`, `fly_mk_`) fail closed.
+- `identify()` and `collect()` reject with `ConsentError` while consent is not
+  `'granted'`.
+- `identify()` rejects with `TransportError` when the submission cannot be
+  completed. Branch on its `status` and `retryable`. When the server sends
+  `Retry-After` on `429` or `503`, `retryAfterMs` carries the wait; waits up to
+  two seconds are retried automatically under the same `Idempotency-Key` so a
+  check is never billed twice.
 
 `TransportError` also carries the server's error `code` when it sent one. The
 two statuses worth branching on are `401` (the key is wrong, or was used from an
@@ -199,25 +311,35 @@ Both are your configuration rather than the visitor's. The full list is in the
 
 With a first-party proxy the SDK needs nothing beyond what your page already
 allows: `connect-src 'self'` covers the proxy path, and the script itself is
-your own bundle or `script-src 'self'` for the script-tag build. Under a policy
-without `'unsafe-eval'`, one check that compiles a string is refused by the
-browser, once per page load; the SDK skips it and its sibling and carries on.
-That refusal is reported to your `report-uri` or `report-to` endpoint if you
-have one, as one `script-src` (`eval`) violation per page view. See
-[Content Security Policy](https://docs.fingerly.io/docs/content-security-policy).
+your own bundle or `script-src 'self'` for the script-tag build.
 
-Firefox prints two deprecation warnings while the SDK reads the graphics
-renderer and the motion sensor. They come from the browser, change nothing
-for the visitor, and are not errors.
+- **`'unsafe-eval'` is not needed.** The SDK never evaluates a string as code,
+  so a policy without `'unsafe-eval'` produces no violation report from it.
+- **`blob:` workers are optional.** One check runs in a short-lived worker
+  built from a `blob:` URL inside the collection budget. If your policy
+  disallows `blob:` workers, the attempt is refused once and that check
+  reports `blocked`; the refusal is remembered for the rest of the page
+  session, so a strict policy produces at most one violation from it per page,
+  never one per call. To let the check run, add `worker-src blob:`.
+- **Proof of work.** When the SDK key asks for proof of work, the SDK solves it
+  in a `blob:` worker too, and in short time slices on the page when the policy
+  refuses one.
+
+See [Content Security Policy](https://docs.fingerly.io/docs/content-security-policy).
+
+Firefox prints a console deprecation warning while the SDK reads the graphics
+renderer. It comes from the browser, changes nothing for the visitor, and is
+not an error.
 
 ## Without a bundler
 
-The package includes a minified script-tag build, `dist/browser.global.js`,
-which defines a global `Fingerly`. Serve it from your own site under a neutral
-name and load it before your code:
+The package (`0.3.0`) includes a minified IIFE script-tag build,
+`dist/browser.global.js`, which defines a global `Fingerly`. Serve that file
+from your own origin under a neutral path (for example copied from
+`@fingerly/web-js@0.3.0/dist/browser.global.js`) and load it before your code:
 
 ```html
-<script src="/assets/app-core.js"></script>
+<script src="/assets/app-core-0.3.0.js"></script>
 <script>
   Fingerly.load({ apiKey: 'fly_pk_production_…', consent: 'granted' })
     .then((fingerly) => fingerly.identify({ tag: 'login' }))
@@ -230,12 +352,12 @@ name and load it before your code:
 The package ships its own types (`dist/index.d.ts`), as ES modules and CommonJS.
 It exports `FingerlyOptions` for `load()`, and re-exports the types you receive
 so you do not need the kernel as a dependency: `IdentifyOptions`,
-`IdentifyResult`, `ConsentState`, `SignalReport`, `SignalOutcome`,
-`SignalStatus`, `IntegrityReport`, `Lie`, `Confidence`, `FingerlyEvent` and
-`FingerlyWebEvent`. The values `FingerlyClient`, `ConsentError`,
-`TransportError` and `isSuspiciousLevel` are exported too, so a handler can
-branch with `instanceof`. The package is side-effect free, so a bundler can tree
-shake what you do not import.
+`CollectOptions`, `IdentifyResult`, `ConsentState`, `IncognitoDetection`,
+`SuspectLevel`, `SignalReport`, `SignalOutcome`, `SignalStatus`,
+`IntegrityReport`, `Lie` and `Confidence`. The values `FingerlyClient`,
+`ConsentError`, `TransportError` and `isSuspiciousLevel` are exported too, so a
+handler can branch with `instanceof`. The package is side-effect free, so a
+bundler can tree shake what you do not import.
 
 ## Requirements
 

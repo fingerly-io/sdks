@@ -37,7 +37,7 @@ function codeBlocks(markdown: string): string[] {
  * two never teach different ways of handling the key.
  */
 const KEY_STEPS: Record<string, string[]> = {
-  nginx: ['Store the proxy key'],
+  nginx: ['Store the proxy key', 'Include it in your site'],
   caddy: ['Store the proxy key', 'Give Caddy the file'],
   container: ['Store the proxy key', 'Run it'],
   'aws-cloudfront': ['Or, with CloudFormation, store the key', 'Deploy the stack and remove the file'],
@@ -253,11 +253,27 @@ describe('shipped files', () => {
     expect(JSON.parse(version('gcp-cloud-run/package.json')).version).toBe('1.0.0')
   })
 
-  it('keep the one upstream', () => {
+  it('keep the one upstream and enforce missing_origin without synthesizing x-fingerly-origin', () => {
     for (const path of ['nginx/fingerly.conf', 'vercel/middleware.ts', 'netlify/edge-functions/relay.ts', 'container/server.mjs', 'gcp-cloud-run/server.mjs']) {
       expect(readFileSync(join(ROOT, path), 'utf8'), path).toContain('https://api.fingerly.io/api/v1/ingest')
     }
-    expect(readFileSync(join(ROOT, 'caddy/Caddyfile'), 'utf8')).toContain('reverse_proxy https://api.fingerly.io {')
+    const nginx = readFileSync(join(ROOT, 'nginx/fingerly.conf'), 'utf8')
+    expect(nginx).toContain('proxy_pass_request_headers off;')
+    expect(nginx).toContain('set $fingerly_gate "${http_origin}${fingerly_platform}";')
+    expect(nginx).toContain('missing_origin')
+    expect(nginx).toContain('proxy_set_header X-Fingerly-Origin $http_origin;')
+    expect(nginx).toContain('proxy_set_header X-Fingerly-SDK-Platform $fingerly_platform;')
+    expect(nginx).toContain('proxy_set_header Sec-Fetch-Site $http_sec_fetch_site;')
+    expect(nginx).toContain('proxy_set_header Sec-Fetch-Mode $http_sec_fetch_mode;')
+    expect(nginx).toContain('proxy_set_header Sec-Fetch-Dest $http_sec_fetch_dest;')
+    expect(nginx).toContain('proxy_set_header Sec-CH-UA-Platform $http_sec_ch_ua_platform;')
+    expect(nginx).not.toContain('$scheme://$http_host')
+
+    const caddy = readFileSync(join(ROOT, 'caddy/Caddyfile'), 'utf8')
+    expect(caddy).toContain('reverse_proxy https://api.fingerly.io {')
+    expect(caddy).toContain('missing_origin')
+    expect(caddy).not.toContain('{scheme}://{hostport}')
+
     expect(readFileSync(join(ROOT, 'aws-cloudfront/cloudformation.yaml'), 'utf8')).toContain('DomainName: api.fingerly.io')
   })
 })

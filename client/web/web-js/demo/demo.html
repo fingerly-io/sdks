@@ -533,7 +533,13 @@
         const body =
           state.tab === 'answer'
             ? (state.answer ?? { note: 'No answer yet. Configure an endpoint and a public SDK key.' })
-            : { sdk: { platform: 'web', version: '0.1.0' }, signals: state.report, tag: 'playground' }
+            : {
+                v: 3,
+                sdk: { platform: 'web', version: '0.3.0' },
+                consent: 'granted',
+                signals: state.report,
+                tag: 'playground',
+              }
 
         $('raw').textContent = JSON.stringify(body, null, 2)
       }
@@ -609,19 +615,27 @@
             ...(settings.endpoint ? { endpoints: settings.endpoint } : {}),
           })
 
-          // One call, one answer. There is no second phase to wait for: the
-          // score comes back with the submission, which is the whole point of
-          // the response this page reads.
-          const result = await client.identify({ submit, tag: 'playground' })
-          state.report = result.report
-          state.requestId = result.requestId
-          state.answer = submit ? result : null
-          $('request-id').textContent = result.requestId || 'not submitted'
-          $('event-state').textContent = submit ? result.state || 'answered' : 'not submitted'
-          render()
-
-          // Read back by the browser-automation check, as on the report page.
-          window.__fingerly = { result }
+          // Single-pass v: 3 flow: identify() when an endpoint + key are set,
+          // or collect() offline when inspecting signals locally.
+          if (submit) {
+            const result = await client.identify({ tag: 'playground' })
+            state.report = result.report
+            state.requestId = result.requestId
+            state.answer = result
+            $('request-id').textContent = result.requestId || 'not submitted'
+            $('event-state').textContent = result.state || 'answered'
+            render()
+            window.__fingerly = { result }
+          } else {
+            const report = await client.collect()
+            state.report = report
+            state.requestId = ''
+            state.answer = null
+            $('request-id').textContent = 'not submitted'
+            $('event-state').textContent = 'not submitted'
+            render()
+            window.__fingerly = { report }
+          }
         } catch (error) {
           state.error = error
           $('event-state').innerHTML = `<span class="text-rose-300">${esc(error.message ?? error)}</span>`

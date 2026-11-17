@@ -3,9 +3,10 @@
  *
  * Put this file at the root of your project, beside package.json. It answers
  * the one path the Fingerly dashboard issued (`/k7x2qm4a` below; the matcher and
- * PATH must both hold it) and forwards the browser SDK's submissions to the
- * Fingerly API. The proxy key comes from the FINGERLY_PROXY_KEY environment
- * variable. No dependencies: web-standard Request and Response only.
+ * PATH must both hold it) and forwards single-pass browser and native SDK
+ * submissions as raw bytes to the Fingerly API. The proxy key comes from the
+ * FINGERLY_PROXY_KEY environment variable. No dependencies: web-standard
+ * Request and Response only.
  */
 export const config = { matcher: '/k7x2qm4a' }
 
@@ -17,13 +18,28 @@ const UPSTREAM_TIMEOUT_MS = 5_000
 /**
  * The one URL this middleware can reach. A constant rather than anything
  * derived from configuration: a misconfigured deployment must not be able to
- * send your traffic somewhere else. Both of the browser SDK's calls go here;
- * the API tells them apart by their bodies.
+ * send your traffic somewhere else. Single-pass browser and native SDK
+ * submissions go here as raw bytes.
  */
 const UPSTREAM = 'https://api.fingerly.io/api/v1/ingest'
 
+/** Exact lowercase platform names accepted on the native SDK channel. */
+const SDK_PLATFORM_RE = /^(ios|android|react-native|react-native-ios|react-native-android|flutter|flutter-ios|flutter-android|lynx-ios|lynx-android|capacitor|kotlin-multiplatform)$/
+
+/** Allowlisted client headers forwarded verbatim when present. */
+const FORWARDED_CLIENT_HEADERS = [
+  'idempotency-key',
+  'user-agent',
+  'sec-fetch-site',
+  'sec-fetch-mode',
+  'sec-fetch-dest',
+  'sec-ch-ua',
+  'sec-ch-ua-mobile',
+  'sec-ch-ua-platform',
+]
+
 /**
- * The response headers relayed to the page, and nothing else. A blocker can
+ * The response headers relayed to the caller, and nothing else. A blocker can
  * match a response header by name, so an allowlist is what guarantees nothing
  * on the way back names Fingerly, whatever the API sends in future.
  */
@@ -32,6 +48,16 @@ const RELAYED_HEADERS = ['content-type', 'x-request-id', 'ratelimit-limit', 'rat
 /** Whether the configured value is shaped like a Fingerly proxy key. */
 function isProxyKey(key: string): boolean {
   return /^fly_px_(?:production|staging|development)_[A-Za-z0-9_-]+$/.test(key)
+}
+
+/**
+ * Whether the caller's X-Api-Key is a public key of the proxy key's
+ * environment. Anything else, a secret `fly_sk_` key included, is answered 401
+ * here rather than sent upstream.
+ */
+function isPublicKeyFor(proxyKey: string, publicKey: string | null): publicKey is string {
+  const environment = /^fly_px_(production|staging|development)_/.exec(proxyKey)?.[1]
+  return Boolean(environment) && new RegExp(`^fly_pk_${environment}_[A-Za-z0-9_-]+$`).test(publicKey ?? '')
 }
 
 /** Whether the request is for the one configured path. */
@@ -52,8 +78,20 @@ function clientIp(request: Request): string {
   return (request.headers.get('x-real-ip') ?? '').trim()
 }
 
+/** Only a final answer in 200 to 599, outside 300 to 399, is relayed. */
+function relayable(status: number): boolean {
+  return status >= 200 && status <= 599 && (status < 300 || status > 399)
+}
+
 function plain(status: number, message: string, extra: Record<string, string> = {}): Response {
   return new Response(message, { status, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', ...extra } })
+}
+
+function jsonError(status: number, code: string, message: string): Response {
+  return new Response(JSON.stringify({ error: { code, message } }), {
+    status,
+    headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+  })
 }
 
 const IPV4 = /^(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/
@@ -115,14 +153,24 @@ export default async function middleware(request: Request): Promise<Response> {
 
   const proxyKey = process.env.FINGERLY_PROXY_KEY ?? ''
   if (!isProxyKey(proxyKey)) return plain(503, 'Service Unavailable')
+
+  // 1. Capture validated lowercase x-fingerly-sdk-platform; anything else is discarded.
+  const rawPlatform = request.headers.get('x-fingerly-sdk-platform') ?? ''
+  const sdkPlatform = SDK_PLATFORM_RE.test(rawPlatform) ? rawPlatform : ''
+  const origin = request.headers.get('origin') ?? ''
+  // 2-4. Reject with 400 missing_origin iff both Origin and validated sdkPlatform are empty.
+  if (!origin && !sdkPlatform) {
+    return jsonError(400, 'missing_origin', 'Origin or X-Fingerly-SDK-Platform header is required')
+  }
+
   const publicKey = request.headers.get('x-api-key')
-  if (!publicKey) return plain(401, 'Unauthorized')
+  if (!isPublicKeyFor(proxyKey, publicKey)) return plain(401, 'Unauthorized')
   const visitorIp = clientIp(request)
   if (!isIpLiteral(visitorIp)) return noAddress()
   const declaredLength = Number(request.headers.get('content-length') ?? '0')
   if (Number.isFinite(declaredLength) && declaredLength > MAX_BODY_BYTES) return plain(413, 'Payload Too Large')
-  const body = await request.arrayBuffer()
-  if (body.byteLength > MAX_BODY_BYTES) return plain(413, 'Payload Too Large')
+  const body = await readCapped(request.body, MAX_BODY_BYTES)
+  if (body === null) return plain(413, 'Payload Too Large')
 
   // Built from scratch: cookies, authorization and anything else the visitor
   // sent (including forged x-fingerly-* headers) never reach the API.
@@ -131,12 +179,19 @@ export default async function middleware(request: Request): Promise<Response> {
     'x-api-key': publicKey,
     'x-fingerly-proxy-key': proxyKey,
     'x-fingerly-client-ip': visitorIp,
-    'x-fingerly-origin': request.headers.get('origin') ?? url.origin,
     'x-fingerly-user-agent': request.headers.get('user-agent') ?? '',
     'x-fingerly-proxy-version': `vercel/${VERSION}`,
   })
-  const idempotency = request.headers.get('idempotency-key')
-  if (idempotency) headers.set('idempotency-key', idempotency)
+  // One channel only: a browser Origin wins over a platform claim, as on the
+  // API, which refuses a proxied request carrying both.
+  if (origin) headers.set('x-fingerly-origin', origin)
+  else if (sdkPlatform) headers.set('x-fingerly-sdk-platform', sdkPlatform)
+  const host = request.headers.get('host') || url.host
+  if (host) headers.set('x-fingerly-host', host)
+  for (const name of FORWARDED_CLIENT_HEADERS) {
+    const value = request.headers.get(name)
+    if (value) headers.set(name, value)
+  }
 
   // One deadline for the whole exchange, ended early if the visitor goes away.
   const timeout = AbortSignal.timeout(UPSTREAM_TIMEOUT_MS)
@@ -145,6 +200,14 @@ export default async function middleware(request: Request): Promise<Response> {
   let answer: Uint8Array | null
   try {
     upstream = await fetch(UPSTREAM, { method: 'POST', headers, body, redirect: 'manual', signal })
+    // A redirect is never followed or relayed, and neither is a status
+    // outside 200 to 599: the key went to the pinned URL only. An opaque
+    // redirect has status 0, so it is caught here too.
+    if (!relayable(upstream.status) || upstream.redirected) {
+      upstream.body?.cancel().catch(() => {})
+      console.warn('proxy: upstream answered with an unusable status')
+      return plain(502, 'Bad gateway')
+    }
     // Read whole, under the same deadline, before anything is sent back: a
     // truncated answer relayed with a 200 would be read as a success.
     answer = await readCapped(upstream.body, MAX_RESPONSE_BYTES)
@@ -164,6 +227,6 @@ export default async function middleware(request: Request): Promise<Response> {
     const value = upstream.headers.get(name)
     if (value !== null) outgoing.set(name, value)
   }
-  const bodiless = [204, 205, 304].includes(upstream.status)
+  const bodiless = upstream.status === 204 || upstream.status === 205
   return new Response(bodiless ? null : answer, { status: upstream.status, statusText: upstream.statusText, headers: outgoing })
 }

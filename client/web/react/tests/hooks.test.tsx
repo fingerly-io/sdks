@@ -213,14 +213,36 @@ describe('FingerlyProvider', () => {
 
   it('accepts a store built elsewhere, for one store per request', async () => {
     const { createFingerlyStore } = await import('../src/store.js')
-    const store = createFingerlyStore({ apiKey: 'pk_request', consent: 'granted', submit: false })
+    const store = createFingerlyStore({
+      apiKey: 'pk_request',
+      consent: 'granted',
+      incognitoDetection: 'extended',
+    })
 
     const { latest, element } = probe(() => useIdentify())
     render(<FingerlyProvider store={store}>{element}</FingerlyProvider>)
 
     await act(() => latest().identify())
 
-    expect(loadMock).toHaveBeenCalledWith({ apiKey: 'pk_request', consent: 'granted' })
+    expect(loadMock).toHaveBeenCalledWith({
+      apiKey: 'pk_request',
+      consent: 'granted',
+      incognitoDetection: 'extended',
+    })
+  })
+
+  it('keeps no signal report in the store and hands none back, on the first call or a reused one', async () => {
+    const { createFingerlyStore } = await import('../src/store.js')
+    const store = createFingerlyStore({ apiKey: 'pk_request', consent: 'granted' })
+
+    const first = await store.identify()
+    const reused = await store.identify()
+
+    expect(first).not.toHaveProperty('report')
+    expect(reused).not.toHaveProperty('report')
+    expect(first.requestId).toBe('req_1')
+    expect(store.getState()).not.toHaveProperty('report')
+    expect(store.getState().identified).toBe(true)
   })
 })
 
@@ -289,14 +311,13 @@ describe('useIdentify', () => {
     expect(latest()).not.toHaveProperty('reason')
   })
 
-  it('reports an unscored check as null, not zero', async () => {
-    // Null and zero are different answers. Zero is "we scored it and found
-    // nothing"; null is "nobody scored it". A binding that collapsed them
-    // would make an unsubmitted page look clean.
+  it('reports an unscored Option B check with suspectScore null and visitorId ""', async () => {
     identifyMock.mockResolvedValueOnce({
       ...RESULT,
-      requestId: '',
+      requestId: 'req_opt_b',
       visitorId: '',
+      visitorIsNew: false,
+      visitorConfidence: 0,
       identifiable: false,
       suspectScore: null,
       suspectLevel: null,
@@ -309,7 +330,8 @@ describe('useIdentify', () => {
 
     expect(latest().suspectScore).toBeNull()
     expect(latest().suspectLevel).toBeNull()
-    expect(latest().visitorId).toBeNull()
+    expect(latest().visitorId).toBe('')
+    expect(latest().visitorIsNew).toBe(false)
     expect(latest().identifiable).toBe(false)
   })
 
@@ -332,7 +354,8 @@ describe('useIdentify', () => {
     expect(identifyMock).toHaveBeenCalledTimes(1)
     expect(a.latest().requestId).toBe('req_1')
     expect(b.latest().requestId).toBe('req_1')
-    expect(c.latest().report).toBe(a.latest().report)
+    expect(c.latest().visitorId).toBe(a.latest().visitorId)
+    expect(c.latest()).not.toHaveProperty('report')
   })
 
   it('costs one identification under StrictMode, which mounts twice', async () => {
@@ -489,15 +512,19 @@ describe('useIdentify', () => {
     }
   })
 
-  it('leaves requestId null when submit is off, and still shares the run', async () => {
-    identifyMock.mockResolvedValue({ ...RESULT, requestId: '' })
+  it('forwards incognitoDetection="extended" and shares one run across components', async () => {
+    identifyMock.mockResolvedValue({ ...RESULT, visitorId: '', visitorIsNew: false, identifiable: false })
 
     const a = probe(() => useIdentify({ immediate: true }))
     const b = probe(() => useIdentify({ immediate: true }))
 
     await act(async () => {
       render(
-        <FingerlyProvider apiKey="fly_pk_development_test" consent="granted" submit={false}>
+        <FingerlyProvider
+          apiKey="fly_pk_development_test"
+          consent="granted"
+          incognitoDetection="extended"
+        >
           {a.element}
           {b.element}
         </FingerlyProvider>,
@@ -505,9 +532,9 @@ describe('useIdentify', () => {
     })
 
     expect(identifyMock).toHaveBeenCalledTimes(1)
-    expect(identifyMock).toHaveBeenCalledWith({ submit: false })
-    expect(a.latest().requestId).toBeNull()
-    expect(b.latest().report).not.toBeNull()
+    expect(identifyMock).toHaveBeenCalledWith({ incognitoDetection: 'extended' })
+    expect(a.latest().visitorId).toBe('')
+    expect(b.latest().identified).toBe(true)
   })
 
   describe('isSuspicious', () => {
@@ -739,8 +766,8 @@ describe('consent', () => {
 
   it('renders the unidentified state instead of suspending until consent is granted', async () => {
     const Card = () => {
-      const { report } = useIdentify({ suspend: true })
-      return <span>{report ? 'identified' : 'waiting'}</span>
+      const { identified } = useIdentify({ suspend: true })
+      return <span>{identified ? 'identified' : 'waiting'}</span>
     }
 
     const { container } = await renderAsync(

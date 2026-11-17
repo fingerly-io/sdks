@@ -142,7 +142,12 @@ function hex8(value: number): string {
  * real traffic reaches inside a day, and a silent collision in a canvas hash
  * would merge two devices into one visitor.
  */
-export function hash64(input: string | Uint8Array): string {
-  const bytes = typeof input === 'string' ? utf8(input) : input
+export function hash64(input: string | Uint8Array | Uint8ClampedArray): string {
+  const bytes =
+    typeof input === 'string'
+      ? utf8(input)
+      : input instanceof Uint8Array
+        ? input
+        : new Uint8Array(input.buffer, input.byteOffset, input.byteLength)
   return hex8(xxh32(bytes, 0)) + hex8(xxh32(bytes, P1))
 }

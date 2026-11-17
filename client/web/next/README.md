@@ -28,9 +28,11 @@ Action. [Fingerly](https://fingerly.io) helps you protect signups, logins and
 payments from fraud and abuse.
 
 > **Not for apps.** This binding runs the browser SDK, which collects nothing
-> inside an app's web view (Capacitor, Cordova, Ionic, React Native WebView,
-> `WKWebView`, Android `WebView`, Electron). Use the Fingerly iOS or Android SDK
-> in an app; see section 3.3 of the
+> that identifies the device inside an app's web view (`WKWebView`, Android
+> `WebView`, Capacitor, Cordova, Ionic, React Native WebView, Flutter WebView,
+> Electron) and answers there with an empty `visitorId`. Use the Fingerly iOS or
+> Android SDK, or the React Native, Flutter or Lynx bridge, in an app; see
+> section 3.3 of the
 > [privacy notes](https://github.com/fingerly-io/sdks/blob/main/docs/privacy.md).
 
 ## Getting started
@@ -70,10 +72,14 @@ payments from fraud and abuse.
    import { useIdentify } from '@fingerly/next'
 
    export function Checkout() {
-     const { identify, isSuspicious, suspectLevel, isLoading } = useIdentify()
+     const { identify, isLoading } = useIdentify()
      …
    }
    ```
+
+4. **Decide on your backend.** Send the `requestId` that `await identify()`
+   resolves with to your server and act on its decision; see
+   [Decide on your backend](#decide-on-your-backend).
 
 The package is marked `'use client'`, so the provider is a client boundary and
 your layout does not have to become one. Pages Router is the same component in
@@ -89,6 +95,7 @@ Mounting it collects nothing. When to identify stays the page's decision.
 - [First-party endpoints](#first-party-endpoints)
 - [Options](#options)
 - [Carry it into a Server Action](#carry-it-into-a-server-action)
+- [Decide on your backend](#decide-on-your-backend)
 - [The two entries](#the-two-entries)
 - [Errors](#errors)
 - [What this does not do](#what-this-does-not-do)
@@ -138,18 +145,36 @@ The hooks are `@fingerly/react`'s, re-exported so you install one package
 import { useIdentify } from '@fingerly/next'
 
 export function Checkout() {
-  const { identify, isSuspicious, suspectLevel, isLoading } = useIdentify()
+  const { identify, isLoading } = useIdentify()
   …
 }
 ```
+
+Send the `requestId` that `await identify()` resolves with to your backend and
+act on its decision (see [Decide on your backend](#decide-on-your-backend)).
+`isSuspicious`, `suspectScore` and `suspectLevel` are a UI hint only; never gate
+an action on them in the page.
+
+`identify()` runs one collection pass (a 350 ms budget by default) and posts
+once, in a single round trip to `POST /api/v1/ingest`, resolving with the
+server's answer: `requestId`, `visitorId`, `identifiable`, and `suspectScore`
+and `suspectLevel` unless the key hides them. Each report carries a single-use
+freshness ticket held in memory only; when none is held, the ticket request
+runs in parallel with collection and never holds up or fails `identify()`.
+
+`visitorId` is `""` (and `visitorIsNew` is `false`) whenever `identifiable` is
+`false`, inside an app's web view, or when the server declines to name a
+high-risk visitor it has not seen before. To inspect the raw `SignalReport`
+locally without submitting anything, call
+`(await useFingerly().client()).collect()`.
 
 `useIdentify({ immediate: true })` is safe in a Next app for the reason it is
 safe anywhere: it runs in an effect, and effects do not run during a server
 render. The page renders on the server, collects after hydration, and every
 component that asks shares the one identification.
 
-The full surface (`immediate`, `suspend`, `tag`, `refresh`, and everything you
-get back) is documented in the
+The full surface (`immediate`, `suspend`, `tag`, `incognitoDetection`,
+`refresh`, and everything you get back) is documented in the
 [React binding's README](https://github.com/fingerly-io/sdks/tree/main/client/web/react#readme).
 
 ## Consent
@@ -229,11 +254,11 @@ as `createFingerlyProxy` (with its `FingerlyProxyOptions` type). See
 | `endpoints` | `string \| string[]` | Ordered first-party ingestion paths or URLs, compared by contents. Overrides `NEXT_PUBLIC_FINGERLY_ENDPOINTS`, which is a JSON array of strings. |
 | `fallbackToDefaultEndpoint` | `boolean` | Opt into the Fingerly API after the custom endpoints fail. |
 | `consent` | `'pending' \| 'granted' \| 'denied'` | Defaults to `pending`. Never read from the environment. |
-| `submit` | `boolean` | `false` collects and scores without submitting anything. |
+| `incognitoDetection` | `'standard' \| 'extended'` | Defaults to `standard`, which checks for private browsing without writing to the visitor's storage; `extended` adds a further check on Chromium browsers inside the same budget. |
 | `apiVersion` | `string` | API route version. Defaults to `v1`. |
 
-`<FingerlyRequestId />` takes `name` (the field name) and `immediate` (on by
-default). The remaining options are `@fingerly/react`'s.
+`<FingerlyRequestId />` takes `name` (the field name), `tag` and `immediate`
+(on by default). The remaining options are `@fingerly/react`'s.
 
 ## Carry it into a Server Action
 
@@ -245,11 +270,13 @@ travel with the submission:
 import { FingerlyRequestId } from '@fingerly/next'
 import { signUp } from './actions'
 
-export default function Page() {
+// attemptId: a random value your server issued for this form and keeps in the
+// visitor's session (for example in an HttpOnly cookie).
+export default function Page({ attemptId }: { attemptId: string }) {
   return (
     <form action={signUp}>
       <input name="email" />
-      <FingerlyRequestId />
+      <FingerlyRequestId tag={`signup:${attemptId}`} />
       <button>Create account</button>
     </form>
   )
@@ -259,13 +286,74 @@ export default function Page() {
 ```ts
 // app/signup/actions.ts
 'use server'
+import { cookies, headers } from 'next/headers'
 import { readRequestId } from '@fingerly/next/server'
+import { decide } from '@/lib/fingerly' // the check below
 
 export async function signUp(formData: FormData) {
   const requestId = readRequestId(formData)
-  // correlate the signup with the identification, or proceed without one
+  if (!requestId) return { error: 'Please try again.' }
+
+  const attemptId = (await cookies()).get('signup_attempt')?.value ?? ''
+  const clientIp = (await headers()).get('x-forwarded-for')?.split(',').at(-1)?.trim() ?? ''
+
+  const decision = await decide(requestId, `signup:${attemptId}`, clientIp)
+  if (decision === 'refuse') return { error: 'Please try again.' }
+  if (decision === 'challenge') return { challenge: true }
+  // allow, or queue for review
 }
 ```
+
+## Decide on your backend
+
+The `requestId` in the form is untrusted form input until your backend has
+verified it: whoever submits the form chooses its value. Read the event with
+the secret key and run the checks described in
+[server-side verification](https://docs.fingerly.io/docs/server-side-verification):
+
+```ts
+// lib/fingerly.ts (server only)
+import { BlockList } from 'node:net'
+import { Fingerly, FingerlyAPIError } from '@fingerly/node'
+
+const fingerly = new Fingerly({ secretKey: process.env.FINGERLY_SECRET_KEY })
+const MAX_AGE_MS = 2 * 60 * 1000
+
+// expectedTag comes from your server session, never from the form. clientIp is
+// the address of this form post, as your platform resolves it.
+export async function decide(requestId: string, expectedTag: string, clientIp: string) {
+  let event
+  try {
+    event = await fingerly.events.get(requestId)                       // 1. it exists
+  } catch (error) {
+    if (error instanceof FingerlyAPIError && error.isPending) return 'retry'
+    if (error instanceof FingerlyAPIError && error.code === 'event_not_found') return 'refuse'
+    throw error
+  }
+  if (event.tag !== expectedTag) return 'refuse'                           // 2. this action
+  if (Date.now() - Date.parse(event.occurred_at) > MAX_AGE_MS) return 'refuse' // 3. recent
+  if (!event.identifiable || event.suspect_score === null) return 'refuse' // 4. identifiable and scored
+  if (event.suspect_level === 'high') return 'review'                      // 5. your policy
+  // 6. another network than this post: step up (for example a second factor)
+  if (!event.ip_network || !inNetwork(clientIp, event.ip_network)) return 'challenge'
+  if (event.suspect_level === 'medium') return 'challenge'
+  return 'allow'
+}
+
+// ip_network is the /24 (IPv4) or /40 (IPv6) the identification came from;
+// the API never returns the address itself.
+function inNetwork(ip: string, cidr: string): boolean {
+  const [base = '', bits = '0'] = cidr.split('/')
+  const type = base.includes(':') ? 'ipv6' : 'ipv4'
+  const list = new BlockList()
+  list.addSubnet(base, Number(bits), type)
+  return list.check(ip, type)
+}
+```
+
+One event can back more than one decision inside the recency window. For a
+flow that must be single use, record the `requestId` with the outcome and refuse
+one you have already seen.
 
 `<FingerlyRequestId />` identifies on mount and renders a hidden field. It is in
 the server-rendered HTML **empty** rather than absent, which is deliberate: a
@@ -315,10 +403,11 @@ Two things are particular to this package:
 **It does not proxy the API itself.** See [First-party endpoints](#first-party-endpoints):
 the proxy comes from `@fingerly/node`.
 
-**It does not read events back.** It does not need to: `identify()` resolves
-with the server's answer (`visitorId`, and `suspectScore` and `suspectLevel`
-unless the key hides them), so there is nothing to fetch afterwards. Reading stored
-events for reporting is `@fingerly/node`'s job (see
+**It does not read events back.** `identify()` resolves in one round trip with
+the server's client-facing answer (`visitorId`, `identifiable`, and
+`suspectScore` and `suspectLevel` unless the key hides them), so there is
+nothing to fetch afterwards in the page. Reading full stored events and their
+risk signals on your backend is `@fingerly/node`'s job (see
 [server-side verification](https://docs.fingerly.io/docs/server-side-verification)).
 
 ## More
@@ -335,15 +424,10 @@ Action reading the field back:
 pnpm --filter @fingerly/next demo   # http://localhost:4178
 ```
 
-It collects and submits nothing until you give it somewhere to submit: put
-`FINGERLY_API_KEY`, `FINGERLY_ENDPOINT` and `FINGERLY_SUBMIT=true` in
-`demo/.env.local` (gitignored), with a key whose allowed origins include the
-port you are running it on. Then the identification produces a real
-`requestId`, the hidden field carries it, and the action prints the one it
-read.
-
-Open it twice, in an ordinary window and a private one, and watch the incognito
-card change.
+Put `FINGERLY_API_KEY` and `FINGERLY_ENDPOINT` in `demo/.env.local` (gitignored),
+with a key whose allowed origins include the port you are running it on. Then
+the identification produces a real `requestId`, the hidden field carries it, and
+the action prints the one it read.
 
 </details>
 
@@ -352,9 +436,11 @@ card change.
 Types ship with the package, for both entries. The main entry exports
 `FingerlyNextProviderProps`, `FingerlyRequestIdProps`, `FingerlyReactOptions`,
 `FingerlyState`, `FingerlyStore`, `UseIdentifyOptions`, `UseIdentifyReturn`,
-`IdentifyResult`, `ConsentState`, `SignalReport` and `Confidence`, and the
-values `ConsentError`, `TransportError`, `FingerlyServerError` and
-`REQUEST_ID_FIELD`. `@fingerly/next/server` exports `readRequestId`,
+`IdentifyAnswer`, `IdentifyOptions`, `IdentifyResult`, `IncognitoDetection`,
+`ConsentState`, `SuspectLevel`, `SignalReport` and `Confidence`, and the values
+`FingerlyProvider`, `FingerlyRequestId`, `useIdentify`, `useFingerly`,
+`createFingerlyStore`, `ConsentError`, `TransportError`, `FingerlyServerError`
+and `REQUEST_ID_FIELD`. `@fingerly/next/server` exports `readRequestId`,
 `REQUEST_ID_FIELD`, `createFingerlyProxy` and `FingerlyProxyOptions`. Both
 entries ship ES module and CommonJS builds.
 
@@ -363,6 +449,8 @@ entries ship ES module and CommonJS builds.
 Next **15 or newer** and React **19** (App Router or Pages Router). Tested
 against Next 16. The browser SDK it wraps needs ES2020 with `fetch` and
 `AbortController`: every current version of Chrome, Edge, Firefox and Safari.
+The `@fingerly/next/server` entry depends on `@fingerly/node`, which is
+installed with it.
 
 ## Documentation
 

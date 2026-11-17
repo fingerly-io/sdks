@@ -27,9 +27,11 @@ plugin, and auto-imported composables. [Fingerly](https://fingerly.io) helps you
 protect signups, logins and payments from fraud and abuse.
 
 > **Not for apps.** This binding runs the browser SDK, which collects nothing
-> inside an app's web view (Capacitor, Cordova, Ionic, React Native WebView,
-> `WKWebView`, Android `WebView`, Electron). Use the Fingerly iOS or Android SDK
-> in an app; see section 3.3 of the
+> that identifies the device inside an app's web view (`WKWebView`, Android
+> `WebView`, Capacitor, Cordova, Ionic, React Native WebView, Flutter WebView,
+> Electron) and answers there with an empty `visitorId`. Use the Fingerly iOS or
+> Android SDK, or the React Native, Flutter or Lynx bridge, in an app; see
+> section 3.3 of the
 > [privacy notes](https://github.com/fingerly-io/sdks/blob/main/docs/privacy.md).
 
 ## Getting started
@@ -44,7 +46,7 @@ protect signups, logins and payments from fraud and abuse.
    # or: yarn add @fingerly/nuxt
    ```
 
-3. **Add the module, then identify.**
+3. **Add the module.**
 
    ```ts
    // nuxt.config.ts
@@ -52,32 +54,67 @@ protect signups, logins and payments from fraud and abuse.
      modules: ['@fingerly/nuxt'],
      fingerly: {
        apiKey: 'fly_pk_production_…',
-       // 'granted' only once you have consent (or know none is required here; see Consent below)
-       consent: 'granted',
      },
    })
    ```
 
-   The composables are auto-imported, like every other Nuxt composable:
+   Consent is not part of this configuration. The client starts `pending` on
+   every page load, and your code calls `setConsent('granted')` once the visitor
+   has answered; see [Consent](#consent).
+
+4. **Identify, then let your backend decide.** The composables are
+   auto-imported, like every other Nuxt composable:
 
    ```vue
    <script setup lang="ts">
-   const { suspectLevel, isSuspicious, isReady } = useIdentify({ immediate: true })
+   const route = useRoute()
+   const { identify, isLoading } = useIdentify({ tag: () => `checkout:${route.params.orderId}` })
+   const challenge = ref(false)
+
+   async function onSubmit() {
+     const { requestId } = await identify()
+
+     // The page only forwards the request ID. Your backend reads the event with
+     // the secret key and decides; the page acts on that decision.
+     const { decision } = await $fetch<{ decision: string }>('/api/checkout', {
+       method: 'POST',
+       body: { orderId: route.params.orderId, requestId },
+     })
+     challenge.value = decision === 'challenge'
+   }
    </script>
 
    <template>
-     <p v-if="isReady && isSuspicious">Something about this session is unusual.</p>
+     <form @submit.prevent="onSubmit">
+       <button :disabled="isLoading">Continue</button>
+     </form>
+     <StepUp v-if="challenge" />
    </template>
    ```
+
+`identify()` runs one collection pass (a 350 ms budget by default) and submits
+once, in a single round trip to `POST /api/v1/ingest`, resolving with the
+server's answer: `requestId`, `visitorId`, `identifiable`, and `suspectScore`
+and `suspectLevel` unless the key hides them. Each report carries a single-use
+freshness ticket held in memory only; when none is held, the ticket request
+runs in parallel with collection and never holds up or fails `identify()`.
+
+`visitorId.value` is `""` (and `visitorIsNew.value` is `false`) whenever
+`identifiable.value` is `false`, inside an app's web view, or when the server
+declines to name a high-risk visitor it has not seen before. To inspect the raw
+`SignalReport` locally without submitting anything, call
+`(await useFingerly().client()).collect()`.
 
 `useIdentify` and `useFingerly` are the same two from `@fingerly/vue`,
 unchanged. Their full surface is in that
 [package's README](https://github.com/fingerly-io/sdks/tree/main/client/web/vue#readme):
-`immediate`, `refresh`, a correlation `tag`, and reading `suspectLevel` and
-`isSuspicious`, which is `null`, not `false`, when the level is absent.
+`immediate`, `refresh`, `incognitoDetection`, a correlation `tag`, and reading
+`suspectLevel` and `isSuspicious`, which is `null`, not `false`, when the level
+is absent.
 
 ## Contents
 
+- [Decide on your backend](#decide-on-your-backend)
 - [Configuration and the environment](#configuration-and-the-environment)
 - [Consent](#consent)
 - [First-party endpoints](#first-party-endpoints)
@@ -91,56 +128,113 @@ unchanged. Their full surface is in that
 - [Help](#help)
 - [Licence](#licence)
 
+## Decide on your backend
+
+Whoever controls the page controls every branch in it, so access decisions
+(allow, step up, hold, refuse) are made on your backend. The `requestId` the
+page sends is untrusted input until your backend has verified it. Read the
+event with the secret key and run the checks described in
+[server-side verification](https://docs.fingerly.io/docs/server-side-verification):
+
+```ts
+// server/api/checkout.post.ts
+import { BlockList } from 'node:net'
+import { Fingerly, FingerlyAPIError } from '@fingerly/node'
+import { getRequestIP, readBody } from 'h3'
+
+const fingerly = new Fingerly({ secretKey: process.env.FINGERLY_SECRET_KEY })
+const MAX_AGE_MS = 2 * 60 * 1000
+
+export default defineEventHandler(async (h3) => {
+  const { requestId } = await readBody<{ requestId: string }>(h3)
+  // From your server session (the order this visitor is paying for), never
+  // from the request body.
+  const expectedTag = `checkout:${await orderIdFromSession(h3)}`
+  const clientIp = getRequestIP(h3) ?? ''
+  return { decision: await decide(requestId, expectedTag, clientIp) }
+})
+
+async function decide(requestId: string, expectedTag: string, clientIp: string) {
+  let event
+  try {
+    event = await fingerly.events.get(requestId)                       // 1. it exists
+  } catch (error) {
+    if (error instanceof FingerlyAPIError && error.isPending) return 'retry'
+    if (error instanceof FingerlyAPIError && error.code === 'event_not_found') return 'refuse'
+    throw error
+  }
+  if (event.tag !== expectedTag) return 'refuse'                           // 2. this action
+  if (Date.now() - Date.parse(event.occurred_at) > MAX_AGE_MS) return 'refuse' // 3. recent
+  if (!event.identifiable || event.suspect_score === null) return 'refuse' // 4. identifiable and scored
+  if (event.suspect_level === 'high') return 'review'                      // 5. your policy
+  // 6. another network than this post: step up (for example a second factor)
+  if (!event.ip_network || !inNetwork(clientIp, event.ip_network)) return 'challenge'
+  if (event.suspect_level === 'medium') return 'challenge'
+  return 'allow'
+}
+
+// ip_network is the /24 (IPv4) or /40 (IPv6) the identification came from;
+// the API never returns the address itself.
+function inNetwork(ip: string, cidr: string): boolean {
+  const [base = '', bits = '0'] = cidr.split('/')
+  const type = base.includes(':') ? 'ipv6' : 'ipv4'
+  const list = new BlockList()
+  list.addSubnet(base, Number(bits), type)
+  return list.check(ip, type)
+}
+```
+
+`isSuspicious`, `suspectScore` and `suspectLevel` in the page are a UI hint
+only. Never gate an action on them. One event can back more than one decision
+inside the recency window; for a flow that must be single use, record the
+`requestId` with the outcome and refuse one you have already seen.
+
 ## Configuration and the environment
 
-Or leave the key out of the config and set it in the environment:
+Leave the key out of the config and set it in the environment instead:
 
-```
+```sh
 NUXT_PUBLIC_FINGERLY_API_KEY=fly_pk_production_…
 ```
 
 The environment wins, and that is the point. Nuxt reads `runtimeConfig.public`
 when the server **starts**, not when the bundle is built, so one build can be
-promoted through staging and production with a different key in each. A module
-that baked its config option into the bundle would take that away, so the
-option is a default and the runtime config overrides it.
+promoted through staging and production with a different key in each.
 
 The key is a **public** SDK key, scoped to the origins you list against it,
 which is what makes it safe in a page. A **secret** key is refused by the API
 whenever a request carries an `Origin`.
 
-The module also publishes `fingerly.endpoints`, `fingerly.submit` and
-`fingerly.consent`, overridable the same way with
-`NUXT_PUBLIC_FINGERLY_ENDPOINTS` (a JSON array, such as `'["/k7x2qm4a"]'`),
-`NUXT_PUBLIC_FINGERLY_SUBMIT` and `NUXT_PUBLIC_FINGERLY_CONSENT`.
+The module publishes `fingerly.apiKey`, `fingerly.apiVersion`,
+`fingerly.endpoints`, `fingerly.fallbackToDefaultEndpoint` and
+`fingerly.incognitoDetection`, each overridable at server startup with its
+environment variable (see [Options](#options)). There is no consent variable: a
+deployment-wide value would apply to every visitor before any of them answered.
 
 ## Consent
 
-Consent defaults to `pending` (`denied` behaves the same), and nothing is
-collected or sent until it is `granted`. If identifying a visitor needs their
-consent first, leave it `pending`:
+The client starts `pending` (`denied` behaves the same) on every page load, and
+nothing is collected or sent until it is `granted`. `fingerly.consent` in
+`nuxt.config.ts` is ignored with a build-time warning, and there is no
+environment variable for it: consent is each visitor's answer, so only a
+runtime `setConsent()` call, made once the visitor has answered, changes it.
 
-```ts
-// nuxt.config.ts
-fingerly: {
-  apiKey: 'fly_pk_production_…',
-  consent: 'pending',
-},
-```
-
-Until it is `granted` nothing is collected and nothing is sent:
-`useIdentify({ immediate: true })` waits, and a manual `identify()` fails with a
-`ConsentError`. Set it from wherever your consent tool reports the answer, and
-the identification that was waiting runs, once:
+Until it is `granted`, `useIdentify({ immediate: true })` waits, and a manual
+`identify()` fails with a `ConsentError`. Set it from wherever your consent tool
+reports the answer, and the identification that was waiting runs, once:
 
 ```vue
 <!-- app.vue, or wherever the consent tool is wired up -->
 <script setup lang="ts">
 const fingerly = useFingerly()
-// then, in the consent tool's callback:
+// then, in the consent tool's callback, once the visitor accepted:
 fingerly.setConsent('granted')
 </script>
 ```
+
+Where no consent is required, call `setConsent('granted')` from your own code
+(for example in a client-only plugin) rather than from configuration, so the
+decision stays visible in the app.
 
 `setConsent()` is also on the client (`await fingerly.client()`), and the current
 state is `consent` in `useIdentify()`. The details are in the
@@ -182,7 +276,7 @@ export default defineEventHandler((event) => {
 
 ```ts
 // nuxt.config.ts
-fingerly: { endpoints: ['/k7x2qm4a'], consent: 'granted' },
+fingerly: { endpoints: ['/k7x2qm4a'] },
 ```
 
 See [proxy integrations](https://docs.fingerly.io/docs/proxy-integrations) and
@@ -197,11 +291,10 @@ The `fingerly` block in `nuxt.config.ts`, published at
 | Option | Environment variable | Notes |
 | --- | --- | --- |
 | `apiKey` | `NUXT_PUBLIC_FINGERLY_API_KEY` | A public SDK key. |
-| `endpoints` | `NUXT_PUBLIC_FINGERLY_ENDPOINTS` | An array of first-party ingestion paths, such as `['/k7x2qm4a']`. In the environment, a JSON array. |
-| `fallbackToDefaultEndpoint` | | Try the Fingerly API only after the custom endpoints fail. Defaults to `false`. |
-| `consent` | `NUXT_PUBLIC_FINGERLY_CONSENT` | `'pending'` (the default), `'granted'` or `'denied'`. |
-| `submit` | `NUXT_PUBLIC_FINGERLY_SUBMIT` | `false` collects without submitting. Defaults to `true`. |
-| `apiVersion` | | API route version. Defaults to `v1`. |
+| `endpoints` | `NUXT_PUBLIC_FINGERLY_ENDPOINTS` | An array of first-party ingestion paths, such as `['/k7x2qm4a']`. In the environment, a JSON array such as `'["/k7x2qm4a"]'`. |
+| `fallbackToDefaultEndpoint` | `NUXT_PUBLIC_FINGERLY_FALLBACK_TO_DEFAULT_ENDPOINT` | Try the Fingerly API only after the custom endpoints fail. Defaults to `false`. |
+| `incognitoDetection` | `NUXT_PUBLIC_FINGERLY_INCOGNITO_DETECTION` | `'standard'` (the default) checks for private browsing without writing to the visitor's storage; `'extended'` adds a further check on Chromium browsers inside the same budget. |
+| `apiVersion` | `NUXT_PUBLIC_FINGERLY_API_VERSION` | API route version. Defaults to `v1`. |
 
 Every key is present in the runtime config even when nothing set it, which is
 what lets the environment override it, under Nuxt's usual `NUXT_PUBLIC_` naming
@@ -214,9 +307,6 @@ installing it collects nothing. It makes the client reachable and no more, so a
 page can call `useIdentify()` in `setup()` during the server render, render its
 "not yet identified" state, and collect after hydration. `immediate` runs in
 `onMounted`, which SSR never reaches.
-
-A client-only plugin would instead make the composable throw during the server
-render Nuxt does first, which is the failure this arrangement exists to avoid.
 
 Calling `identify()` directly on the server rejects with `FingerlyServerError`
 and a message saying what to do instead.
@@ -253,8 +343,8 @@ a real Nuxt app with the module loaded from `src/`:
 pnpm --filter @fingerly/nuxt playground
 ```
 
-It uses `submit: false`, so it sends nothing and no server answers: the raw
-report fills in, and the score and level read hidden.
+It starts `pending` like any page, so it collects nothing until you press
+Accept.
 
 </details>
 
@@ -269,7 +359,8 @@ types of `@fingerly/vue`.
 
 Nuxt **3 or newer**. Tested against Nuxt 4. The browser SDK it wraps needs ES2020
 with `fetch` and `AbortController`: every current version of Chrome, Edge,
-Firefox and Safari.
+Firefox and Safari. The proxy and backend examples above use `@fingerly/node`,
+which you install in the app yourself.
 
 ## Documentation
 

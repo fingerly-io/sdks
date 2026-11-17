@@ -1,10 +1,9 @@
 /**
- * What the browser says about itself.
+ * What the browser claims about itself (`navigator`, `languages`, `vendor`,
+ * and `user_agent_data`).
  *
- * Everything here is a claim. It is collected because claims are cheap, stable,
- * and - crucially - because a claim is only useful next to the observation that
- * contradicts it. On its own this source proves nothing; paired with
- * `engine.ts` and `lies/`, it is where most contradictions surface.
+ * There is no `plugins` source (`WEB-14`): no server rule reads the plugin
+ * names, filenames or MIME lists. Only `navigator.plugin_count` is sent.
  */
 
 import {
@@ -12,11 +11,11 @@ import {
   UnsupportedSignal,
   type LanguagesSignal,
   type NavigatorSignal,
-  type PluginsSignal,
   type Source,
   type VendorSignal,
 } from '@fingerly/core'
 
+import { detectEmbedding } from '../embedding.js'
 import { attempt, compact } from '../util.js'
 
 interface NavigatorUAData {
@@ -28,13 +27,25 @@ interface NavigatorUAData {
 
 export const navigatorSource: Source<NavigatorSignal> = {
   id: SOURCE.navigator,
-  tier: 'fast',
+  stage: 'collect',
+  embeddedSafe: true,
   run() {
     if (typeof navigator === 'undefined') throw new UnsupportedSignal('no-navigator')
     const nav = navigator as Navigator & {
       deviceMemory?: number
       pdfViewerEnabled?: boolean
       userAgentData?: NavigatorUAData
+    }
+
+    // The embedded WebView profile (`WEB-07`): only what the server's
+    // embedded-claim contradiction check reads. No core count, memory,
+    // languages, plugin counts or other device values.
+    if (detectEmbedding()) {
+      return compact<NavigatorSignal>({
+        user_agent: attempt(() => nav.userAgent),
+        platform: attempt(() => nav.platform),
+        webdriver: attempt(() => nav.webdriver),
+      })
     }
 
     return compact<NavigatorSignal>({
@@ -50,10 +61,6 @@ export const navigatorSource: Source<NavigatorSignal> = {
       cookie_enabled: attempt(() => nav.cookieEnabled),
       pdf_viewer_enabled: attempt(() => nav.pdfViewerEnabled),
       do_not_track: attempt(() => nav.doNotTrack),
-      // The count rather than the list. The names are long, largely constant,
-      // and the only thing any detector reads is whether there are none - a
-      // desktop Chromium with zero plugins has no built-in PDF viewer, which
-      // means it was built headless.
       plugin_count: attempt(() => nav.plugins?.length),
       mime_type_count: attempt(() => nav.mimeTypes?.length),
       language: attempt(() => nav.language),
@@ -64,7 +71,7 @@ export const navigatorSource: Source<NavigatorSignal> = {
 
 export const languagesSource: Source<LanguagesSignal> = {
   id: SOURCE.languages,
-  tier: 'fast',
+  stage: 'collect',
   run() {
     if (typeof navigator === 'undefined') throw new UnsupportedSignal('no-navigator')
     return compact({
@@ -76,46 +83,17 @@ export const languagesSource: Source<LanguagesSignal> = {
 
 export const vendorSource: Source<VendorSignal> = {
   id: SOURCE.vendor,
-  tier: 'fast',
+  stage: 'collect',
   run() {
     if (typeof navigator === 'undefined') throw new UnsupportedSignal('no-navigator')
     return compact({ vendor: attempt(() => navigator.vendor) })
   },
 }
 
-export const pluginsSource: Source<PluginsSignal> = {
-  id: SOURCE.plugins,
-  tier: 'fast',
-  run() {
-    if (typeof navigator === 'undefined') throw new UnsupportedSignal('no-navigator')
-    const plugins = navigator.plugins
-    if (!plugins) throw new UnsupportedSignal('no-plugins')
-
-    return {
-      plugins: Array.from(plugins, (plugin) => ({
-        name: plugin.name,
-        filename: plugin.filename,
-        description: plugin.description,
-        mime_types: Array.from(plugin, (mime) => ({
-          type: mime.type,
-          suffixes: mime.suffixes,
-          description: mime.description,
-        })),
-      })),
-    }
-  },
-}
-
-/**
- * User-Agent Client Hints.
- *
- * Deferred because `getHighEntropyValues` is a promise that the browser may
- * gate behind a permission prompt in future, and nothing else waits on it.
- */
 export const userAgentDataSource: Source<Record<string, unknown>> = {
   id: SOURCE.userAgentData,
-  tier: 'deferred',
-  timeoutMs: 200,
+  stage: 'collect',
+  timeoutMs: 150,
   async run() {
     if (typeof navigator === 'undefined') throw new UnsupportedSignal('no-navigator')
     const data = (navigator as Navigator & { userAgentData?: NavigatorUAData }).userAgentData
@@ -129,17 +107,12 @@ export const userAgentDataSource: Source<Record<string, unknown>> = {
 
     if (typeof data.getHighEntropyValues !== 'function') return low
 
-    const high = await data.getHighEntropyValues([
-      'architecture',
-      'bitness',
-      'model',
-      'platformVersion',
-      // Not uaFullVersion: deprecated in the client hints spec, and
-      // fullVersionList already carries the same version per brand.
-      'fullVersionList',
-      'wow64',
-    ])
+    // Only the hint a server rule reads (`WEB-14`): the identity vector uses
+    // `architecture`. Bitness, model, platform version, the full version list
+    // and wow64 are not requested.
+    const high = await data.getHighEntropyValues(['architecture'])
+    const architecture = attempt(() => (high as Record<string, unknown>).architecture)
 
-    return { ...low, ...high }
+    return typeof architecture === 'string' ? { ...low, architecture } : low
   },
 }

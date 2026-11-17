@@ -7,7 +7,7 @@
   </a>
 </p>
 
-<p align="center"><b>Fingerly for Angular</b><br>One identification per application injector, exposed as signals.</p>
+<p align="center"><b>Fingerly for Angular</b><br>One identification per application injector, in one round trip, exposed as read-only signals.</p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@fingerly/angular"><img src="https://img.shields.io/npm/v/@fingerly/angular?style=flat-square" alt="npm version"></a>
@@ -28,9 +28,11 @@ answer. [Fingerly](https://fingerly.io) helps you protect signups, logins and
 payments from fraud and abuse.
 
 > **Not for apps.** This binding runs the browser SDK, which collects nothing
-> inside an app's web view (Capacitor, Cordova, Ionic, React Native WebView,
-> `WKWebView`, Android `WebView`, Electron). Use the Fingerly iOS or Android SDK
-> in an app; see section 3.3 of the
+> that identifies the device inside an app's web view (`WKWebView`, Android
+> `WebView`, Capacitor, Cordova, Ionic, React Native WebView, Flutter WebView,
+> Electron) and answers there with an empty `visitorId`. Use the Fingerly iOS or
+> Android SDK, or the React Native, Flutter or Lynx bridge, in an app; see
+> section 3.3 of the
 > [privacy notes](https://github.com/fingerly-io/sdks/blob/main/docs/privacy.md).
 
 ## Getting started
@@ -45,7 +47,7 @@ payments from fraud and abuse.
    # or: yarn add @fingerly/angular
    ```
 
-3. **Provide it, then identify.**
+3. **Provide it.**
 
    ```ts
    // app.config.ts
@@ -57,24 +59,33 @@ payments from fraud and abuse.
    }
    ```
 
+4. **Identify, then let your backend decide.**
+
    ```ts
    @Component({
      template: `
        <button (click)="submit()" [disabled]="fingerly.isLoading()">
          {{ fingerly.isLoading() ? 'Checking…' : 'Continue' }}
        </button>
+       @if (challenge()) { <step-up /> }
        @if (fingerly.error(); as failure) { <p>{{ failure.message }}</p> }
      `,
    })
    export class Checkout {
-     readonly fingerly = injectIdentify()
+     readonly orderId = input.required<string>()
+     readonly fingerly = injectIdentify({ tag: () => `checkout:${this.orderId()}` })
+     readonly challenge = signal(false)
+     private readonly http = inject(HttpClient)
 
      async submit() {
-       await this.fingerly.identify()
+       const { requestId } = await this.fingerly.identify()
 
-       if (this.fingerly.isSuspicious()) {
-         // step up to MFA, hold for review, add friction
-       }
+       // The page only forwards the request ID. Your backend reads the event with
+       // the secret key and decides; the page acts on that decision.
+       const { decision } = await firstValueFrom(
+         this.http.post<{ decision: string }>('/api/checkout', { orderId: this.orderId(), requestId }),
+       )
+       this.challenge.set(decision === 'challenge')
      }
    }
    ```
@@ -90,15 +101,21 @@ here: providing it per component would give each one its own identification,
 and the one-submission-per-page rule would quietly stop holding.
 
 Providing it collects nothing. The state is built the first time something
-injects it, and it collects only when asked.
+injects it, and it collects only when asked. Consent defaults to `pending`, and
+nothing is collected or sent until it is `granted`; see [Consent](#consent).
 
-`identify()` collects and submits, and resolves with the server's answer in the
-same round trip: the `requestId`, who the visitor is (`visitorId`), and the
-`suspectScore` and `suspectLevel`, unless the key hides them. Nothing is decided
-in the page: scoring lives on the server, under the weights you set.
+`identify()` runs one collection pass (a 350 ms budget by default) and submits
+once, in a single round trip to `POST /api/v1/ingest`, resolving with the
+server's answer: the `requestId`, who the visitor is (`visitorId`), whether they
+could be identified (`identifiable`), and the `suspectScore` and `suspectLevel`,
+unless the key hides them. Nothing is decided in the page: scoring lives on the
+server, under the weights you set. Each report carries a single-use freshness
+ticket, held in memory only; when none is held, the ticket request runs in
+parallel with collection and never holds up or fails `identify()`.
 
 ## Contents
 
+- [Decide on your backend](#decide-on-your-backend)
 - [Identify on render](#identify-on-render)
 - [One identification per page](#one-identification-per-page)
 - [Reading the answer](#reading-the-answer)
@@ -114,6 +131,61 @@ in the page: scoring lives on the server, under the weights you set.
 - [Documentation](#documentation)
 - [Help](#help)
 - [Licence](#licence)
+
+## Decide on your backend
+
+Whoever controls the page controls every branch in it, so access decisions
+(allow, step up, hold, refuse) are made on your backend. The `requestId` the
+page sends is untrusted form input until your backend has verified it. Read the
+event with the secret key and run the checks described in
+[server-side verification](https://docs.fingerly.io/docs/server-side-verification):
+
+```ts
+// server (Node.js), never in the page
+import { BlockList } from 'node:net'
+import { Fingerly, FingerlyAPIError } from '@fingerly/node'
+
+const fingerly = new Fingerly({ secretKey: process.env.FINGERLY_SECRET_KEY })
+const MAX_AGE_MS = 2 * 60 * 1000
+
+// expectedTag comes from your server session (the order this visitor is
+// paying for), never from the request body. clientIp is the address of this
+// post, as your framework resolves it behind your own proxies.
+export async function decide(requestId: string, expectedTag: string, clientIp: string) {
+  let event
+  try {
+    event = await fingerly.events.get(requestId)                       // 1. it exists
+  } catch (error) {
+    if (error instanceof FingerlyAPIError && error.isPending) return 'retry'
+    if (error instanceof FingerlyAPIError && error.code === 'event_not_found') return 'refuse'
+    throw error
+  }
+  if (event.tag !== expectedTag) return 'refuse'                           // 2. this action
+  if (Date.now() - Date.parse(event.occurred_at) > MAX_AGE_MS) return 'refuse' // 3. recent
+  if (!event.identifiable || event.suspect_score === null) return 'refuse' // 4. identifiable and scored
+  if (event.suspect_level === 'high') return 'review'                      // 5. your policy
+  // 6. another network than this post: step up (for example a second factor)
+  if (!event.ip_network || !inNetwork(clientIp, event.ip_network)) return 'challenge'
+  if (event.suspect_level === 'medium') return 'challenge'
+  return 'allow'
+}
+
+// ip_network is the /24 (IPv4) or /40 (IPv6) the identification came from;
+// the API never returns the address itself.
+function inNetwork(ip: string, cidr: string): boolean {
+  const [base = '', bits = '0'] = cidr.split('/')
+  const type = base.includes(':') ? 'ipv6' : 'ipv4'
+  const list = new BlockList()
+  list.addSubnet(base, Number(bits), type)
+  return list.check(ip, type)
+}
+```
+
+`isSuspicious()`, `suspectScore()` and `suspectLevel()` in the page are a UI
+hint only (for example, to show a spinner a little longer). Never gate an
+action on them. One event can back more than one decision inside the recency
+window; for a flow that must be single use, record the `requestId` with the
+outcome and refuse one you have already seen.
 
 ## Identify on render
 
@@ -161,8 +233,14 @@ await this.fingerly.refresh() // ignores the cached result and collects afresh
 `suspectLevel()` is the server's band for this submission, under the weights you
 set. `isSuspicious()` is `true` for `medium` or `high`, `false` for `low`, and
 `null` when the level is absent: no server has answered yet, the submission went
-unscored, or the SDK key hides the score from the page, which cannot tell those
-apart. Null is not a clean result.
+unscored, or the SDK key hides the score from the page. Null is not a clean
+result.
+
+`visitorId()` is `null` before the first identification completes, and
+afterwards holds the server's `visitorId`. That is `""` (with
+`visitorIsNew()` `false`) whenever `identifiable()` is `false`, inside an
+app's web view, or when the server declines to name a high-risk visitor it has
+not seen before.
 
 Signals are read on your backend, by `requestId`, never in the page: which check
 tripped is what a fraudster wants to learn. See
@@ -172,8 +250,8 @@ and the [server SDKs](https://docs.fingerly.io/docs/sdks).
 ### A correlation tag
 
 Echoed back on the finished event so you can match a submission to whatever the
-page was doing. It takes a signal, and is read at submission time rather than
-at construction:
+page was doing. It takes a signal or getter, and is read at submission time
+rather than at construction:
 
 ```ts
 readonly orderId = input.required<string>()
@@ -245,28 +323,36 @@ the [server SDK pages](https://docs.fingerly.io/docs/sdks).
 | `endpoints` | `string \| string[]` | Ordered first-party ingestion paths or URLs, compared by contents. |
 | `fallbackToDefaultEndpoint` | `boolean` | Try the Fingerly API only after the custom endpoints fail. |
 | `consent` | `'pending' \| 'granted' \| 'denied'` | Defaults to `pending`. |
-| `submit` | `boolean` | `false` collects without submitting (see below). |
+| `incognitoDetection` | `'standard' \| 'extended'` | Defaults to `standard` (see below). |
 | `apiVersion` | `string` | API route version. Defaults to `v1`. |
 
-`injectIdentify()` options: `immediate` and `tag` (a string, a signal or a
-getter). `identify()` takes `{ tag, force }` and `refresh()` takes `{ tag }`.
+`injectIdentify()` options: `immediate`, `tag` (a string, a signal or a
+getter) and `incognitoDetection` (a value, a signal or a getter).
+`identify()` takes `{ tag, incognitoDetection, force }` and `refresh()` takes
+`{ tag, incognitoDetection }`.
 
 The configuration is its own token, `FINGERLY_OPTIONS`, separate from the state
 (`FINGERLY`), so a test can keep the real state with a different key, or an app
 can resolve its key from its own config service.
 
+### Incognito detection
+
+`'standard'`, the default, checks for private browsing without writing anything
+to the visitor's storage. `'extended'` adds a further check on Chromium
+browsers, inside the same collection budget.
+
 ### Collect without submitting
 
-For a debug page that wants the raw report and nothing else:
+For a debug page that wants to inspect the raw `SignalReport` locally without
+sending anything, call `collect()` on the underlying client:
 
 ```ts
-provideFingerly({ apiKey: 'fly_pk_production_…', submit: false })
+const client = await this.fingerly.client()
+const report = await client.collect()
 ```
 
-Everything the server decides comes back empty: no `requestId`, no `visitorId`,
-`suspectScore` is `null` rather than `0`, and `isSuspicious()`
-is `null` rather than `false`. That is the honest answer rather than a gap:
-nothing was sent, so nobody scored it, and this SDK decides nothing on its own.
+`collect()` still requires `consent === 'granted'` and rejects with
+`ConsentError` otherwise.
 
 ## What you get back
 
@@ -274,37 +360,33 @@ nothing was sent, so nobody scored it, and this SDK decides nothing on its own.
 const fingerly = injectIdentify()
 
 fingerly.requestId()         // string | null:        identifies this submission
-fingerly.visitorId()         // string | null:        who the server decided this is
-fingerly.visitorIsNew()      // boolean:              never seen before
+fingerly.visitorId()         // string | null:        null before completion; "" when identifiable === false
+fingerly.visitorIsNew()      // boolean:              true only when a new visitor was minted
 fingerly.visitorConfidence() // number:               0 to 100
 fingerly.identifiable()      // boolean:              false when the signals were too thin
-fingerly.duplicate()         // boolean:              answered before; this is the first answer
+fingerly.duplicate()         // boolean:              answered before; this is the cached answer
 fingerly.state()             // string | null:        the server's disposition
-fingerly.suspectScore()      // number | null:        null when nothing scored it
+fingerly.suspectScore()      // number | null:        null when unscored or hidden by the key
 fingerly.suspectLevel()      // string | null:        low, medium, high
-fingerly.report()            // SignalReport | null:  every source, with status and timing
+fingerly.identified()        // boolean:              an identification has succeeded
 fingerly.error()             // Error | null
 fingerly.consent()           // ConsentState        (granted, pending or denied)
-fingerly.isLoading()    // boolean
-fingerly.isReady()      // boolean:              finished, successfully or not
-fingerly.isSuspicious() // boolean | null:       true for medium or high; null when the level is absent
-fingerly.identify()     // Promise<IdentifyResult>
-fingerly.refresh()      // Promise<IdentifyResult>
+fingerly.isLoading()         // boolean
+fingerly.isReady()           // boolean:              finished, successfully or not
+fingerly.isSuspicious()      // boolean | null:       UI hint only; true for medium or high, null when absent
+fingerly.identify()          // Promise<IdentifyAnswer>
+fingerly.refresh()           // Promise<IdentifyAnswer>
 fingerly.setConsent('granted')
 ```
 
-Signals, not observables: a template reads `fingerly.isSuspicious()` and
+Signals, not observables: a template reads `fingerly.isLoading()` and
 re-renders, with no subscription to manage and nothing to unsubscribe from, and
-it works in a zoneless application. They are read-only. The writable signals
-stay inside the factory, because the state is shared and a component that could
-`set()` it would be changing what every other component sees.
+it works in a zoneless application. They are read-only.
 
-Weights and signal names never reach the browser: your backend reads them on the
-server-side event read.
-
-The detectors run on the server, over the report this package sends, so rules
-improve without every integration redeploying. Everything here that says
-anything about a visitor came from the server.
+The binding never keeps the signal report: `identify()` resolves with the
+server's answer (`IdentifyAnswer`, the result without `report`), and nothing of
+the report stays in state. Use `collect()`
+([Collect without submitting](#collect-without-submitting)) to inspect one.
 
 ## Errors
 
@@ -324,12 +406,11 @@ try {
 
 A failed identification is not repeated behind your back. When the server
 answers `429` with `Retry-After`, every call, `refresh()` included, gets the
-same error until that time has passed; the error carries it as
-`retryAfterMs`. After a transient failure without one (a `5xx`, a network
-error), components that identify automatically wait 5 seconds, doubling per
-consecutive failure up to a minute, so route changes during an outage send
-nothing; a call you make yourself, such as on a click, still tries at once.
-Any other failure, such as a wrong key, is tried again on the next call.
+same error until that time has passed; the error carries it as `retryAfterMs`.
+After a transient failure without one (a `5xx`, a network error), components
+that identify automatically wait 5 seconds, doubling per consecutive failure up
+to a minute, so route changes during an outage send nothing; a call you make
+yourself, such as on a click, still tries at once.
 
 `TransportError` carries a `status`. The two worth branching on are `401` (the
 key is wrong, or was used from an origin it does not list) and `402` (the
@@ -360,8 +441,8 @@ a server render rejects with `FingerlyServerError`, as above.
 No permission prompt, no picker, no dialog, on any browser. Reading a
 permission's *state* prompts nobody and is used freely; requesting is banned
 outright and enforced by a test in `@fingerly/web-js`. The one browser API that
-can prompt (Tor Browser answers it with a doorhanger) is skipped whenever the
-SDK detects that browser would prompt.
+can prompt is skipped on Tor Browser and on Firefox with fingerprinting
+resistance turned on, where it would raise a doorhanger.
 
 You can drop this into a checkout without it ever interrupting the checkout.
 
@@ -388,20 +469,22 @@ system.
 pnpm --filter @fingerly/angular playground   # http://localhost:4177
 ```
 
-It uses `submit: false`, so it sends nothing and no server answers: the raw
-report fills in, and the score and level read hidden.
+The signal report is never kept in the binding's state; call `collect()` on
+the client to inspect one.
 
 </details>
 
 ## TypeScript
 
-Types ship with the package. `Fingerly`, `FingerlyOptions` and
-`InjectIdentifyOptions` are exported, together with the types you receive
-(`IdentifyResult`, `ConsentState`, `SignalReport`, `SignalOutcome`,
-`SignalStatus`, `IntegrityReport`, `Lie`, `Confidence` and `FingerlyWebEvent`).
-The values `ConsentError`, `TransportError`, `FingerlyServerError`,
-`createFingerly`, `FINGERLY` and `FINGERLY_OPTIONS` are exported too. The
-package is side-effect free.
+Types ship with the package. `Fingerly`, `FingerlyOptions`,
+`InjectIdentifyOptions` and `IdentifyAnswer` are exported, together with the
+types you receive or pass (`IdentifyResult`, `IdentifyOptions`,
+`CollectOptions`, `ConsentState`, `IncognitoDetection`, `SuspectLevel`,
+`SignalReport`, `SignalOutcome`, `SignalStatus`, `IntegrityReport`, `Lie` and
+`Confidence`). The values `provideFingerly`, `injectFingerly`, `injectIdentify`,
+`createFingerly`, `FINGERLY`, `FINGERLY_OPTIONS`, `ConsentError`,
+`TransportError` and `FingerlyServerError` are exported too. The package is
+side-effect free.
 
 ## Requirements
 

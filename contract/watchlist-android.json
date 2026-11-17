@@ -1,0 +1,32 @@
+{
+  "native_methods": [
+    "java.io.File!exists",
+    "java.io.File!canRead",
+    "java.io.File!canWrite",
+    "java.io.File!listFiles",
+    "java.io.File!list",
+    "java.io.File!getCanonicalFile",
+    "java.io.FileInputStream!getChannel",
+    "java.io.FileInputStream!read",
+    "java.io.BufferedReader!readLine",
+    "java.lang.Class!forName",
+    "java.lang.Runtime!exec",
+    "java.lang.ProcessBuilder!start",
+    "java.lang.System!getProperty",
+    "java.lang.System!getenv",
+    "java.lang.Throwable!getStackTrace",
+    "java.net.Socket!connect",
+    "android.os.Debug!isDebuggerConnected",
+    "android.os.Debug!waitingForDebugger",
+    "android.os.Process!myUid",
+    "android.provider.Settings$Secure!getString",
+    "android.provider.Settings$Global!getString",
+    "android.provider.Settings$Global!getInt",
+    "android.provider.Settings$Global!getFloat",
+    "android.provider.Settings$System!getInt",
+    "android.os.SystemProperties!get",
+    "android.system.Os!access",
+    "android.system.Os!lstat",
+    "android.content.pm.Signature!toByteArray"
+  ]
+}

@@ -1,28 +1,53 @@
 # Hardened browsers
 
-What Brave, Tor and the rest actually do to the signals this SDK collects, and
-which of our rules that breaks.
+What Brave, Tor, Firefox `resistFingerprinting`, and Safari Private Browsing
+actually do to the signals this SDK collects, and how the `0.3.0` (`v: 3`)
+single-pass pipeline handles them without user prompts, shared-ID collisions,
+or false-positive risk scores.
 
-The rules themselves live in `@fingerly/core`'s `detect/shields.ts` and are
-commented there. This file is the measurement record behind them: the numbers,
-where they came from, and the ones that turned out to be dead ends, so that the
-next person to have a good idea about `navigator.deviceMemory` can check here
-before spending an afternoon on it.
+The client-side collectors live in `@fingerly/web-js` (`src/sources/runtime.ts`,
+`shields.ts`, `render.ts`, `durability.ts`) and `@fingerly/core`
+(`src/scheduler.ts`), while the authoritative identity and risk gates live on
+the server (`server/domain/identity/identity.go`, `shields.go`, and
+`server/domain/risk/browser_detectors.go`). This file is the measurement record
+behind them: the numbers, where they came from, and the dead ends not to repeat.
 
 ## Why this is not the same problem as bot detection
 
-A bot hides. A hardened browser *substitutes* - it returns a plausible, stable,
-completely fabricated value, and nothing about the value says so. That is a
-worse failure mode for us than a missing signal, because a missing signal makes
-a detector abstain and a substituted one makes it answer confidently.
+A bot hides. A hardened browser *substitutes* — it returns a plausible, stable,
+completely fabricated or cohort-masked value, and nothing about the value
+alone says so. That is a worse failure mode than a missing signal, because a
+missing signal makes a detector abstain whereas a substituted or uniform value
+either splits one returning visitor across sessions or merges strangers onto one
+shared `visitorId`.
 
-The rule that follows from it: **a detector must never reason from a value the
-browser is known to fabricate, however well that value matches.** Gating is not
-a nicety here, it is the whole defence.
+Three rules follow in `v: 3`:
 
-And the corollary, which matters commercially: none of this is evidence about
-the visitor. Running Brave means running Brave. `Verdicts.shields` exists to be
-read by our own code, not to be shown to a customer as a risk factor.
+1. **Never trigger a browser permission prompt or Tor canvas doorhanger
+   (Rule #1).** On Gecko engines, Stage 1 (`prerequisite`) runs a bounded
+   `2.5ms–3.0ms` single-tick `performance.now()` timer-clamping probe (`0.0ms`
+   overhead on WebKit and Blink) before Stage 2 (`<= 350ms` single-pass
+   collection) starts. Whenever Gecko clamps timer resolution (`delta == 0`
+   within `3.0ms` or `delta >= 1.5ms`), **both** `shields` and `canvas` skip
+   every pixel readback (`getImageData`, `toDataURL`, `toBlob`, `convertToBlob`,
+   `readPixels`) and emit `status: "blocked", reason: "rfp-canvas-prompt-avoided"`.
+   When unlocked, `shields` and `canvas` share a single offscreen `<canvas>`
+   render and hash raw `Uint8ClampedArray` RGBA pixels in `< 1.5ms`.
+2. **Verify privacy-browser claims behaviorally before exempting rules.** An
+   anti-detect bot can forge `shields: { brave: true }` in JSON, so the server
+   verifies Brave farbling behaviorally (Chromium engine consistency + Brave's
+   unconditional `2147483648` `storage.estimate().quota` / `canvas_noise`
+   signature), WebKit consistency on Safari Private Browsing, and Gecko RFP
+   consistency on Tor/Firefox before dropping farbled components or exempting
+   `fingerprint_suppressed` (`+16`).
+3. **Return Option B (`visitorId: ""`) instead of colliding strangers.** When
+   correlated cohort masking leaves fewer than `6` independent Tier-A hard
+   components (`identifiable: false`), the server declines both `ExactKey` and
+   fuzzy candidate matching, skips PostgreSQL `Visitors.Mint()` (zero database
+   row growth), suppresses `fingerprint_suppressed` on verified privacy
+   browsers, and returns `identifiable: false`, `visitorId: ""`,
+   `visitorIsNew: false`, `visitorConfidence: 0`. Running Brave, Tor, or Safari
+   Private Browsing is never scored as tampering.
 
 ## Brave
 
@@ -39,14 +64,13 @@ windows on the same machine, minutes apart, same origin.
 | `navigator.plugins.length` | 7 | 7 | **padded** (spec allows 5 or 0) |
 | `navigator.mimeTypes.length` | 2 | 2 | untouched |
 | `navigator.connection` | absent | absent | removed |
-| `navigator.brave.isBrave()` | `true` | `true` | volunteered |
+| `navigator.brave.isBrave()` | `true` | `true` | volunteered (`brave_claimed`) |
 | UA-CH brands | includes `Brave` | includes `Brave` | volunteered |
 | user-agent string | Chrome's, byte for byte | same | no tell |
-| canvas, audio, text metrics | stable within the page | stable, different values | farbled per session+site |
-| WebGL unmasked renderer | real (`Apple M1 Pro`) | real | untouched at default shields |
-| `speechSynthesis.getVoices()` | 0 | 0 | suppressed |
+| canvas, audio, text metrics | stable within the page | stable, different values | farbled per session+site (`canvas_noise`) |
+| WebGL unmasked renderer | real (`Apple M1 Pro`) | real (or masked at aggressive shields) | untouched at default shields |
 
-### The quota constant
+### Behavioral Brave verification & the quota constant
 
 `brave-core`, `chromium_src/third_party/blink/renderer/bindings/modules/v8/v8_storage_estimate.h`:
 
@@ -57,135 +81,98 @@ void setQuota(uint64_t quota) {
 }
 ```
 
-Unconditional. Not gated on the shields level, so it is there even for a
-visitor who turned fingerprint protection off for the site. Landed as
-brave-browser#11543 / brave-core#6622 in 2020 for the express purpose of
-breaking private-window detection, and rewritten into its current form in
-brave-core#22320.
+Unconditional. Not gated on the shields level, so it is present even when a
+visitor lowers fingerprint protection for a site (landed in brave-browser#11543
+/ brave-core#6622 and rewritten in brave-core#22320). Because it patches only
+the `StorageEstimate` binding, `webkitTemporaryStorage.queryUsageAndQuota`
+(`StorageSignal.legacy_quota`) still reports the underlying pool.
 
-It patches the `StorageEstimate` binding, which is why
-`webkitTemporaryStorage.queryUsageAndQuota` - a different, deprecated path to
-the same quota manager - still reports the truth. That is the reading
-`StorageSignal.legacy_quota` carries, and it is the only reason Chromium
-private-window detection works on Brave at all.
-
-Expect it to be closed once anyone notices. It is deprecated in Chromium and
-scheduled for removal regardless, so the field is written as a second opinion:
-when it goes, it goes absent, and the detector falls back rather than reading a
-missing value as a small one.
+On the server (`server/domain/risk/browser_detectors.go` and
+`server/domain/identity/shields.go`), a report is treated as verified Brave
+farbling only when observed Blink/V8 engine behavior agrees with behavioral
+Brave indicators (such as the pinned `2147483648` quota, `canvas_noise`, or
+padded plugin invariants alongside `brave` / `brave_claimed`), preventing a
+spoofed JSON payload from claiming `brave: true` to bypass `fingerprint_suppressed`
+or component checks.
 
 ### The device-memory trap
 
 The tempting rule is "Chromium caps `deviceMemory` at 8, Brave draws from
-{2, 4, 8, 16, 32}, so anything above 8 is farbling". **It is wrong**, and it was
-one commit from shipping here.
+{2, 4, 8, 16, 32}, so anything above 8 is farbling". **It is wrong.**
 
 Chromium's `ApproximatedDeviceMemory::CalculateAndSetApproximatedDeviceMemory`
-clamps to `[2, 32]` on desktop and only to `[1, 8]` on Android. The 8 cap is the
-*spec's* recommendation and Android's limit, not desktop Chrome's behaviour. An
-ordinary desktop Chrome on a 16GB machine reports 16, and the rule above would
-have fired on every one of them - replacing the false positive we were fixing
-with a larger one.
+clamps to `[2, 32]` on desktop and only to `[1, 8]` on Android. An ordinary
+desktop Chrome on a 16GB machine reports 16. Brave's replacement set is
+deliberately identical to desktop Chromium's legal set, so once behavioral
+Brave farbling is detected, detectors never divide quota by `deviceMemory`.
 
-Brave's replacement set is exactly the set of values a desktop Chromium can
-legitimately report. That is deliberate. There is no arithmetic that recovers
-the true value, and the farbled 16 and the honest 16 are the same number, so
-the only correct handling is to stop dividing by the field once anything else
-says the browser farbles.
+### What broke previously
 
-### What broke, exactly
-
-`detect/incognito` computed `quota / (deviceMemory * GiB)` and compared against
-a 0.3 ceiling. On Brave that is `2 / 16 = 0.125` - a constant over a die roll -
-so **every Brave visitor on the web was reported to be browsing privately**,
-from an ordinary window, at medium confidence, citing
-`chromium-storage-quota-ratio-capped`. Both inputs were fabricated and the
-output looked like a measurement.
+`detect/incognito` previously computed `quota / (deviceMemory * GiB)` against a
+0.3 ceiling. On Brave that evaluated `2 / 16 = 0.125`, falsely flagging
+ordinary Brave windows as private (`chromium-storage-quota-ratio-capped`).
+Instead, Brave private windows are detected via `legacy_quota - usage < 10 GiB`
+(`chromium-quota-below-static-pool`), gated on the modern quota equalling
+Brave's `2147483648` constant so small-disk stock Chromium devices are
+untouched.
 
 ### Dead ends specific to Brave
 
-- Canvas/audio double-render - Brave's farbling is deterministic per session and
-  per site, so two renders inside one page agree and `unstable` stays false.
-  That check catches Tor and per-read noising, not Brave.
-- `navigator.deviceMemory` and `hardwareConcurrency` - farbled, and farbled into
-  the legal range. See the trap above.
-- The user-agent string - byte-identical to Chrome's. Only UA-CH names Brave.
+- Canvas/audio double-render — Brave's farbling is deterministic per session and
+  per eTLD+1, so two renders inside one page agree and `unstable` stays false.
+  Double-render catches per-read noise, whereas Brave canvas farbling is caught
+  via the known-pixel checkerboard canary (`shields.canvas_noise`).
+- `navigator.deviceMemory` and `hardwareConcurrency` — farbled into the legal
+  range.
+- The user-agent string — byte-identical to Chrome's.
 
-Everything Chromium closed for both browsers is listed under Chromium below.
+## Safari 17+ Private Browsing & correlated-mask grouping
 
-### Brave private windows
+Modern WebKit (Safari 17+ Private Browsing and Advanced Fingerprinting
+Protection) combines uniform hardware/GPU masking (`"Apple GPU"`, clamped
+screen/hardware traits) with deterministic per-session canvas/WebGL noise
+(`canvas_noise == true`).
 
-Detected, but not by anything Brave leaves in `navigator.storage.estimate()`.
+If the identity engine counted `canvas.geometry`, `canvas.text`,
+`webgl.vendor`, `webgl.renderer`, `webgl.params`, and `webgl.precision` as six
+independent Tier-A components on a masked session, two bad outcomes would occur:
 
-Brave took Chromium's *static* quota for ordinary windows - its legacy reading
-is the 10 GiB constant - without taking `kIncognitoStaticStorageQuota`, which
-would have pinned the private one too. So a Brave private window still reports
-the memory-derived incognito pool: 3 GiB against the ordinary window's 10.
+1. Uniformly masked attributes across identical iPhone or Mac models would meet
+   the `MinimumHardComponents = 6` bar and **collide strangers onto a single
+   shared `visitorId`**.
+2. Session-keyed canvas hashes would miss on every new private tab and bloat
+   PostgreSQL `visitor_identities` with orphan rows.
 
-The rule is `legacy_quota - usage < 10 GiB`, which needs no device memory at all
-and is therefore immune to the farbling that killed the ratio test. It fires as
-`chromium-quota-below-static-pool`.
+In `v: 3`, `Vector.Identifiable()` (`server/domain/identity/identity.go`) groups
+the entire 6-component `renderingFamily` (`canvas.geometry`, `canvas.text`,
+`webgl.vendor`, `webgl.renderer`, `webgl.params`, `webgl.precision`) as **at
+most 1 correlated family** whenever `CorrelatedMask` is set (`canvas_noise == true`
+or generic cohort GPU masking). Combined with masked hardware fields, Safari
+Private Browsing (and aggressive Brave / Tor RFP) falls below
+`MinimumHardComponents = 6` (`identifiable: false`):
 
-The bound on it: a device with less than 10 GiB of *total* disk gets a
-disk-derived quota in an ordinary window too, and would be read as private. That
-is not a desktop configuration, and the rule is gated on the modern reading
-being Brave's pinned constant, so it cannot reach a stock Chromium.
+- The server skips `ExactKey` and fuzzy candidate lookup, skips
+  `Visitors.Mint()` (zero PostgreSQL writes), and returns **Option B**:
+  `identifiable: false`, `visitorId: ""`, `visitorIsNew: false`,
+  `visitorConfidence: 0`.
+- Because WebKit engine behavior (`engine`, `math`, `errors`, CSS `@supports`)
+  is consistent and untampered, `Identifier` exempts `fingerprint_suppressed`
+  (`+16`), leaving only `incognito` (`+4`) rather than a false `"medium"` risk
+  score.
 
-## Chromium, which closed the same door in 152
+## Chromium `>= 152` & opt-in `incognitoDetection: 'extended'`
 
-Not a hardened browser, but the same problem and a much larger blast radius.
+In Chromium 152+, `QuotaManagerImpl::CalculateReportedQuota` enables
+`kIncognitoStaticStorageQuota` by default, reporting `usage + 10 GiB`
+(`10737418240` at zero usage) in both regular and incognito windows. Both
+`isStaticChromiumQuota` and a tightened `0.25` legacy ratio ceiling prevent
+inverted false positives on nearly full disks.
 
-`QuotaManagerImpl::CalculateReportedQuota`:
+### Why `storage_durability` is opt-in (`incognitoDetection: 'extended'`) in `0.3.0`
 
-```cpp
-// The flag kIncognitoStaticStorageQuota fixes the return value in incognito
-// to 10 GiB + usage, as in regular mode.
-if ((clamped_total_space_bytes >= 10 * kGBytes) || enforce_static_quota_for_incognito) {
-  return clamped_usage_bytes + 10 * QuotaManagerImpl::kGBytes;
-}
-// ...otherwise disk space rounded up to the nearest 1 GiB.
-```
-
-`kIncognitoStaticStorageQuota` is `FEATURE_ENABLED_BY_DEFAULT`, and its comment
-in `quota_features.cc` states the intent outright: *"Incognito mode will always
-report a maximal quota value to avoid fingerprinting and incognito detection."*
-
-Measured on Chrome 152, same machine, both windows: `estimate().quota`,
-`webkitTemporaryStorage` and `webkitPersistentStorage` all returned
-`10737418240` - `usage(0) + 10 GiB` - in **both**. Chrome 151 still gave 3 GiB
-against 10.
-
-Two consequences, and the second is the one that mattered:
-
-1. **Quota-based incognito detection on current Chrome is dead.** Not degraded,
-   not farbled - the two windows emit identical quota readings.
-2. **Below the constant the meaning inverts.** Only an ordinary window is still
-   allowed a disk-derived figure, so on a current build a small quota is
-   evidence *against* a private window. The old rule read it as the opposite and
-   fired on any visitor whose disk was nearly full.
-
-Both are handled by comparing against the constant before doing anything else,
-which is what `isStaticChromiumQuota` is for. The ratio ceiling also came down
-from 0.3 to 0.25, since Chromium sizes the pool at 0.15-0.2 of physical memory
-(`kIncognitoQuotaRatioLowerBound` / `UpperBound`) and 0.3 reached far enough up
-to catch the full-disk case at 0.29.
-
-### What replaced it: durability, not quota
-
-Every *value* Chromium reports about storage has now been flattened. What has
-not been flattened is the *cost*, because flattening that would mean making an
-incognito profile actually write to disk.
-
-`CreateLevelDBState` sees an empty path in an incognito profile and builds the
-IndexedDB store on `leveldb_chrome::NewMemEnv` - an in-memory environment. The
-fsync that `BackingStore::ShouldSyncOnCommit` issues for a
-`durability: "strict"` commit therefore lands in memory and costs nothing. On
-disk, that fsync is by far the most expensive part of a small transaction.
-
-So: run the same fifteen 16KB single-put commits twice, once at
-`durability: "relaxed"` and once at `"strict"`, and take the ratio.
-
-Measured on one M1 Pro, four windows, same origin, minutes apart:
+Chromium's incognito IndexedDB store runs on `leveldb_chrome::NewMemEnv`
+(in-memory), where `durability: "strict"` skips real disk `fsync`s while
+ordinary profiles pay disk `fsync` latency:
 
 | window | median ratio | relaxed / strict block |
 |---|---|---|
@@ -194,153 +181,84 @@ Measured on one M1 Pro, four windows, same origin, minutes apart:
 | Brave 152 ordinary | **3.17** | 3ms / 10ms |
 | Brave 152 private | **1.04** | 2ms / 2ms |
 
-On disk 3.06-3.86, in memory 0.96-1.06, with the threshold at 1.30 sitting well
-clear of both. The individual rounds spread wider than the medians - one
-in-memory round came in at 1.31 - which is the entire reason the median is taken
-rather than a single reading.
+However, running sequential `strict` IndexedDB commits on every default
+`identify()` call forces dozens of OS `fsync` syscalls and megabytes of SSD
+writes onto every ordinary login and checkout for a signal weighted `4` out of
+`30`—and Chromium's `IdbSqliteBackingStore` rollout is progressively phasing out
+the LevelDB differential.
 
-The **ratio** is the point. A duration measures the machine, and a threshold on
-one is a threshold on how fast the visitor's phone is - which is how the
-previous generation of this idea came to fire on cheap Android hardware. The
-ratio divides the hardware out: a slow device and a fast one disagree about
-everything here except that syncing costs more than not syncing.
+In `@fingerly/core` and `@fingerly/web-js` `0.3.0`:
 
-The technique and the constants (16KB payload, 15 writes per block, threshold
-1.30) are Joe Rutkowski's, from
-[detectIncognito](https://github.com/Joe12387/detectIncognito) v1.8, calibrated
-there against eighteen real Android devices.
-
-The round count is ours and is lower: nine, not fifteen. The four windows above
-were sampled at both, and the two agree about every one of them with the whole
-of the gap to spare - 3.778/3.86, 1.000/1.056, 3.062/3.17, 0.962/1.043. The six
-extra rounds bought no accuracy, and they were not free: a round costs almost
-nothing in memory and about 15ms on disk, so they were mostly spent on visitors
-who are *not* browsing privately. Collection for an ordinary Chrome window went
-from 248ms to 154ms; an incognito one was 81ms either way. `SOURCE.storage_durability` reports
-the ratio rather than his boolean, so the threshold can be re-cut server-side
-over stored reports instead of waiting for every customer to ship a new SDK.
-
-Three guards, because this is a timing measurement and timing measurements lie:
-
-- `honored` - an engine that ignores the `durability` hint runs both halves
-  identically, which would read as in-memory on every machine on earth.
-  Checked before anything is timed.
-- `rounds` - a median over two readings is not a median. The detector requires
-  five. Reports with fewer were taken on machines too loaded to measure, which
-  is exactly where answering anyway invents a false positive.
-- Weight 1.4 - decisive alone, but short of `high`. `high` is reserved for the
-  case where the quota agrees with it, which is what Brave private does.
-
-**The premise to re-check when this breaks:** Chromium is migrating IndexedDB
-from LevelDB to SQLite (`IdbSqliteBackingStore`, staged behind
-`GetSqliteRolloutStage`). A SQLite backing store may not have the same in-memory
-shortcut. If it becomes the default, this source starts reporting ratios near 1
-on disk too - and `honored` and `rounds` are on the report so that shows up in
-the data rather than as a silent wave of false positives.
+- **Default (`incognitoDetection: 'standard'`)**: `storage_durability` does
+  **not** run, keeping single-pass Web collection fast (`< 80ms` typical,
+  `<= 350ms` ceiling) with zero IndexedDB disk flushes. Safari and Firefox
+  private windows are still caught via zero-disk OPFS probes (`1.4` and `1.3`
+  evidence), and Brave private windows via `legacy_quota`.
+- **Opt-in (`incognitoDetection: 'extended'`)**: Callers who explicitly pass
+  `identify({ incognitoDetection: 'extended' })` or
+  `collect({ incognitoDetection: 'extended' })` enable `storage_durability` on
+  Chromium `>= 152`, capped at `<= 4` relaxed/strict pairs × `3` rounds inside a
+  `<= 60ms` ceiling, requiring `honored === true` and sufficient rounds before
+  scoring.
 
 ### Dead ends for a replacement Chromium tell
 
-### Dead ends for a replacement Chromium tell
+All measured identical in Chrome 152 normal and incognito (or rejected by
+Rule #1):
 
-All measured identical in Chrome 152 normal and incognito:
+- **Encrypted Media (`requestMediaKeySystemAccess`) — banned under Rule #1.**
+  Throws `NotSupportedError` in Chrome and triggers a user-visible **Widevine
+  install prompt** in Brave; banned in `tests/no-permission-prompts.test.ts`.
+- `navigator.storage.persist()` — prompts on Firefox; banned (read-only
+  `persisted()` does not discriminate).
+- `usageDetails` after a 4MB write — identical breakdown in both modes.
+- `Notification.permission` vs `permissions.query({name:'notifications'})` —
+  both `default`/`prompt` in regular and incognito windows.
+- `webkitTemporaryStorage`, `webkitPersistentStorage`,
+  `webkitRequestFileSystem`, `navigator.storage.getDirectory()`,
+  `performance.memory.jsHeapSizeLimit`, `indexedDB.databases()`,
+  `navigator.storageBuckets`, `caches`, service workers — identical.
 
-- **Encrypted Media (`requestMediaKeySystemAccess`) - do not try this one.**
-  It looked like the best candidate on paper: a `persistentState: 'required'`
-  licence needs disk an incognito profile does not have. In practice it threw
-  `NotSupportedError` in both Chrome windows and, in Brave, raised a **Widevine
-  install prompt** at a visitor who had not asked for one. Zero discriminating
-  power and the one thing this SDK must never do. `requestMediaKeySystemAccess`
-  is now in the banned list in `tests/no-permission-prompts.test.ts`, which also
-  covers `demo/` since that is where it slipped through.
-- `navigator.storage.persist()` - `false` in every window, and it prompts on
-  Firefox. `persisted()` is the read-only form and is safe.
-- `usageDetails` after a 4MB write - broke down by backend identically in both.
+## Identity churn & dual coarse buckets (`v: 3`)
 
-- `Notification.permission` vs `permissions.query({name:'notifications'})` -
-  both `default`/`prompt`. The classic contradiction is closed. (Worth knowing:
-  `PermissionsSignal.inconsistent` is read by `detect/automation` at weight 1.1,
-  and this is the evidence it is *not* firing on private windows.)
-- `webkitTemporaryStorage` and `webkitPersistentStorage` - both the constant.
-- `webkitRequestFileSystem`, TEMPORARY and PERSISTENT, 1 byte and 256MB -
-  granted in both.
-- `navigator.storage.getDirectory()` - resolves in both.
-- `performance.memory.jsHeapSizeLimit`, `indexedDB.databases()`,
-  `navigator.storageBuckets`, `caches`, service workers - identical.
-
-These are all *values*. That every one of them came back identical is what
-pointed at timing: when a browser has flattened everything it reports, what is
-left is what it does.
-
-## Identity churn, which is the bigger cost
-
-Brave reseeds its farbling per session and per eTLD+1. So a Brave visitor's
-canvas, audio, WebGL, font metrics, plugin names, device memory and core count
-are not *wrong* - they are correct today and different tomorrow.
-
-That is worse than wrong. A wrong signal is noise; a signal that is stable
-within a session and reseeded between them looks exactly like a genuine
-returning visitor right up to the moment it silently splits one person into two
-identities, on every visit, forever.
-
-Which components that costs is a component-level question, and the list lives
-server-side in `domain/identity/shields.go`, beside the code that uses it.
-Measured across four Brave windows on one machine, these move on their own:
+Brave reseeds farbling per session and per eTLD+1 across `hardwareConcurrency`,
+`deviceMemory`, canvas, and audio:
 
 | field | four windows |
 |---|---|
 | `hardware_concurrency` | 10, 8, 2, 5 |
 | `device_memory` | 16, 4, 4, 4 |
-| canvas (data URL length) | 10018, 10162, 10098, 10094 |
+| canvas (RGBA digest) | varies per session |
 | audio buffer sum | 172.52, 172.54, 172.60, 172.56 |
 
-The audio figure is the one to look at twice. The identity vector rounds it to
-four significant figures precisely to absorb scheduler jitter, and Brave's
-redraw still crosses the boundary - 172.5 against 172.6 - so the rounding that
-saves an ordinary browser does not save this one.
+Two `v: 3` server mechanisms prevent both identity splitting and single-field
+bucket evasion (`server/domain/identity/`):
 
-The bucket was the half that hurt most. The candidate bucket included
-`hardware.cores`, so a Brave visitor landed in a different bucket on every visit
-and was never scored against their own history at all.
-
-**The list is deliberately short, because over-dropping inverts the failure.**
-Instead of one person becoming many, many become one, and a wrong identifier is
-worse than a missing one because everything downstream trusts it. So
-`webgl.vendor` and `webgl.renderer` stay - measured identical in all four
-windows, unmasked, and the backbone of the bucket - as do screen, platform and
-`audio.sample_rate`. The soft tier is untouched entirely: nothing there reaches
-the exact key or the bucket, so a soft component that drifts costs a little
-similarity score and cannot split a visitor in two.
-
-There was briefly a `farbledSources()` in the SDK returning *source ids* for
-this. It is gone, and the reason is instructive: a source is too coarse a unit.
-Dropping the `audio` source takes `sample_rate` with `value`, and `sample_rate`
-is one of the few components a Brave visitor has left. Dropping `webgl` takes
-the vendor and renderer that the bucket is built on. The list was not merely
-imprecise; it pointed the wrong way.
-
-### Still open
-
-`webgl.params` and `webgl.precision` are not dropped, and it is a real question
-rather than an oversight. Brave patches `webgl_rendering_context_base.cc`, so
-`getParameter` is a farbling surface on paper - but neither hash was captured in
-the runs above, and nothing is dropped on the strength of a code path nobody
-measured. It is load-bearing: a Brave vector keeps eight hard components, and
-those two are a quarter of what is left. If they churn, both must go, which puts
-Brave at exactly the minimum with no margin.
-
-`demo/shields.html` reports `identity_inputs` for exactly this: run it, quit the
-browser, run it again, and diff that block. Anything that moved is a component
-that splits one visitor into two.
+1. **Component-level farbling strip (`shields.go`)**: On behaviorally verified
+   Brave reports at default Shields (where WebGL vendor/renderer remain
+   unmasked), farbled components (`canvas.*`, `audio.value`, `hardware.cores`,
+   `hardware.memory`) are stripped while preserving unmasked `webgl.vendor`,
+   `webgl.renderer`, `screen.*`, `platform`, and `audio.sample_rate`. If
+   aggressive Shields also masks WebGL/canvas into a correlated mask below 6
+   independent hard traits, `Identifiable()` returns `false` (`visitorId: ""`)
+   rather than minting unstable per-session IDs.
+2. **Dual coarse buckets (`00046_v3_identity_dual_buckets.sql`)**: Historically,
+   including `hardware.cores` in a single candidate bucket caused Brave's
+   farbled core count (or an anti-detect spoofer editing `hardwareConcurrency`)
+   to miss candidate lookup completely. `visitor_identities` and
+   `demo_visitor_identities` now index **both** `BucketGPU` (`platform`,
+   `webgl.vendor`, `webgl.renderer`) and `BucketComputeScreen` (`platform`,
+   `screen.resolution`, `hardware.cores`, `timezone`), querying
+   `bucket_key = $2 OR bucket_key_alt = $3` (`LIMIT 64`) under the 17-component
+   cross-engine `UniversalWeight()` floor (`>= 18` and `>= 0.70`).
 
 ## Reproducing
 
-`client/web/web-js/demo/shields.html`, served by the web-js demo server:
+`sdks/client/web/web-js/demo/shields.html`, served by the `web-js` demo server:
 
 ```sh
 pnpm --filter @fingerly/web-js demo   # http://localhost:4173/demo/shields.html
 ```
 
-Deliberately imports nothing from the SDK. When a gate is wrong, the first thing
-to establish is what the browser actually did, without the layer under suspicion
-in the way. Run it in an ordinary window and a private one, in each browser, and
-diff the two.
+Run it in an ordinary window and a private window in each browser and diff the
+raw browser readings before inspecting SDK or server rules.

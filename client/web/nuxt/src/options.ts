@@ -1,12 +1,8 @@
 /**
- * What the module is configured with, and what ends up in the runtime config.
- *
- * A separate module from `module.ts` because this half is a pure function of
- * two objects, runs in the browser as well as in the build, and is the part
- * with a decision in it - see [[resolvePublicConfig]] on why what wins.
+ * What the module is configured with, and what ends up in `runtimeConfig.public.fingerly`.
  */
 
-import type { ConsentState } from '@fingerly/vue'
+import type { ConsentState, IncognitoDetection } from '@fingerly/vue'
 
 /** The `fingerly` block in `nuxt.config.ts`. */
 export interface ModuleOptions {
@@ -18,22 +14,16 @@ export interface ModuleOptions {
   endpoints?: string[]
   fallbackToDefaultEndpoint?: boolean
   /**
-   * Collect without submitting anything.
-   *
-   * Everything the server decides comes back empty: no `requestId`, no
-   * `visitorId`, no `suspectScore`, no `suspectLevel`. That is the honest
-   * answer rather than a gap - nothing was sent, so nobody scored it, and
-   * this SDK decides nothing on its own.
+   * Controls whether opt-in extended incognito probes (`storage_durability`)
+   * execute (`'standard'` default or `'extended'`).
    */
-  submit?: boolean
+  incognitoDetection?: IncognitoDetection
   /**
-   * The consent the app starts with. Defaults to `pending`.
-   *
-   * Leave it `pending` while identification waits on a consent banner, then
-   * call `useFingerly().setConsent('granted')` from wherever the banner is
-   * answered, or set `granted` once you have consent (or another lawful
-   * basis). Until then `useIdentify({ immediate: true })` waits and nothing
-   * is collected or sent.
+   * Not a setting. Consent is the visitor's answer, so it is never read from
+   * `nuxt.config.ts` or the environment: the client always starts `pending`
+   * and only a runtime `setConsent()` call, made after the visitor answered,
+   * changes it. Kept in the type so a value here is reported at build time
+   * instead of being silently ignored.
    */
   consent?: ConsentState
 }
@@ -41,35 +31,24 @@ export interface ModuleOptions {
 /**
  * The shape published at `runtimeConfig.public.fingerly`.
  *
- * Every key is present even when nothing set it, and that is not tidiness.
- * Nuxt only lets the environment override keys that already exist in the
- * runtime config, so a `submit` omitted here is a `NUXT_PUBLIC_FINGERLY_SUBMIT`
- * that silently does nothing. The empty string is the "not set" value, which
- * the plugin reads as "use the default".
+ * Every key is present so Nuxt allows `NUXT_PUBLIC_FINGERLY_*` environment
+ * overrides at server startup. Consent is deliberately not one of them: a
+ * deployment-wide value would apply to every visitor before any of them
+ * answered.
  */
 export interface FingerlyPublicConfig {
   apiKey: string
   apiVersion: string
   endpoints: string[]
   fallbackToDefaultEndpoint: boolean
-  submit: boolean
-  consent: ConsentState
+  incognitoDetection: IncognitoDetection
 }
 
-/**
- * Merge the module's options with whatever is already in the runtime config.
- *
- * The runtime config wins, and that is the whole point of the function. Nuxt
- * reads `runtimeConfig.public` when the server *starts*, so
- * `NUXT_PUBLIC_FINGERLY_API_KEY` in the deployment environment overrides the
- * built bundle - one build promoted through staging and production, keyed
- * differently in each, with no rebuild. A module that let its build-time
- * option win would quietly take that away.
- *
- * The empty key is a legitimate build-time state for the same reason: the
- * environment supplies it later. That is why nothing here throws, and why the
- * plugin says something at runtime instead.
- */
+/** The build-time warning for a `consent` value in the module options. */
+export const STATIC_CONSENT_WARNING =
+  "[fingerly] fingerly.consent in nuxt.config.ts is ignored. Consent is each visitor's answer: " +
+  'the client starts pending, and you call setConsent() at runtime once the visitor has answered.'
+
 export function resolvePublicConfig(
   options: ModuleOptions,
   existing: Partial<FingerlyPublicConfig> | undefined,
@@ -81,8 +60,9 @@ export function resolvePublicConfig(
     apiKey: pick(existing?.apiKey, options.apiKey) ?? '',
     apiVersion: pick(existing?.apiVersion, options.apiVersion) ?? 'v1',
     endpoints: existing?.endpoints ?? options.endpoints ?? [],
-    fallbackToDefaultEndpoint: existing?.fallbackToDefaultEndpoint ?? options.fallbackToDefaultEndpoint ?? false,
-    submit: existing?.submit ?? options.submit ?? true,
-    consent: pick(existing?.consent, options.consent) ?? 'pending',
+    fallbackToDefaultEndpoint:
+      existing?.fallbackToDefaultEndpoint ?? options.fallbackToDefaultEndpoint ?? false,
+    incognitoDetection:
+      pick(existing?.incognitoDetection, options.incognitoDetection) ?? 'standard',
   }
 }

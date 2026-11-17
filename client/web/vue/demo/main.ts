@@ -9,8 +9,9 @@
  * Render functions rather than templates, so the demo needs only Vue's runtime
  * and not the template compiler.
  *
- * It uses `submit: false`, so no server answers: the raw report fills in and
- * the score and level read hidden, as they must with nobody to ask.
+ * It uses `submit: false`, so no server answers: the score and level read
+ * hidden, as they must with nobody to ask. The signal report is never kept in
+ * the binding's state; `collect()` on the client is how to inspect one.
  */
 
 import { createApp, defineComponent, h } from 'vue'
@@ -41,7 +42,7 @@ const App = defineComponent({
   setup() {
     // `immediate` in the root only - the plugin shares one result, so the card
     // below reads this same submission.
-    const { identify, refresh, requestId, report, suspectScore, suspectLevel, isLoading, isReady, error } =
+    const { identify, refresh, requestId, identified, suspectScore, suspectLevel, isLoading, isReady, error } =
       useIdentify({ immediate: true, tag: () => 'vue-demo' })
 
     return () =>
@@ -60,9 +61,8 @@ const App = defineComponent({
           row('suspectScore', suspectScore.value ?? 'hidden'),
           row('suspectLevel', suspectLevel.value ?? 'hidden', suspectLevel.value === 'high' ? 'hit' : ''),
           row('requestId', requestId.value ?? '— (submit: false)'),
-          row('sources', report.value ? Object.keys(report.value.sources).length : '—'),
-          row('elapsed_ms', report.value?.elapsed_ms ?? '—'),
-          row('engine', report.value?.integrity.engine.observed ?? '—'),
+          row('identified', identified.value),
+          row('report', 'not kept in state (collect() to inspect)'),
         ]),
         h('div', { class: 'grid' }, [h(ScoreCard)]),
       ])
@@ -71,8 +71,7 @@ const App = defineComponent({
 
 const app = createApp(App)
 
-// submit: false - the demo collects and sends nothing.
-app.use(createFingerly({ apiKey: 'pk_demo', submit: false }))
+app.use(createFingerly({ apiKey: 'pk_demo', consent: 'granted' }))
 app.mount('#app')
 
 // Read back by the browser check. The context carries the shared state, so a

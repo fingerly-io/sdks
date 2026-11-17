@@ -1,24 +1,21 @@
 /**
- * Getting a submission to the server.
+ * Getting a v3 submission to the server (`POST /api/v1/ingest`).
  *
- * Both calls - the identification and the deferred report after it - are one
- * `POST` to one URL, authenticated by an SDK key in `x-api-key`. Without custom
- * endpoints that URL is `https://api.fingerly.io/api/v1/ingest`; see
- * `server/handlers/ingest.go`, which tells the two apart by the deferred
- * report's `token`, and `server/app/app.go` for the cross-origin policy that
- * lets a browser read the answer.
- *
- * A custom endpoint is used exactly as given, with nothing appended, unless it
- * is a bare origin, which names an API rather than a proxy. That is the point:
- * a content blocker matches URLs, and a path added to every customer's proxy
- * is a path one generic rule could match on all of them. A first-party proxy
- * at an opaque path of the customer's own has nothing in common with any
- * other site's.
+ * Every request sends a valid `16..128`-char printable ASCII `Idempotency-Key`
+ * and serializes `rawBody` once before the retry loop so retries transmit the
+ * exact same `Idempotency-Key` and byte-identical `rawBody`.
  */
 
+import { own, ownCopy } from './own.js'
 import { validateApiVersion } from './routes.js'
 import { DEFAULT_ENDPOINT } from './routing.js'
-import type { DeferredSubmission, IdentifySubmission } from './types.js'
+import type {
+  FreshnessTicket,
+  IdentifySubmission,
+  IdentifyTrigger,
+  SuspectLevel,
+  TicketRequest,
+} from './types.js'
 
 export const SDK_KEY_HEADER = 'x-api-key'
 
@@ -27,69 +24,26 @@ export const REDACTED = '[redacted]'
 /** Node's custom-inspection hook, by its registered name so no Node import is needed. */
 export const INSPECT = Symbol.for('nodejs.util.inspect.custom')
 const IDEMPOTENCY_KEY_HEADER = 'Idempotency-Key'
+const REQUEST_IN_PROGRESS_CODE = 'request_in_progress'
+const DEFAULT_IN_PROGRESS_RETRY_MS = 1000
 
 /**
  * What the server sends back - the wire shape of `schemas.IdentifyOut`.
- *
- * Everything past `request_id` is optional here because the server omits an
- * empty value rather than sending a zero, and because a duplicate carries no
- * verdict at all. `Client.identify` turns this into the friendlier
- * [[IdentifyResult]]; this type exists so the raw answer is still reachable.
  */
 export interface SubmitResponse {
   request_id: string
-  /** Short-lived capability used only to attach the second-tier report. */
-  deferred_token?: string
-
-  /**
-   * True when this submission was answered before, under the same idempotency
-   * key.
-   *
-   * The verdict belongs to that first submission and is not repeated, so every
-   * field below is absent. Without this flag the absence would read as "nobody
-   * could be identified", which is a different answer entirely.
-   */
   duplicate?: boolean
-
-  /** Who this visitor is. Always present unless `duplicate`. */
   visitor_id?: string
   visitor_is_new?: boolean
-
-  /**
-   * False when the report carried too little to identify anyone - a hardened
-   * browser, or a client that would rather not be recognised. The submission is
-   * still answered and still scored, more highly in fact, and `visitor_id` is
-   * minted rather than matched.
-   */
   identifiable?: boolean
-
-  /**
-   * How sure the server is about `visitor_id`, from 0 to 100.
-   *
-   * 100 when this exact device has been seen before, 85-99 when it drifted and
-   * was recognised by similarity, 0 when the identifier was minted because
-   * nothing matched.
-   */
   visitor_confidence?: number
-
-  /** `enriched` or `unavailable`. */
   state?: string
-  /**
-   * Why enrichment did not happen, as a short stable token. Answered to a
-   * secret key only, so absent for this SDK and not read from the wire.
-   */
   reason?: string
-
-  /**
-   * The weighted sum of the signals that fired.
-   *
-   * Absent when the submission was not scored or the SDK key hides it from
-   * public callers, and a page cannot tell which. Both are different answers
-   * from zero: an ordinary visitor scores zero.
-   */
-  suspect_score?: number
-  /** `low`, `medium` or `high`. Absent for the same reasons as `suspect_score`. */
-  suspect_level?: string
+  suspect_score?: number | null
+  suspect_level?: SuspectLevel | string | null
+  triggers?: IdentifyTrigger[]
+  /** Web only: the ticket for this page's next report. */
+  next_ticket?: FreshnessTicket
 }
 
 export interface Transport {
@@ -98,32 +52,46 @@ export interface Transport {
    * for every attempt of this call and mint a new one for the next call.
    */
   submit(submission: IdentifySubmission, signal?: AbortSignal): Promise<SubmitResponse>
-  submitSupplement?(
-    requestId: string,
-    submission: DeferredSubmission,
-    signal?: AbortSignal,
-  ): Promise<void>
+  /**
+   * Fetches a single-use freshness ticket (web only), from the same path as
+   * reports. Optional: a transport without it sends reports without a ticket.
+   */
+  ticket?(request: TicketRequest, signal?: AbortSignal): Promise<FreshnessTicket>
 }
 
+/** The longest ticket this SDK accepts. A real one is a few hundred characters. */
+const MAX_TICKET_CHARS = 2048
+
 /**
- * The failure a caller can actually act on.
- *
- * `status` is the HTTP status where there was one. The two worth branching on
- * are 401 (the key is wrong, or was presented from an origin it does not list)
- * and 402 (the organisation is not accepting traffic) - both are the customer's
- * configuration rather than the visitor's, and both are documented on the route.
+ * A ticket as the server sends it, or `undefined` for anything else: an
+ * unpadded base64url string and a parseable expiry.
  */
+export function readTicket(value: unknown): FreshnessTicket | undefined {
+  if (value === null || typeof value !== 'object') return undefined
+  const candidate = value as Record<string, unknown>
+  const ticket = own(candidate, 'ticket')
+  const expiresAt = own(candidate, 'expires_at')
+  if (typeof ticket !== 'string' || typeof expiresAt !== 'string') return undefined
+  if (ticket.length === 0 || ticket.length > MAX_TICKET_CHARS) return undefined
+  if (!/^[A-Za-z0-9_-]+$/.test(ticket)) return undefined
+  if (!Number.isFinite(Date.parse(expiresAt))) return undefined
+  // A work factor outside 1..22 is not one this SDK solves; the ticket still goes.
+  const powBits = own(candidate, 'pow_bits')
+  const solvable = typeof powBits === 'number' && Number.isInteger(powBits) && powBits >= 1 && powBits <= 22
+  return { ticket, expires_at: expiresAt, ...(solvable ? { pow_bits: powBits } : {}) }
+}
+
 export class TransportError extends Error {
   override readonly name = 'TransportError'
   constructor(
     message: string,
     readonly status?: number,
     readonly retryable = false,
-    /** The server's error code, such as `consent_required`, when it sent one. */
+    /** The server's error code, such as `consent_required` or `request_in_progress`. */
     readonly code?: string,
     /**
      * How long the server asked the caller to wait, from `Retry-After`, in
-     * milliseconds. Present on a 429 or 503 that said; absent otherwise.
+     * milliseconds.
      */
     readonly retryAfterMs?: number,
   ) {
@@ -135,9 +103,7 @@ export class TransportError extends Error {
 const MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 
 /**
- * The longest `Retry-After` an identification waits out by itself. Longer
- * than this and the visitor is better served by the page deciding, so the
- * refusal is returned with `retryAfterMs` instead of being retried.
+ * The longest `Retry-After` an identification waits out by itself (`2000ms`).
  */
 const MAX_RETRY_WAIT_MS = 2000
 
@@ -150,39 +116,38 @@ function retryAfterMs(response: Response): number | undefined {
   return Number.isFinite(at) ? Math.max(0, at - Date.now()) : undefined
 }
 
-/**
- * The `error.code` of a refusal, when the body is the API's error envelope.
- *
- * Best effort: a refusal from a proxy or a captive portal is not JSON, and its
- * status is still the useful part.
- */
 async function refusalCode(response: Response): Promise<string | undefined> {
   try {
     const body = (await response.json()) as { error?: { code?: unknown } } | null
-    const code = body?.error?.code
+    const code = own(own(body, 'error'), 'code')
     return typeof code === 'string' && code !== '' ? code : undefined
   } catch {
     return undefined
   }
 }
 
+function isRetryableStatus(status: number, code: string | undefined): boolean {
+  if (status === 409 && code === REQUEST_IN_PROGRESS_CODE) return true
+  return status === 408 || status === 429 || (status >= 500 && status <= 599)
+}
+
 function refusal(response: Response, code: string | undefined): TransportError {
+  const parsedWait = retryAfterMs(response)
+  const retryable = isRetryableStatus(response.status, code)
+  const effectiveWait =
+    response.status === 409 && code === REQUEST_IN_PROGRESS_CODE
+      ? Math.min(MAX_RETRY_WAIT_MS, Math.max(0, parsedWait ?? DEFAULT_IN_PROGRESS_RETRY_MS))
+      : parsedWait
+
   return new TransportError(
     `The server refused the submission (${response.status})`,
     response.status,
-    isRetryableStatus(response.status),
+    retryable,
     code,
-    retryAfterMs(response),
+    effectiveWait,
   )
 }
 
-/**
- * Reads a successful answer, refusing anything that is not this API's JSON.
- *
- * Never retried: a captive portal or a proxy error page answers the same way
- * the next time. The message never quotes the body, which is whatever that
- * page happened to send.
- */
 async function readAnswer(response: Response): Promise<Partial<SubmitResponse>> {
   const unreadable = () =>
     new TransportError('The server answered with a response this SDK cannot read', response.status, false)
@@ -194,26 +159,21 @@ async function readAnswer(response: Response): Promise<Partial<SubmitResponse>> 
   if (text.length > MAX_RESPONSE_BYTES) throw unreadable()
   try {
     const parsed: unknown = JSON.parse(text)
-    if (parsed === null || typeof parsed !== 'object') throw unreadable()
-    return parsed as Partial<SubmitResponse>
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) throw unreadable()
+    return ownCopy(parsed as Partial<SubmitResponse>)
   } catch {
     throw unreadable()
   }
 }
 
-/**
- * How long to wait before the next attempt, or null when there should be none.
- *
- * A `Retry-After` is honoured when it is short, and ends the call when it is
- * long: retrying sooner than the server asked only earns another 429, and
- * every one of them counts against the customer's rate limit.
- */
 function retryDelay(failure: TransportError, attempt: number): number | null {
   const backoff = backoffMs(attempt, Math.random)
+  if (failure.status === 409 && failure.code === REQUEST_IN_PROGRESS_CODE) {
+    const base = Math.min(MAX_RETRY_WAIT_MS, Math.max(0, failure.retryAfterMs ?? DEFAULT_IN_PROGRESS_RETRY_MS))
+    return Math.min(MAX_RETRY_WAIT_MS, base + backoff)
+  }
   if (failure.retryAfterMs === undefined) return backoff
   if (failure.retryAfterMs > MAX_RETRY_WAIT_MS) return null
-  // On top of the wait, not instead of it: every page told "1 second" by the
-  // same limiter would otherwise come back on the same tick.
   return failure.retryAfterMs + backoff
 }
 
@@ -227,41 +187,22 @@ export interface HttpTransportOptions {
    * root-relative path such as `/k7x2qm4a` for a first-party proxy on the
    * page's own site, or an absolute URL. A bare origin such as
    * `http://localhost:8099` is read as an API and gets the API's own path.
-   * Later ones are tried when an earlier one fails.
    */
   endpoints?: string | readonly string[]
   /** Append the Fingerly API after custom endpoints, as a last resort. */
   fallbackToDefaultEndpoint?: boolean
   /** Total attempts, including the first. */
   maxAttempts?: number
-  /** Per-attempt ceiling. The retry budget is this times `maxAttempts`. */
+  /** Per-attempt ceiling. */
   requestTimeoutMs?: number
   /** Injected in tests and on platforms without a global `fetch`. */
   fetchImpl?: typeof fetch
 }
 
-/**
- * Which failures are worth trying again.
- *
- * 408, 429 and 5xx are the server asking for patience. Any other 4xx is the
- * request being wrong, and repeating it only burns the visitor's battery and
- * the customer's rate limit - notably 401, where retrying a key that does not
- * match cannot make it match.
- */
-function isRetryableStatus(status: number): boolean {
-  return status === 408 || status === 429 || (status >= 500 && status <= 599)
-}
-
-/**
- * A 404 or 405 from one configured endpoint says that endpoint is not there,
- * which is a reason to try the next one in the list, and no reason to ask the
- * same one again.
- */
 function isMissingEndpoint(failure: TransportError): boolean {
   return failure.status === 404 || failure.status === 405
 }
 
-/** An API's own URL for both calls, from its origin. */
 function apiUrl(origin: string, apiVersion: string): string {
   return `${origin}/api/${apiVersion}/ingest`
 }
@@ -278,32 +219,14 @@ function normalizeEndpoint(endpoint: string, apiVersion: string): string {
   if (!(value.startsWith('/') || /^https?:\/\//i.test(value))) {
     throw new TypeError('A Fingerly endpoint must be an absolute URL or a root-relative browser path')
   }
-  // A bare origin names an API - ours, or one running locally - rather than a
-  // proxy, which always sits at a path on the customer's site. The API's URL
-  // for both calls is under it; posting to its root would be a 404 nobody meant.
   return /^https?:\/\/[^/]+$/i.test(value) ? apiUrl(value, apiVersion) : value
 }
 
-/**
- * Exponential backoff with full jitter.
- *
- * Full jitter rather than a fixed multiplier because the failure this retry
- * path most often meets is a server under load, and a fleet of pages that all
- * back off by exactly 200ms then 400ms returns as a thundering herd on the
- * same two ticks. Randomising the whole interval spreads the retries out.
- */
 function backoffMs(attempt: number, random: () => number): number {
   const ceiling = Math.min(2000, 100 * 2 ** (attempt - 1))
   return Math.floor(random() * ceiling)
 }
 
-/**
- * The wait between attempts, cut short when the call is cancelled.
- *
- * A plain timer here kept a cancelled call - consent withdrawn, or the
- * caller's signal - pending for the whole wait, up to 2 s plus jitter after a
- * Retry-After, before the loop noticed the abort and rejected.
- */
 function waitBeforeRetry(ms: number, signal: AbortSignal | undefined): Promise<void> {
   return new Promise((resolve) => {
     if (signal?.aborted) return resolve()
@@ -317,10 +240,30 @@ function waitBeforeRetry(ms: number, signal: AbortSignal | undefined): Promise<v
   })
 }
 
-/** A collision-resistant operation identifier; it is not a credential. */
+function isValidIdempotencyKey(key: string): boolean {
+  if (key.length < 16 || key.length > 128) return false
+  for (let i = 0; i < key.length; i++) {
+    const code = key.charCodeAt(i)
+    if (code < 0x21 || code > 0x7e) return false
+  }
+  return true
+}
+
+/** The code of the error raised when no secure random source exists. */
+export const NO_SECURE_RANDOM_CODE = 'no_secure_random'
+
+/**
+ * Generates a valid `16..128`-char printable ASCII `Idempotency-Key` from a
+ * cryptographic generator. There is no fallback (`WEB-11`): a runtime without
+ * `crypto.randomUUID` or `crypto.getRandomValues` fails the call before any
+ * request is made, rather than sending a predictable key.
+ */
 function newIdempotencyKey(): string {
   const available = (globalThis as typeof globalThis & { crypto?: Crypto }).crypto
-  if (typeof available?.randomUUID === 'function') return available.randomUUID()
+  if (typeof available?.randomUUID === 'function') {
+    const uuid = available.randomUUID()
+    if (isValidIdempotencyKey(uuid)) return uuid
+  }
 
   if (typeof available?.getRandomValues === 'function') {
     const bytes = available.getRandomValues(new Uint8Array(16))
@@ -330,21 +273,25 @@ function newIdempotencyKey(): string {
     return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
   }
 
-  // Idempotency keys are opaque correlators, not secrets. Keep old JS hosts
-  // working when Web Crypto is absent instead of turning retry safety into a
-  // reason the submission cannot be sent at all.
-  return `fingerly-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`
+  throw new TransportError(
+    'No secure random source (crypto.getRandomValues) is available for the Idempotency-Key',
+    undefined,
+    false,
+    NO_SECURE_RANDOM_CODE,
+  )
 }
 
 export class HttpTransport implements Transport {
-  /** Kept out of enumeration, JSON and inspection; see [[redacted]]. */
   readonly #apiKey: string
   private readonly urls: readonly string[]
   private readonly maxAttempts: number
   private readonly requestTimeoutMs: number
   private readonly fetchImpl: typeof fetch
 
-  constructor(options: HttpTransportOptions) {
+  constructor(input: HttpTransportOptions) {
+    // Own properties only (`WEB-09`): a polluted `Object.prototype.endpoints`
+    // must not choose where the report and the key are sent.
+    const options = ownCopy(input) as HttpTransportOptions
     if (!options.apiKey) {
       throw new TransportError('An SDK key is required to submit a fingerprint')
     }
@@ -352,9 +299,12 @@ export class HttpTransport implements Transport {
     this.#apiKey = options.apiKey
     const apiVersion = validateApiVersion(options.apiVersion)
     const configured = options.endpoints
-    const listed = configured === undefined
-      ? [defaultUrl(apiVersion)]
-      : (Array.isArray(configured) ? [...configured] : [configured as string])
+    const listed =
+      configured === undefined
+        ? [defaultUrl(apiVersion)]
+        : Array.isArray(configured)
+          ? [...configured]
+          : [configured as string]
     if (listed.length === 0) throw new TypeError('The endpoints array must not be empty')
     const urls = listed.map((endpoint) => normalizeEndpoint(endpoint, apiVersion))
     if (configured !== undefined && options.fallbackToDefaultEndpoint) {
@@ -368,27 +318,27 @@ export class HttpTransport implements Transport {
     if (typeof impl !== 'function') {
       throw new TransportError('No fetch implementation is available; pass one as fetchImpl')
     }
-    // Bound because some environments - Safari among them - throw "Illegal
-    // invocation" when `fetch` is called detached from its global.
     this.fetchImpl = impl.bind(globalThis)
   }
 
-  /** What `JSON.stringify` shows: the endpoints, never the key. */
   toJSON(): Record<string, unknown> {
-    return { apiKey: REDACTED, urls: [...this.urls], maxAttempts: this.maxAttempts, requestTimeoutMs: this.requestTimeoutMs }
+    return {
+      apiKey: REDACTED,
+      urls: [...this.urls],
+      maxAttempts: this.maxAttempts,
+      requestTimeoutMs: this.requestTimeoutMs,
+    }
   }
 
-  /** What Node's `util.inspect` and `console.log` show. */
   [INSPECT](): Record<string, unknown> {
     return this.toJSON()
   }
 
   async submit(submission: IdentifySubmission, signal?: AbortSignal): Promise<SubmitResponse> {
     let lastError: TransportError | undefined
-    // Freeze both parts of the operation before the first attempt. A caller
-    // mutating its object while a retry waits must not put two bodies under one
-    // idempotency key.
-    const body = JSON.stringify(submission)
+    // Serialize rawBody once before the retry loop so every retry sends the
+    // exact same Idempotency-Key and byte-identical rawBody.
+    const rawBody = JSON.stringify(submission)
     const idempotencyKey = newIdempotencyKey()
 
     let endpointIndex = 0
@@ -396,7 +346,7 @@ export class HttpTransport implements Transport {
       if (signal?.aborted) throw new TransportError('The submission was cancelled')
 
       try {
-        return await this.attempt(this.urls[endpointIndex]!, body, idempotencyKey, signal)
+        return await this.attempt(this.urls[endpointIndex]!, rawBody, idempotencyKey, signal)
       } catch (error) {
         const failure =
           error instanceof TransportError
@@ -404,9 +354,6 @@ export class HttpTransport implements Transport {
             : new TransportError(
                 error instanceof Error ? error.message : 'The submission could not be sent',
                 undefined,
-                // A thrown fetch is a network failure - offline, DNS, a
-                // connection reset - and those are exactly the ones worth
-                // repeating.
                 true,
               )
 
@@ -414,91 +361,88 @@ export class HttpTransport implements Transport {
         if (delay === null) throw failure
         lastError = failure
 
-        endpointIndex = Math.min(endpointIndex + 1, this.urls.length - 1)
+        if (!(failure.status === 409 && failure.code === REQUEST_IN_PROGRESS_CODE)) {
+          endpointIndex = Math.min(endpointIndex + 1, this.urls.length - 1)
+        }
 
         await waitBeforeRetry(delay, signal)
       }
     }
 
-    // Unreachable: the loop either returns or throws. Present so the function
-    // has one exit type rather than an implicit undefined.
     throw lastError ?? new TransportError('The submission could not be sent')
   }
 
-  async submitSupplement(
-    requestId: string,
-    submission: DeferredSubmission,
-    signal?: AbortSignal,
-  ): Promise<void> {
-    const body = JSON.stringify(submission)
+  /**
+   * One try per configured URL, in order, with no waiting between them: the
+   * report goes out without a ticket rather than waiting for one.
+   */
+  async ticket(request: TicketRequest, signal?: AbortSignal): Promise<FreshnessTicket> {
+    const rawBody = JSON.stringify(request)
     let lastError: TransportError | undefined
-    let endpointIndex = 0
-    for (let attempt = 1; attempt <= this.maxAttempts; attempt++) {
-      // As in submit(): an abort listener added to a signal that has already
-      // fired never runs, so without this a cancelled supplement would still
-      // send its next attempt.
-      if (signal?.aborted) throw new TransportError('The supplement was cancelled')
-
+    for (const url of this.urls) {
+      if (signal?.aborted) throw new TransportError('The ticket request was cancelled')
       try {
-        // The same URL as the identification. The token in the body names the
-        // request, so nothing about this call shows in the URL.
-        await this.postJSON(this.urls[endpointIndex]!, body, signal)
-        return
+        return await this.ticketAttempt(url, rawBody, signal)
       } catch (error) {
-        const failure = error instanceof TransportError
-          ? error
-          : new TransportError(error instanceof Error ? error.message : 'The supplement could not be sent', undefined, true)
-        const delay = this.nextAttempt(failure, attempt, endpointIndex)
-        if (delay === null) throw failure
-        lastError = failure
-        endpointIndex = Math.min(endpointIndex + 1, this.urls.length - 1)
-        await waitBeforeRetry(delay, signal)
+        lastError =
+          error instanceof TransportError
+            ? error
+            : new TransportError(
+                error instanceof Error ? error.message : 'The ticket request could not be sent',
+                undefined,
+                true,
+              )
       }
     }
-    throw lastError ?? new TransportError('The supplement could not be sent')
+    throw lastError ?? new TransportError('The ticket request could not be sent')
   }
 
-  /** The wait before another attempt after `failure`, or null for none. */
-  private nextAttempt(failure: TransportError, attempt: number, endpointIndex: number): number | null {
-    if (attempt === this.maxAttempts) return null
-    if (failure.retryable) return retryDelay(failure, attempt)
-    // Only onwards to another endpoint, and only once per endpoint.
-    if (isMissingEndpoint(failure) && endpointIndex < this.urls.length - 1) return 0
-    return null
-  }
-
-  private async postJSON(
+  private async ticketAttempt(
     url: string,
-    body: string,
+    rawBody: string,
     signal: AbortSignal | undefined,
-  ): Promise<Response> {
+  ): Promise<FreshnessTicket> {
     const controller = new AbortController()
     const abort = () => controller.abort()
     signal?.addEventListener('abort', abort, { once: true })
     const timer = setTimeout(abort, this.requestTimeoutMs)
+
     try {
       const response = await this.fetchImpl(url, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', [SDK_KEY_HEADER]: this.#apiKey },
-        body,
+        headers: {
+          'content-type': 'application/json',
+          [SDK_KEY_HEADER]: this.#apiKey,
+          [IDEMPOTENCY_KEY_HEADER]: newIdempotencyKey(),
+        },
+        body: rawBody,
         credentials: 'omit',
         signal: controller.signal,
       })
+
       if (!response.ok) throw refusal(response, await refusalCode(response))
-      // Read to the end even though nothing in it is needed: an unread body
-      // keeps its loader alive in Chromium for the life of the page, about
-      // 7 KB per identification in a long-lived single-page app.
-      await response.arrayBuffer().catch(() => undefined)
-      return response
+
+      const ticket = readTicket(await readAnswer(response))
+      if (!ticket) {
+        throw new TransportError('The server answered the ticket request without a usable ticket')
+      }
+      return ticket
     } finally {
       clearTimeout(timer)
       signal?.removeEventListener('abort', abort)
     }
   }
 
+  private nextAttempt(failure: TransportError, attempt: number, endpointIndex: number): number | null {
+    if (attempt === this.maxAttempts) return null
+    if (failure.retryable) return retryDelay(failure, attempt)
+    if (isMissingEndpoint(failure) && endpointIndex < this.urls.length - 1) return 0
+    return null
+  }
+
   private async attempt(
     url: string,
-    body: string,
+    rawBody: string,
     idempotencyKey: string,
     signal: AbortSignal | undefined,
   ): Promise<SubmitResponse> {
@@ -515,11 +459,7 @@ export class HttpTransport implements Transport {
           [SDK_KEY_HEADER]: this.#apiKey,
           [IDEMPOTENCY_KEY_HEADER]: idempotencyKey,
         },
-        body,
-        // No cookies. The SDK routes are served with `AllowCredentials: false`,
-        // so a credentialed request would be refused by the browser before it
-        // reached the server - and the key, not the session, is the identity
-        // here in any case.
+        body: rawBody,
         credentials: 'omit',
         signal: controller.signal,
       })
@@ -528,15 +468,9 @@ export class HttpTransport implements Transport {
 
       const responseBody = await readAnswer(response)
       if (typeof responseBody?.request_id !== 'string' || responseBody.request_id === '') {
-        // A 2xx without an identifier means something answered that is not
-        // this API - a captive portal or a proxy's error page. Not retryable:
-        // it will answer the same way next time.
         throw new TransportError('The server accepted the submission but returned no request_id')
       }
 
-      // Returned whole rather than picked apart. The fields this SDK does not
-      // know about yet are the ones a server deployed ahead of it would be
-      // adding, and dropping them here would mean an SDK upgrade for every one.
       return responseBody as SubmitResponse
     } finally {
       clearTimeout(timer)

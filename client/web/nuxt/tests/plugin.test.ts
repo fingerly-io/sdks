@@ -88,7 +88,7 @@ describe('the runtime plugin', () => {
     expect(identifyMock).not.toHaveBeenCalled()
   })
 
-  it('builds the client from the runtime config', async () => {
+  it('builds the client from the runtime config, with consent pending whatever the config says', async () => {
     __setRuntimeConfig({
       fingerly: { apiKey: 'pk_runtime', endpoints: ['/k7x2qm4a'], consent: 'granted' },
     })
@@ -99,7 +99,7 @@ describe('the runtime plugin', () => {
     expect(loadMock).toHaveBeenCalledWith({
       apiKey: 'pk_runtime',
       endpoints: ['/k7x2qm4a'],
-      consent: 'granted',
+      consent: 'pending',
     })
   })
 
@@ -114,8 +114,8 @@ describe('the runtime plugin', () => {
     expect(identifyMock).not.toHaveBeenCalled()
   })
 
-  it('takes consent from the runtime config, and identifies on mount only once it is granted', async () => {
-    __setRuntimeConfig({ fingerly: { apiKey: 'pk_runtime', consent: 'pending' } })
+  it('identifies on mount only once a runtime call grants consent', async () => {
+    __setRuntimeConfig({ fingerly: { apiKey: 'pk_runtime' } })
 
     const { identify, fingerly } = mountWithPlugin(() => ({
       identify: useIdentify({ immediate: true }),
@@ -133,17 +133,29 @@ describe('the runtime plugin', () => {
     expect(identifyMock).toHaveBeenCalledTimes(1)
   })
 
-  it('passes submit through, so an app can score without sending', async () => {
-    __setRuntimeConfig({ fingerly: { apiKey: 'pk_runtime', submit: false } })
-    // What the client returns when it sent nothing, and what the composable
-    // has to turn back into null - there is no receipt to fetch later.
-    identifyMock.mockResolvedValue({ ...RESULT, requestId: '' })
+  it('passes incognitoDetection through and preserves visitorId "" on Option B answers', async () => {
+    __setRuntimeConfig({
+      fingerly: { apiKey: 'pk_runtime', incognitoDetection: 'extended' },
+    })
+    identifyMock.mockResolvedValue({
+      ...RESULT,
+      requestId: 'req_opt_b',
+      visitorId: '',
+      visitorIsNew: false,
+      visitorConfidence: 0,
+      identifiable: false,
+    })
 
-    const { identify, requestId } = mountWithPlugin(() => useIdentify())
+    const { identify, visitorId, requestId, setConsent } = mountWithPlugin(() => ({
+      ...useIdentify(),
+      setConsent: useFingerly().setConsent,
+    }))
+    setConsent('granted')
     await identify()
 
-    expect(identifyMock).toHaveBeenCalledWith({ submit: false })
-    expect(requestId.value).toBeNull()
+    expect(identifyMock).toHaveBeenCalledWith({ incognitoDetection: 'extended' })
+    expect(requestId.value).toBe('req_opt_b')
+    expect(visitorId.value).toBe('')
   })
 
   it('shares one identification across the app, as the Vue plugin does', async () => {
@@ -162,10 +174,13 @@ describe('the runtime plugin', () => {
     plugin({ vueApp: app })
     app.mount(document.createElement('div'))
 
-    await Promise.all([first.identify(), second.identify()])
+    const [answer] = await Promise.all([first.identify(), second.identify()])
 
     expect(identifyMock).toHaveBeenCalledTimes(1)
     expect(second.requestId.value).toBe('req_1')
+    // The report is evidence for the server, not app state.
+    expect(answer).not.toHaveProperty('report')
+    expect(first).not.toHaveProperty('report')
   })
 
   it('still installs with no key, and says so once', async () => {
@@ -222,9 +237,10 @@ async function answering(answer: Record<string, unknown>) {
 describe('a public response', () => {
   it.each(PUBLIC_ANSWERS)('%s: absent stays null and no signal is surfaced', async (_name, answer, score, level, suspicious) => {
     await answering(answer)
-    __setRuntimeConfig({ fingerly: { apiKey: 'pk_runtime', consent: 'granted' } })
+    __setRuntimeConfig({ fingerly: { apiKey: 'pk_runtime' } })
 
-    const identify = mountWithPlugin(() => useIdentify())
+    const { identify, fingerly } = mountWithPlugin(() => ({ identify: useIdentify(), fingerly: useFingerly() }))
+    fingerly.setConsent('granted')
     await identify.identify()
 
     expect(identify.error.value).toBeNull()

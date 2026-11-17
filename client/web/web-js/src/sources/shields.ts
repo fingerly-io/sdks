@@ -1,34 +1,23 @@
 /**
- * Whether the browser is actively rewriting what the other sources measure.
- *
- * This source asks Brave whether it is Brave, and checks one thing no other
- * source can see: whether canvas readback is noised. The other *effects* of
- * farbling land in signals that are already collected - the storage quota, the
- * device memory, the plugin count - and reading any of them again here would
- * only be two chances to disagree. The server does the reading and the
- * arithmetic.
- *
- * The reason to ask at all, rather than infer: Brave publishes `navigator.brave
- * .isBrave()` for sites that need to adapt to it, and an answer the browser
- * volunteers is worth having when the alternative is inferring the same fact
- * from numbers the browser is in the business of falsifying. It is also, of
- * course, removable in one line - which is why the detector treats it as one
- * vote among the behavioural tells rather than as the answer.
+ * Countermeasures the browser applies to fingerprintable surfaces (Brave Shields
+ * and canvas pixel-readback farbling), gated behind the Stage 1 Gecko RFP timer
+ * check so Firefox `resistFingerprinting` / Tor Browser never displays a canvas
+ * permission doorhanger (Rule #1).
  */
 
-import { SOURCE, UnsupportedSignal, type ShieldsSignal, type Source } from '@fingerly/core'
+import {
+  BlockedSignal,
+  SOURCE,
+  UnsupportedSignal,
+  type ShieldsSignal,
+  type Source,
+  type SourceContext,
+} from '@fingerly/core'
 
-import { compact } from '../util.js'
+import { attempt, compact } from '../util.js'
+import { acquireCanvas2D } from './render.js'
+import { isRfpCanvasBlocked } from './runtime.js'
 
-/**
- * How long Brave's own API is given to answer.
- *
- * It resolves immediately - the value is a constant on the browser side - so
- * this deadline exists for the build that ships a `navigator.brave` whose
- * `isBrave()` never settles, which is exactly what an anti-detect browser
- * imitating Brave would leave behind. A source that hangs on one probe is a
- * source that spends the whole fast budget, and this one is not worth that.
- */
 const VENDOR_API_MS = 50
 
 interface BraveNavigator {
@@ -36,78 +25,63 @@ interface BraveNavigator {
   userAgentData?: { brands?: { brand?: string }[] }
 }
 
-/** Distinguishes "the deadline won" from any value the promise could resolve to. */
 const TIMED_OUT = Symbol('timed-out')
 
-/**
- * `navigator.brave.isBrave()`, with a deadline.
- *
- * Undefined rather than false when the object is absent: "this browser says it
- * is not Brave" and "this browser was never asked" are different findings, and
- * only the first of them is evidence about anything.
- */
-async function askBrave(nav: BraveNavigator): Promise<boolean | undefined> {
-  if (typeof nav.brave?.isBrave !== 'function') return undefined
+type BraveApi = NonNullable<ShieldsSignal['brave_api']>
+
+/** What `navigator.brave.isBrave()` did, as an observation (`WEB-02`). */
+async function askBrave(nav: BraveNavigator): Promise<BraveApi> {
+  const brave = attempt(() => nav.brave)
+  if (brave === undefined || brave === null) return 'absent'
+  const isBrave = attempt(() => brave.isBrave)
+  if (typeof isBrave !== 'function') return 'not-function'
 
   try {
     const answer = await Promise.race([
-      nav.brave.isBrave(),
+      isBrave.call(brave),
       new Promise<symbol>((resolve) => setTimeout(() => resolve(TIMED_OUT), VENDOR_API_MS)),
     ])
-    // A promise that never settled says nothing; a promise that resolved to
-    // something other than `true` is a browser wearing the API without the
-    // answer, and that is worth recording as a plain false.
-    return answer === TIMED_OUT ? undefined : answer === true
+    if (answer === TIMED_OUT) return 'timeout'
+    return answer === true ? 'true' : 'false'
   } catch {
-    return undefined
+    return 'threw'
   }
 }
 
-/**
- * Whether the UA-CH brand list names Brave.
- *
- * Brave adds itself to `navigator.userAgentData.brands` while leaving the
- * user-agent string byte-identical to Chrome's, so this is the only place the
- * name appears in the claimed identity. Independent of the vendor API and
- * removable separately, which is the point of collecting both: a report where
- * one is present and the other is not is more interesting than either.
- */
-function claimsBrave(nav: BraveNavigator): boolean | undefined {
-  const brands = nav.userAgentData?.brands
+/** The brand names the browser lists, in order (`WEB-02`). */
+function brandsOf(nav: BraveNavigator): string[] | undefined {
+  const brands = attempt(() => nav.userAgentData?.brands)
   if (!Array.isArray(brands)) return undefined
-  return brands.some((entry) => entry?.brand === 'Brave')
+  return brands
+    .map((entry) => attempt(() => entry?.brand))
+    .filter((brand): brand is string => typeof brand === 'string')
 }
 
-/** The two colours of the canary checkerboard, as exact RGB. */
 const CANARY_COLOURS = [
   [30, 60, 90],
   [210, 180, 140],
 ] as const
 
-/** Eight by eight: sixty-four pixels, every one with neighbours of the other colour. */
 const CANARY_SIZE = 8
 
 /**
- * Whether canvas readback is noised, from a checkerboard whose true pixels are
- * known exactly.
- *
- * Opaque sRGB rectangles on whole pixels are drawn without antialiasing on
- * every engine, so an honest canvas reads them back byte for byte. A browser
- * that injects noise cannot leave this one alone: WebKit clamps each pixel's
- * noise to the colours around it, which spares flat areas and nothing else,
- * and here no pixel has a flat neighbourhood. One wrong byte is the answer.
- *
- * In the fast tier, unlike the canvas source, because what it protects is the
- * identity the first answer is built from. It costs one 8x8 canvas.
+ * The canary readback compared with what was drawn: how many pixels came back
+ * different and by how much. The page's `canvas_noise` boolean is derived
+ * from these, and they go on the wire with it so the server can derive it
+ * too (`WEB-02`).
  */
-function canvasNoise(): boolean | undefined {
+interface CanaryReading {
+  pixels: number
+  mismatched: number
+  maxDelta: number
+}
+
+function readCanary(ctx: SourceContext | undefined): CanaryReading | undefined {
   if (typeof document === 'undefined') return undefined
   try {
-    const canvas = document.createElement('canvas')
-    canvas.width = CANARY_SIZE
-    canvas.height = CANARY_SIZE
-    const context = canvas.getContext('2d', { willReadFrequently: true })
-    if (!context) return undefined
+    const pair = acquireCanvas2D(ctx, CANARY_SIZE, CANARY_SIZE)
+    if (!pair) return undefined
+    const [, context] = pair
 
     for (let y = 0; y < CANARY_SIZE; y++) {
       for (let x = 0; x < CANARY_SIZE; x++) {
@@ -118,16 +92,25 @@ function canvasNoise(): boolean | undefined {
     }
 
     const pixels = context.getImageData(0, 0, CANARY_SIZE, CANARY_SIZE).data
-    for (let index = 0; index < CANARY_SIZE * CANARY_SIZE; index++) {
+    let mismatched = 0
+    let maxDelta = 0
+    const total = CANARY_SIZE * CANARY_SIZE
+    for (let index = 0; index < total; index++) {
       const x = index % CANARY_SIZE
       const y = Math.floor(index / CANARY_SIZE)
       const [r, g, b] = CANARY_COLOURS[(x + y) % 2]!
       const at = index * 4
-      if (pixels[at] !== r || pixels[at + 1] !== g || pixels[at + 2] !== b || pixels[at + 3] !== 255) {
-        return true
-      }
+      const deltas = [
+        Math.abs((pixels[at] ?? 0) - r),
+        Math.abs((pixels[at + 1] ?? 0) - g),
+        Math.abs((pixels[at + 2] ?? 0) - b),
+        Math.abs((pixels[at + 3] ?? 0) - 255),
+      ]
+      const worst = Math.max(...deltas)
+      if (worst > 0) mismatched += 1
+      if (worst > maxDelta) maxDelta = worst
     }
-    return false
+    return { pixels: total, mismatched, maxDelta }
   } catch {
     return undefined
   }
@@ -135,16 +118,31 @@ function canvasNoise(): boolean | undefined {
 
 export const shieldsSource: Source<ShieldsSignal> = {
   id: SOURCE.shields,
-  tier: 'fast',
+  stage: 'collect',
   timeoutMs: 100,
-  async run() {
+  async run(ctx) {
+    if (isRfpCanvasBlocked(ctx)) {
+      throw new BlockedSignal('rfp-canvas-prompt-avoided')
+    }
+
     if (typeof navigator === 'undefined') throw new UnsupportedSignal('no-navigator')
     const nav = navigator as Navigator & BraveNavigator
 
+    const braveApi = await askBrave(nav)
+    const brands = brandsOf(nav)
+    const canary = readCanary(ctx)
+
+    // The three booleans are the page's reading; the fields after them are
+    // the observations behind each one (`WEB-02`).
     return compact<ShieldsSignal>({
-      brave: await askBrave(nav),
-      brave_claimed: claimsBrave(nav),
-      canvas_noise: canvasNoise(),
+      brave: braveApi === 'true' ? true : braveApi === 'false' ? false : undefined,
+      brave_claimed: brands === undefined ? undefined : brands.includes('Brave'),
+      canvas_noise: canary === undefined ? undefined : canary.mismatched > 0,
+      brave_api: braveApi,
+      brands,
+      canary_pixels: canary?.pixels,
+      canary_mismatched: canary?.mismatched,
+      canary_max_delta: canary?.maxDelta,
     })
   },
 }

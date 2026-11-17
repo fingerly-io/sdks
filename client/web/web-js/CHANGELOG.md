@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.0
+
+- `identify()` collects and submits in one `v: 3` round trip and resolves
+  without the signal report, which `collect()` returns.
+- Sends a single-use web freshness ticket with every report and solves its
+  proof of work when the key asks for one, without ever blocking or failing
+  `identify()`. See `@fingerly/core` 0.3.0.
+- Reads options, sources and answers as own properties only, needs no
+  `unsafe-eval`, and collects only what the server reads (no `plugins`
+  source). See `@fingerly/core` 0.3.0.
+- No event types are exported: the server SDKs type the server's event read.
+- Uses @fingerly/core 0.3.0.
+
 ## 0.2.0
 
 - The browser SDK collects nothing inside an app's web view: iOS and macOS `WKWebView`, Android `WebView`, Capacitor, Cordova and Ionic, React Native WebView, Flutter web views and Electron. `identify()` sends only a marker naming the kind, after consent as always; use the iOS or Android SDK in apps. Other companies' in-app browsers (Instagram, Facebook, TikTok) are treated as browsers.

@@ -3,9 +3,9 @@
 A dependency-free Node 20+ service (`server.mjs`, `node:http` and the global
 `fetch`) that your External Application Load Balancer routes one path to. It
 answers the path the Fingerly dashboard issued, on your own domain, and
-forwards only the browser SDK's submissions to the Fingerly API. It is not an
-open proxy: the upstream is a constant in the code, and every other path and
-method is refused.
+forwards single-pass browser and native SDK submissions as raw bytes to the
+Fingerly API. It is not an open proxy: the upstream is a constant in the code,
+and every other path and method is refused.
 
 ## Steps
 
@@ -113,16 +113,24 @@ documents no client address header for Cloud Run that a visitor cannot forge.
 ## What it sends and relays
 
 Upstream, to `https://api.fingerly.io/api/v1/ingest` only, on headers built
-from scratch: `content-type`, `x-api-key`, `idempotency-key` when present, and
-the `x-fingerly-*` headers the service sets itself (the proxy key, the client
-address, the page origin, the user agent and
+from scratch: `content-type`, `x-api-key`, `idempotency-key`, `user-agent`,
+`sec-fetch-*` and `sec-ch-ua*` when present, validated lowercase
+`x-fingerly-sdk-platform` when matched and `Origin` is absent (one channel
+header goes upstream, never both), and the `x-fingerly-*` headers the
+service sets itself (the proxy key, the client address, `x-fingerly-origin`
+only when `Origin` is present, `x-fingerly-host`, the user agent and
 `x-fingerly-proxy-version: gcp-cloud-run/1.0.0`, which the dashboard shows per
-proxy). Cookies, `Authorization` and any `x-fingerly-*` header a visitor forges
-never leave. Bodies over 1 MiB are refused with `413`, redirects are not
-followed, and a missing or malformed key answers `503` rather than forwarding.
-With `FINGERLY_PATH` unset the service answers `404` to everything.
+proxy). Requests missing both `Origin` and a valid `x-fingerly-sdk-platform`
+answer `400` (`missing_origin`) without synthesizing `x-fingerly-origin`.
+Cookies, `Authorization` and any `x-fingerly-*` header a visitor forges never
+leave. Bodies over 1 MiB are refused with `413`, redirects are not followed,
+and a missing or malformed key answers `503` rather than forwarding. With
+`FINGERLY_PATH` unset the service answers `404` to everything.
 
-Back to the page: the API's status and body with only `content-type`,
+Back to the page: an API redirect (`3xx`), or any status outside `200` to
+`599`, answers `502` marked `no-store` with none of its headers or body, so
+`Location` never reaches the page. Any other answer: the API's status and body
+with only `content-type`,
 `x-request-id`, `ratelimit-limit`, `ratelimit-remaining` and `retry-after`,
 plus `cache-control: no-store`. Nothing relayed names Fingerly.
 

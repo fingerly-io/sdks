@@ -6,8 +6,9 @@
  * opposite: no mocks, the real collectors, and the hooks used exactly as the
  * README documents them.
  *
- * It uses `submit: false`, so no server answers: the raw report fills in and
- * the score and level read hidden, as they must with nobody to ask.
+ * It uses `submit: false`, so no server answers: the score and level read
+ * hidden, as they must with nobody to ask. The signal report is never kept in
+ * the binding's state; `collect()` on the client is how to inspect one.
  */
 
 import { StrictMode, Suspense } from 'react'
@@ -47,7 +48,7 @@ function ScoreCard() {
  * empty state.
  */
 function Report() {
-  const { requestId, report, suspectScore, suspectLevel, refresh } = useIdentify({ suspend: true, tag: 'react-demo' })
+  const { requestId, identified, suspectScore, suspectLevel, refresh } = useIdentify({ suspend: true, tag: 'react-demo' })
 
   return (
     <>
@@ -60,9 +61,8 @@ function Report() {
         <Row label="suspectScore" value={suspectScore ?? 'hidden'} />
         <Row label="suspectLevel" value={suspectLevel ?? 'hidden'} hit={suspectLevel === 'high'} />
         <Row label="requestId" value={requestId ?? '— (submit: false)'} />
-        <Row label="sources" value={report ? Object.keys(report.sources).length : '—'} />
-        <Row label="elapsed_ms" value={report?.elapsed_ms ?? '—'} />
-        <Row label="engine" value={report?.integrity.engine.observed ?? '—'} />
+        <Row label="identified" value={identified} />
+        <Row label="report" value="not kept in state (collect() to inspect)" />
       </div>
       <div className="grid">
         <ScoreCard />
@@ -75,8 +75,7 @@ function App() {
   return (
     <>
       <h1>Fingerly — React binding</h1>
-      {/* submit: false - the demo collects and sends nothing. */}
-      <FingerlyProvider apiKey="pk_demo" submit={false}>
+      <FingerlyProvider apiKey="pk_demo" consent="granted">
         <Suspense fallback={<p className="status">collecting…</p>}>
           <Report />
         </Suspense>

@@ -1,7 +1,7 @@
 # Fingerly first-party proxy for Caddy, version 1.0.0.
 #
 # Put the `@fingerly` matcher and the `handle` block first in the site block
-# that serves your pages, so the browser SDK posts to your own host.
+# that serves your pages, so SDKs post to your own host.
 # `/k7x2qm4a` is the path the Fingerly dashboard issued for this proxy; the
 # block answers exactly that path, nothing under or beside it. The proxy key
 # comes from the FINGERLY_PROXY_KEY environment variable of the Caddy process,
@@ -15,55 +15,151 @@ www.example.com {
 	# characters.
 	@fingerly vars_regexp {http.request.orig_uri} ^/k7x2qm4a(?:[?].*)?$
 	handle @fingerly {
-		# Deferred, so it replaces whatever the API sends and also covers the
-		# responses Caddy writes itself.
-		header >Cache-Control no-store
+		route {
+			# Deferred, so it replaces whatever the API sends and also covers the
+			# responses Caddy writes itself.
+			header >Cache-Control no-store
+			# Caddy names itself in a Via header of its own; deletions are deferred too.
+			header -Via
 
-		@notpost not method POST
-		header @notpost Allow POST
-		respond @notpost 405
+			@notpost not method POST
+			header @notpost Allow POST
+			respond @notpost 405
 
-		# A key that is not shaped like a proxy key answers 503 rather than
-		# forwarding anything.
-		@nokey not vars_regexp {env.FINGERLY_PROXY_KEY} ^fly_px_(production|staging|development)_[A-Za-z0-9_-]+$
-		respond @nokey 503
+			# A key that is not shaped like a proxy key answers 503 rather than
+			# forwarding anything.
+			@nokey not vars_regexp {env.FINGERLY_PROXY_KEY} ^fly_px_(production|staging|development)_[A-Za-z0-9_-]+$
+			respond @nokey 503
 
-		request_body {
-			max_size 1MiB
-		}
+			# 1. Capture validated lowercase X-Fingerly-SDK-Platform; anything else becomes "".
+			vars fingerly_platform ""
+			@validplatform vars_regexp {http.request.header.X-Fingerly-SDK-Platform} ^(ios|android|react-native|react-native-ios|react-native-android|flutter|flutter-ios|flutter-android|lynx-ios|lynx-android|capacitor|kotlin-multiplatform)$
+			vars @validplatform fingerly_platform {http.request.header.X-Fingerly-SDK-Platform}
 
-		# Visitor-sent X-Fingerly-* headers never reach the API; the ones below
-		# are set by this proxy alone.
-		request_header -X-Fingerly-*
+			# 2-4. Reject with 400 missing_origin iff both Origin and validated platform are empty.
+			@missingorigin {
+				not header_regexp Origin .
+				vars {http.vars.fingerly_platform} ""
+			}
+			header @missingorigin Content-Type application/json
+			respond @missingorigin `{"error":{"code":"missing_origin","message":"Origin or X-Fingerly-SDK-Platform header is required"}}` 400
 
-		# Browsers send Origin with every POST. The page's own origin stands in
-		# when a client leaves it out.
-		@noorigin not header Origin *
-		request_header @noorigin Origin {scheme}://{hostport}
+			# X-Api-Key must be a public key of the proxy key's environment.
+			# Anything else, a missing header or a secret fly_sk_ key included,
+			# answers 401 and nothing is forwarded.
+			vars fingerly_public_key ""
+			@proxyenv vars_regexp proxyenv {env.FINGERLY_PROXY_KEY} ^fly_px_(production|staging|development)_
+			vars @proxyenv fingerly_key_pair "{re.proxyenv.1} {http.request.header.X-Api-Key}"
+			@public vars_regexp {http.vars.fingerly_key_pair} "^(production fly_pk_production|staging fly_pk_staging|development fly_pk_development)_[A-Za-z0-9_-]+$"
+			vars @public fingerly_public_key {http.request.header.X-Api-Key}
+			@notpublic vars {http.vars.fingerly_public_key} ""
+			respond @notpublic 401
 
-		# The one URL this block can reach. Both of the browser SDK's calls go
-		# here; the API tells them apart by their bodies.
-		rewrite * /api/v1/ingest
-		reverse_proxy https://api.fingerly.io {
-			header_up Host {upstream_hostport}
-			header_up -Cookie
-			header_up -Authorization
-			header_up X-Fingerly-Proxy-Key {env.FINGERLY_PROXY_KEY}
-			# The visitor's address. Behind a load balancer, set trusted_proxies
-			# (and trusted_proxies_strict) so this is the visitor, not the load
-			# balancer. See the README.
-			header_up X-Fingerly-Client-Ip {client_ip}
-			header_up X-Fingerly-Origin {http.request.header.Origin}
-			header_up X-Fingerly-User-Agent {http.request.header.User-Agent}
-			header_up X-Fingerly-Proxy-Version caddy/1.0.0
+			request_body {
+				max_size 1MiB
+			}
 
-			# The API sends nothing naming Fingerly to proxied callers; dropping
-			# cookies is defense in depth.
-			header_down -Set-Cookie
+			# 2-3. Request headers are an allowlist. The contract's client headers
+			# are kept aside, every incoming header is removed (cookies,
+			# Authorization, Referer, forwarding headers, application headers and
+			# any visitor-sent X-Fingerly-* header among them), and only the kept
+			# ones the visitor sent are set again. A header that was not sent is
+			# not sent at all.
+			vars {
+				fingerly_content_type application/json
+				fingerly_idempotency_key {http.request.header.Idempotency-Key}
+				fingerly_user_agent {http.request.header.User-Agent}
+				fingerly_sec_fetch_site {http.request.header.Sec-Fetch-Site}
+				fingerly_sec_fetch_mode {http.request.header.Sec-Fetch-Mode}
+				fingerly_sec_fetch_dest {http.request.header.Sec-Fetch-Dest}
+				fingerly_sec_ch_ua {http.request.header.Sec-CH-UA}
+				fingerly_sec_ch_ua_mobile {http.request.header.Sec-CH-UA-Mobile}
+				fingerly_sec_ch_ua_platform {http.request.header.Sec-CH-UA-Platform}
+				fingerly_origin {http.request.header.Origin}
+			}
+			@sentcontenttype header_regexp Content-Type .
+			vars @sentcontenttype fingerly_content_type {http.request.header.Content-Type}
 
-			transport http {
-				dial_timeout 5s
-				response_header_timeout 5s
+			request_header -*
+			request_header Content-Type {http.vars.fingerly_content_type}
+			request_header X-Api-Key {http.vars.fingerly_public_key}
+			@sentidempotencykey not vars {http.vars.fingerly_idempotency_key} ""
+			request_header @sentidempotencykey Idempotency-Key {http.vars.fingerly_idempotency_key}
+			@sentuseragent not vars {http.vars.fingerly_user_agent} ""
+			request_header @sentuseragent User-Agent {http.vars.fingerly_user_agent}
+			request_header @sentuseragent X-Fingerly-User-Agent {http.vars.fingerly_user_agent}
+			@sentsecfetchsite not vars {http.vars.fingerly_sec_fetch_site} ""
+			request_header @sentsecfetchsite Sec-Fetch-Site {http.vars.fingerly_sec_fetch_site}
+			@sentsecfetchmode not vars {http.vars.fingerly_sec_fetch_mode} ""
+			request_header @sentsecfetchmode Sec-Fetch-Mode {http.vars.fingerly_sec_fetch_mode}
+			@sentsecfetchdest not vars {http.vars.fingerly_sec_fetch_dest} ""
+			request_header @sentsecfetchdest Sec-Fetch-Dest {http.vars.fingerly_sec_fetch_dest}
+			@sentsecchua not vars {http.vars.fingerly_sec_ch_ua} ""
+			request_header @sentsecchua Sec-CH-UA {http.vars.fingerly_sec_ch_ua}
+			@sentsecchuamobile not vars {http.vars.fingerly_sec_ch_ua_mobile} ""
+			request_header @sentsecchuamobile Sec-CH-UA-Mobile {http.vars.fingerly_sec_ch_ua_mobile}
+			@sentsecchuaplatform not vars {http.vars.fingerly_sec_ch_ua_platform} ""
+			request_header @sentsecchuaplatform Sec-CH-UA-Platform {http.vars.fingerly_sec_ch_ua_platform}
+			# X-Fingerly-Origin only when Origin was sent; never synthesized from Host.
+			@sentorigin not vars {http.vars.fingerly_origin} ""
+			request_header @sentorigin X-Fingerly-Origin {http.vars.fingerly_origin}
+			# The validated platform, restored only when it matched and Origin
+			# was not sent: one channel header goes upstream, never both.
+			@hasplatform {
+				not vars {http.vars.fingerly_platform} ""
+				vars {http.vars.fingerly_origin} ""
+			}
+			request_header @hasplatform X-Fingerly-SDK-Platform {http.vars.fingerly_platform}
+
+			# The one URL this block can reach. Single-pass browser and native SDK
+			# submissions go here as raw bytes.
+			rewrite * /api/v1/ingest
+			reverse_proxy https://api.fingerly.io {
+				header_up Host {upstream_hostport}
+				# Caddy's own forwarding headers: the API reads the visitor's address
+				# only from X-Fingerly-Client-Ip.
+				header_up -X-Forwarded-For
+				header_up -X-Forwarded-Proto
+				header_up -X-Forwarded-Host
+				header_up -Via
+				header_up X-Fingerly-Proxy-Key {env.FINGERLY_PROXY_KEY}
+				# The visitor's address. Behind a load balancer, set trusted_proxies
+				# (and trusted_proxies_strict) so this is the visitor, not the load
+				# balancer. See the README.
+				header_up X-Fingerly-Client-Ip {client_ip}
+				header_up X-Fingerly-Host {hostport}
+				header_up X-Fingerly-Proxy-Version caddy/1.0.0
+
+				transport http {
+					dial_timeout 5s
+					response_header_timeout 5s
+				}
+
+				# Response headers are an allowlist too. Nothing the API sends is
+				# copied as it is; only the relayed headers it sent are set again.
+				# Cache-Control is pinned above. The placeholders spell each name the
+				# way Go stores it (Ratelimit-Limit, not RateLimit-Limit).
+				header_down -*
+				# A redirect is never followed or relayed, and neither is a status
+				# outside 200 to 599: each is answered 502, with none of its headers
+				# or body.
+				@unrelayable status 1xx 3xx 6xx 7xx 8xx 9xx
+				handle_response @unrelayable {
+					respond "Bad gateway" 502
+				}
+				handle_response {
+					@relaycontenttype not vars {rp.header.Content-Type} ""
+					header @relaycontenttype Content-Type {rp.header.Content-Type}
+					@relayrequestid not vars {rp.header.X-Request-Id} ""
+					header @relayrequestid X-Request-Id {rp.header.X-Request-Id}
+					@relayratelimitlimit not vars {rp.header.Ratelimit-Limit} ""
+					header @relayratelimitlimit RateLimit-Limit {rp.header.Ratelimit-Limit}
+					@relayratelimitremaining not vars {rp.header.Ratelimit-Remaining} ""
+					header @relayratelimitremaining RateLimit-Remaining {rp.header.Ratelimit-Remaining}
+					@relayretryafter not vars {rp.header.Retry-After} ""
+					header @relayretryafter Retry-After {rp.header.Retry-After}
+					copy_response
+				}
 			}
 		}
 	}

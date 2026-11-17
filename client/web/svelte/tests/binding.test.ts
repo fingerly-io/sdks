@@ -185,6 +185,21 @@ describe('useIdentify', () => {
     expect(page.state).not.toHaveProperty('reason')
   })
 
+  it('keeps no signal report in state and hands none back, on the first call or a reused one', async () => {
+    const page = render({ options: { apiKey: 'fly_pk_development_test', consent: 'granted' } })
+
+    const first = await page.state.identify()
+    const reused = await page.state.identify()
+
+    expect(first).not.toHaveProperty('report')
+    expect(reused).not.toHaveProperty('report')
+    expect(first.requestId).toBe('req_1')
+    expect(page.state).not.toHaveProperty('report')
+    expect(page.shared).not.toHaveProperty('report')
+    expect(page.state.identified).toBe(true)
+    expect(page.state.isReady).toBe(true)
+  })
+
   it('never surfaces why a check went unscored, which only a backend is told', async () => {
     identifyMock.mockResolvedValueOnce({
       ...RESULT,
@@ -223,14 +238,12 @@ describe('useIdentify', () => {
     expect(page.state.isSuspicious).toBeNull()
   })
 
-  it('reports an unscored check as null, not zero', async () => {
-    // Null and zero are different answers. Zero is "we scored it and found
-    // nothing"; null is "nobody scored it". A binding that collapsed them
-    // would make an unsubmitted page look clean.
+  it('reports an unscored Option B check with null scores and visitorId ""', async () => {
     identifyMock.mockResolvedValueOnce({
       ...RESULT,
-      requestId: '',
+      requestId: 'req_opt_b',
       visitorId: '',
+      visitorIsNew: false,
       identifiable: false,
       suspectScore: null,
       suspectLevel: null,
@@ -241,7 +254,7 @@ describe('useIdentify', () => {
 
     expect(page.state.suspectScore).toBeNull()
     expect(page.state.suspectLevel).toBeNull()
-    expect(page.state.visitorId).toBeNull()
+    expect(page.state.visitorId).toBe('')
     expect(page.state.identifiable).toBe(false)
   })
 
@@ -359,10 +372,14 @@ describe('useIdentify', () => {
     }
   })
 
-  it('leaves requestId null when submit is off, and still shares the run', async () => {
-    identifyMock.mockResolvedValue({ ...RESULT, requestId: '' })
+  it('forwards incognitoDetection="extended", leaves empty requestId null, and shares one run', async () => {
+    identifyMock.mockResolvedValue({ ...RESULT, requestId: '', visitorId: '', identifiable: false })
     const page = render({
-      options: { apiKey: 'fly_pk_development_test', consent: 'granted', submit: false },
+      options: {
+        apiKey: 'fly_pk_development_test',
+        consent: 'granted',
+        incognitoDetection: 'extended',
+      },
       immediate: true,
       children: 2,
     })
@@ -370,7 +387,8 @@ describe('useIdentify', () => {
     await settle()
 
     expect(identifyMock).toHaveBeenCalledTimes(1)
-    expect(identifyMock).toHaveBeenCalledWith({ submit: false })
+    expect(identifyMock).toHaveBeenCalledWith({ incognitoDetection: 'extended' })
+    expect(page.state.visitorId).toBe('')
     expect(page.text()).toContain('request:-')
   })
 })

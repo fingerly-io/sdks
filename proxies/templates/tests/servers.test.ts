@@ -54,21 +54,33 @@ const id = () => randomBytes(4).toString('hex')
 
 interface Seen { method: string; url: string; headers: IncomingHttpHeaders; body: string }
 
-/** The stub API: records every request and answers like the real one, plus a cookie and a cache header. */
+/** The stub API: records every request and answers like the real one, plus cookies and internal headers. */
 class StubApi {
   seen: Seen[] = []
+  /** The status to answer with; anything but 200 also carries a Location to steal. */
+  status = 200
   private server: Server = createServer((req, res) => {
     const chunks: Buffer[] = []
     req.on('data', (chunk: Buffer) => chunks.push(chunk))
     req.on('end', () => {
       this.seen.push({ method: req.method ?? '', url: req.url ?? '', headers: req.headers, body: Buffer.concat(chunks).toString() })
-      res.writeHead(200, {
+      res.writeHead(this.status, {
+        ...(this.status === 200 ? {} : { location: 'https://elsewhere.example/steal' }),
         'content-type': 'application/json',
         'x-request-id': 'req_stub',
         'ratelimit-limit': '100',
         'ratelimit-remaining': '99',
+        'retry-after': '1',
+        'fingerly-balance-micros': '100',
+        'fingerly-ratelimit-scope': 'org',
+        'x-fingerly-proxy-version': 'api',
         'set-cookie': 'session=abc; Path=/',
         'cache-control': 'max-age=60',
+        server: 'fingerly-api',
+        // Headers outside the relay list, as a future API might add them.
+        'x-new-internal': '1',
+        'x-powered-by': 'api-stack',
+        via: '1.1 api-internal',
       })
       res.end('{"request_id":"req_stub"}')
     })
@@ -274,6 +286,16 @@ const TRAEFIK_RESOLVES = ['/x/../k7x2qm4a', '/./k7x2qm4a', '/k7x2qm4a/.', '/k7x2
 
 const relayReady = { path: '/k7x2qm4a', when: (response: Response) => response.status === 405 }
 
+const NGINX_LOAD_MODULE = 'load_module modules/ngx_http_js_module.so;'
+
+const NGINX_PLATFORM_MAP = [
+  'map "$http_origin:$http_x_fingerly_sdk_platform" $fingerly_platform {',
+  '    default "";',
+  '    "~^:(ios|android|react-native|react-native-ios|react-native-android|flutter|flutter-ios|flutter-android|lynx-ios|lynx-android|capacitor|kotlin-multiplatform)$" $1;',
+  '}',
+  '',
+].join('\n')
+
 interface Template {
   kind: string
   /** What the deployment reports upstream as x-fingerly-proxy-version. */
@@ -284,8 +306,6 @@ interface Template {
   upstreamHost(stubPort: number): string
   /** What answers a path beside the issued one. */
   elsewhere: { status: number; body?: string }
-  /** The origin sent upstream when the client sends none. */
-  originFallback(base: string): string
   /**
    * Near targets the front server resolves to the issued path itself, before
    * routing, and forwards cleaned: the relay behind it never sees them raw.
@@ -304,9 +324,23 @@ const templates: Template[] = [
       const n = id()
       writeFileSync(join(dir, `fingerly-${n}.conf`), shipped.replace(SHIPPED_UPSTREAM_NGINX, `proxy_pass http://host.docker.internal:${stubPort}/api/v1/ingest;`))
       writeFileSync(join(dir, `key-${n}.conf`), `set $fingerly_proxy_key "${key}";\n`)
-      writeFileSync(join(dir, `site-${n}.conf`), 'server {\n    listen 8080;\n    include /etc/nginx/snippets/fingerly.conf;\n    location / { return 200 "site"; }\n}\n')
+      writeFileSync(join(dir, `site-${n}.conf`), `${NGINX_PLATFORM_MAP}server {\n    listen 8080;\n    include /etc/nginx/snippets/fingerly.conf;\n    location / { return 200 "site"; }\n}\n`)
+      // The image's own main configuration, plus the load_module line the README adds.
+      writeFileSync(join(dir, `nginx-${n}.conf`), [
+        NGINX_LOAD_MODULE,
+        'user nginx;',
+        'worker_processes 1;',
+        'events {}',
+        'http {',
+        '    include /etc/nginx/mime.types;',
+        '    include /etc/nginx/conf.d/*.conf;',
+        '}',
+        '',
+      ].join('\n'))
       return new Stack([{
         args: [
+          '-v', `${join(dir, `nginx-${n}.conf`)}:/etc/nginx/nginx.conf:ro`,
+          '-v', `${join(ROOT, 'nginx/fingerly.js')}:/etc/nginx/fingerly.js:ro`,
           '-v', `${join(dir, `site-${n}.conf`)}:/etc/nginx/conf.d/default.conf:ro`,
           '-v', `${join(dir, `fingerly-${n}.conf`)}:/etc/nginx/snippets/fingerly.conf:ro`,
           '-v', `${join(dir, `key-${n}.conf`)}:/etc/nginx/fingerly-proxy-key.conf:ro`,
@@ -316,7 +350,6 @@ const templates: Template[] = [
     },
     upstreamHost: () => 'api.fingerly.io',
     elsewhere: { status: 200, body: 'site' },
-    originFallback: (base) => base,
   },
   {
     kind: 'caddy',
@@ -337,7 +370,6 @@ const templates: Template[] = [
     },
     upstreamHost: (stubPort) => `host.docker.internal:${stubPort}`,
     elsewhere: { status: 200, body: 'site' },
-    originFallback: (base) => base,
   },
   {
     kind: 'container',
@@ -347,7 +379,6 @@ const templates: Template[] = [
     deploy: (stubPort, dir, key) => new Stack([{ args: [...relayEnv(dir, key), relayImage(dir, stubPort)] }], 8080, relayReady),
     upstreamHost: (stubPort) => `host.docker.internal:${stubPort}`,
     elsewhere: { status: 404 },
-    originFallback: (base) => base.replace('http:', 'https:'),
   },
   {
     kind: 'traefik (file provider)',
@@ -384,7 +415,6 @@ const templates: Template[] = [
     },
     upstreamHost: (stubPort) => `host.docker.internal:${stubPort}`,
     elsewhere: { status: 502 },
-    originFallback: (base) => base.replace('http:', 'https:'),
     resolvedInFront: TRAEFIK_RESOLVES,
   },
   {
@@ -416,7 +446,6 @@ const templates: Template[] = [
     },
     upstreamHost: (stubPort) => `host.docker.internal:${stubPort}`,
     elsewhere: { status: 404 },
-    originFallback: (base) => base.replace('http:', 'https:'),
     resolvedInFront: TRAEFIK_RESOLVES,
   },
 ]
@@ -427,6 +456,12 @@ const visitorHeaders = {
   'idempotency-key': 'op-1',
   origin: 'https://shop.example',
   'user-agent': 'Mozilla/5.0 (integration)',
+  'sec-fetch-site': 'same-origin',
+  'sec-fetch-mode': 'cors',
+  'sec-fetch-dest': 'empty',
+  'sec-ch-ua': '"Chromium";v="130"',
+  'sec-ch-ua-mobile': '?0',
+  'sec-ch-ua-platform': '"macOS"',
   cookie: 'session=1',
   authorization: 'Bearer secret',
   'x-forwarded-for': '6.6.6.6',
@@ -434,8 +469,29 @@ const visitorHeaders = {
   'x-fingerly-client-ip': '6.6.6.6',
   'x-fingerly-proxy-key': 'fly_px_production_forged',
   'x-fingerly-proxy-version': 'forged/9.9.9',
+  'x-fingerly-origin': 'https://forged.example',
+  'x-fingerly-edge-tls-version': 'forged-tls',
+  'x-fingerly-sdk-platform': 'EvilOS',
   'x-fingerly-other': 'forged',
 }
+
+/** Headers outside the contract a page, a wrapper or a forger can add to a same-origin POST. */
+const UNLISTED_REQUEST = {
+  referer: 'https://shop.example/reset?token=secret-token',
+  'x-custom-token': 'app-header',
+  forwarded: 'for=203.0.113.9',
+  'x-forwarded-host': 'forged.example',
+  'accept-language': 'tr-TR,tr;q=0.9',
+  'x-requested-with': 'wrapper',
+}
+/** Names the contract (sdks/contract/proxy.md section 3) lets a proxy send upstream. */
+const CONTRACT_REQUEST = /^(x-api-key|content-type|idempotency-key|user-agent|sec-fetch-(site|mode|dest)|sec-ch-ua(-mobile|-platform)?|x-fingerly-[a-z-]+)$/
+/** Framing headers, which are not a forwarding decision. */
+const TRANSPORT_REQUEST = /^(host|content-length|connection|accept-encoding|transfer-encoding)$/
+/** The response headers the contract relays (section 4), plus the pinned Cache-Control. */
+const RELAYED_RESPONSE = /^(x-request-id|ratelimit-limit|ratelimit-remaining|retry-after|content-type|cache-control)$/
+/** Framing headers and the front server's own name. */
+const TRANSPORT_RESPONSE = /^(content-length|connection|transfer-encoding|date|keep-alive|server)$/
 
 /**
  * Request targets that are not the issued path but that URL parsing, path
@@ -498,19 +554,26 @@ describe.skipIf(!docker).each(templates)('$kind template', (template) => {
     if (dir) rmSync(dir, { recursive: true, force: true })
   })
 
-  it('forwards to the ingest URL with the visitor metadata, overwriting what the visitor sent', async () => {
+  it('forwards to the ingest URL with visitor metadata, client hints, and raw body bytes, stripping forged headers', async () => {
     stub.seen = []
-    const response = await fetch(`${proxy!.base}/k7x2qm4a`, { method: 'POST', headers: visitorHeaders, body: '{"a":1}' })
+    const rawBody = '{ "v": 3, "signals": { "amount": 142.50 } }'
+    const response = await fetch(`${proxy!.base}/k7x2qm4a`, { method: 'POST', headers: visitorHeaders, body: rawBody })
     expect(response.status, proxy!.logs()).toBe(200)
     expect(stub.seen).toHaveLength(1)
     const seen = stub.seen[0]!
     expect(seen.method).toBe('POST')
     expect(seen.url).toBe('/api/v1/ingest')
-    expect(seen.body).toBe('{"a":1}')
+    expect(seen.body).toBe(rawBody)
     expect(seen.headers.host).toBe(template.upstreamHost(stubPort))
     expect(seen.headers['content-type']).toBe('application/json')
     expect(seen.headers['x-api-key']).toBe('fly_pk_production_public')
     expect(seen.headers['idempotency-key']).toBe('op-1')
+    expect(seen.headers['sec-fetch-site']).toBe('same-origin')
+    expect(seen.headers['sec-fetch-mode']).toBe('cors')
+    expect(seen.headers['sec-fetch-dest']).toBe('empty')
+    expect(seen.headers['sec-ch-ua']).toBe('"Chromium";v="130"')
+    expect(seen.headers['sec-ch-ua-mobile']).toBe('?0')
+    expect(seen.headers['sec-ch-ua-platform']).toBe('"macOS"')
     expect(seen.headers['x-fingerly-proxy-key']).toBe(KEY)
     expect(seen.headers['x-fingerly-proxy-version']).toBe(template.version)
     expect(seen.headers['x-fingerly-origin']).toBe('https://shop.example')
@@ -518,31 +581,128 @@ describe.skipIf(!docker).each(templates)('$kind template', (template) => {
     // The address of the connection the front server accepted: never a forged header.
     expect(seen.headers['x-fingerly-client-ip']).toMatch(/^[0-9a-f.:]+$/)
     expect(seen.headers['x-fingerly-client-ip']).not.toBe('6.6.6.6')
+    expect(seen.headers['x-fingerly-sdk-platform']).toBeUndefined()
+    expect(seen.headers['x-fingerly-edge-tls-version']).toBeUndefined()
     expect(seen.headers['x-fingerly-other']).toBeUndefined()
     expect(seen.headers.cookie).toBeUndefined()
     expect(seen.headers.authorization).toBeUndefined()
   })
 
-  it('relays the request id and rate limits, drops cookies and pins no-store', async () => {
+  it('relays the request id, rate limits and retry-after, drops cookies and internal headers, and pins no-store', async () => {
     const response = await fetch(`${proxy!.base}/k7x2qm4a`, { method: 'POST', headers: visitorHeaders, body: '{}' })
     expect(response.headers.get('x-request-id')).toBe('req_stub')
     expect(response.headers.get('ratelimit-remaining')).toBe('99')
+    expect(response.headers.get('retry-after')).toBe('1')
     expect(response.headers.get('content-type')).toBe('application/json')
     expect(response.headers.get('set-cookie')).toBeNull()
+    expect(response.headers.get('fingerly-balance-micros')).toBeNull()
+    expect(response.headers.get('fingerly-ratelimit-scope')).toBeNull()
     expect(response.headers.get('cache-control')).toBe('no-store')
     expect(await response.text()).toBe('{"request_id":"req_stub"}')
   })
 
-  it("uses the page's own origin when the client sends none", async () => {
+  it('forwards only the contract request headers, whatever else the visitor sends', async () => {
     stub.seen = []
-    const { origin: _origin, ...withoutOrigin } = visitorHeaders
-    await fetch(`${proxy!.base}/k7x2qm4a`, { method: 'POST', headers: withoutOrigin, body: '{}' })
-    expect(stub.seen[0]?.headers['x-fingerly-origin']).toBe(template.originFallback(proxy!.base))
+    const response = await fetch(`${proxy!.base}/k7x2qm4a`, { method: 'POST', headers: { ...visitorHeaders, ...UNLISTED_REQUEST }, body: '{}' })
+    expect(response.status, proxy!.logs()).toBe(200)
+    const seen = stub.seen[0]!
+    const outside = Object.keys(seen.headers).filter((name) => !CONTRACT_REQUEST.test(name) && !TRANSPORT_REQUEST.test(name))
+    // The Node relays' own HTTP client adds `accept` and `accept-language: *`;
+    // neither carries a visitor value.
+    const runtime = template.kind === 'nginx' || template.kind === 'caddy' ? [] : ['accept', 'accept-language']
+    expect(outside.filter((name) => !runtime.includes(name)), JSON.stringify(seen.headers)).toEqual([])
+    expect(seen.headers['accept-language']).not.toBe(UNLISTED_REQUEST['accept-language'])
+    expect(seen.headers.origin).toBeUndefined()
+    expect(seen.headers['x-fingerly-origin']).toBe('https://shop.example')
+    expect(seen.headers['x-fingerly-client-ip']).not.toBe('6.6.6.6')
   })
 
-  it('answers exactly the issued path', async () => {
+  it('relays only the allowlisted response headers, whatever the API adds', async () => {
+    const response = await fetch(`${proxy!.base}/k7x2qm4a`, { method: 'POST', headers: visitorHeaders, body: '{}' })
+    expect(response.status, proxy!.logs()).toBe(200)
+    const outside = [...response.headers.keys()].filter((name) => !RELAYED_RESPONSE.test(name) && !TRANSPORT_RESPONSE.test(name))
+    expect(outside, JSON.stringify([...response.headers])).toEqual([])
+    // A front server may name itself, but never relays the API's value or a version.
+    expect(response.headers.get('server') ?? '').not.toMatch(/fingerly|api|\d/)
+  })
+
+  it('answers 401 locally for an X-Api-Key that is not a public key of the proxy key environment', async () => {
+    for (const key of ['fly_pk_development_x', 'fly_pk_staging_x', 'not-a-key', 'fly_sk_production_x', 'fly_pk_production_', 'fly_pk_production_a b', undefined]) {
+      stub.seen = []
+      const headers: Record<string, string> = { ...visitorHeaders }
+      if (key === undefined) delete headers['x-api-key']
+      else headers['x-api-key'] = key
+      const response = await fetch(`${proxy!.base}/k7x2qm4a`, { method: 'POST', headers, body: '{}' })
+      expect(response.status, String(key)).toBe(401)
+      expect(response.headers.get('cache-control'), String(key)).toBe('no-store')
+      expect(stub.seen, String(key)).toHaveLength(0)
+    }
+  })
+
+  it('rejects originless POST without valid x-fingerly-sdk-platform with 400 missing_origin and never synthesizes x-fingerly-origin', async () => {
     stub.seen = []
-    for (const path of ['/k7x2qm4a/admin', '/k7x2qm4ab', '/other']) {
+    const { origin: _origin, 'x-fingerly-sdk-platform': _platform, ...withoutOrigin } = visitorHeaders
+    const response = await fetch(`${proxy!.base}/k7x2qm4a`, {
+      method: 'POST',
+      headers: { ...withoutOrigin, referer: 'https://shop.example/checkout' },
+      body: '{}',
+    })
+    expect(response.status, proxy!.logs()).toBe(400)
+    expect(response.headers.get('cache-control')).toBe('no-store')
+    expect(await response.json()).toEqual({
+      error: { code: 'missing_origin', message: 'Origin or X-Fingerly-SDK-Platform header is required' },
+    })
+
+    for (const invalid of ['EvilOS', 'iOS', 'IOS', 'ios, android']) {
+      const rejected = await fetch(`${proxy!.base}/k7x2qm4a`, {
+        method: 'POST',
+        headers: { ...withoutOrigin, 'x-fingerly-sdk-platform': invalid },
+        body: '{}',
+      })
+      expect(rejected.status, invalid).toBe(400)
+      expect(rejected.headers.get('cache-control')).toBe('no-store')
+      expect(((await rejected.json()) as { error: { code: string } }).error.code).toBe('missing_origin')
+    }
+    expect(stub.seen).toHaveLength(0)
+  })
+
+  it('forwards valid native POST without Origin, restoring x-fingerly-sdk-platform and omitting x-fingerly-origin', async () => {
+    const { origin: _origin, ...withoutOrigin } = visitorHeaders
+    for (const platform of ['ios', 'android', 'react-native-ios']) {
+      stub.seen = []
+      const response = await fetch(`${proxy!.base}/k7x2qm4a`, {
+        method: 'POST',
+        headers: { ...withoutOrigin, 'x-fingerly-sdk-platform': platform },
+        body: '{}',
+      })
+      expect(response.status, `${platform}: ${proxy!.logs()}`).toBe(200)
+      expect(stub.seen).toHaveLength(1)
+      const seen = stub.seen[0]!
+      expect(seen.headers['x-fingerly-sdk-platform']).toBe(platform)
+      expect(seen.headers['x-fingerly-origin']).toBeUndefined()
+      expect(seen.headers['x-fingerly-edge-tls-version']).toBeUndefined()
+    }
+  })
+
+  it('sends one channel header: a valid platform beside Origin is dropped and only x-fingerly-origin goes upstream', async () => {
+    for (const platform of ['ios', 'android', 'react-native-ios']) {
+      stub.seen = []
+      const response = await fetch(`${proxy!.base}/k7x2qm4a`, {
+        method: 'POST',
+        headers: { ...visitorHeaders, 'x-fingerly-sdk-platform': platform },
+        body: '{}',
+      })
+      expect(response.status, `${platform}: ${proxy!.logs()}`).toBe(200)
+      expect(stub.seen).toHaveLength(1)
+      const seen = stub.seen[0]!
+      expect(seen.headers['x-fingerly-origin']).toBe('https://shop.example')
+      expect(seen.headers['x-fingerly-sdk-platform']).toBeUndefined()
+    }
+  })
+
+  it('answers exactly the issued path and never forwards /supplement', async () => {
+    stub.seen = []
+    for (const path of ['/k7x2qm4a/supplement', '/k7x2qm4a/events/evt_1/supplement', '/k7x2qm4a/admin', '/k7x2qm4ab', '/other']) {
       const response = await fetch(`${proxy!.base}${path}`, { method: 'POST', headers: visitorHeaders, body: '{}' })
       expect(response.status, path).toBe(template.elsewhere.status)
       if (template.elsewhere.body !== undefined) expect(await response.text(), path).toBe(template.elsewhere.body)
@@ -583,15 +743,42 @@ describe.skipIf(!docker).each(templates)('$kind template', (template) => {
     expect(atCap.status).toBe(200)
   })
 
-  it.skipIf(!template.keyless)('answers 503 rather than forwarding when the proxy key is missing', async () => {
-    stub.seen = []
-    const response = await fetch(`${keyless!.base}/k7x2qm4a`, { method: 'POST', headers: visitorHeaders, body: '{}' })
-    expect(response.status).toBe(503)
-    expect(response.headers.get('cache-control')).toBe('no-store')
-    expect(stub.seen).toHaveLength(0)
+  it('answers an API redirect or a status outside 200 to 599 with 502, never relaying Location', async () => {
+    try {
+      for (const status of [301, 302, 303, 304, 307, 308, 399, 600, 999]) {
+        stub.status = status
+        const response = await fetch(`${proxy!.base}/k7x2qm4a`, { method: 'POST', headers: visitorHeaders, body: '{}', redirect: 'manual' })
+        expect(response.status, `${status}: ${proxy!.logs()}`).toBe(502)
+        expect(response.headers.get('cache-control'), String(status)).toBe('no-store')
+        expect(response.headers.get('location'), String(status)).toBeNull()
+        expect(response.headers.get('x-request-id'), String(status)).toBeNull()
+        expect(await response.text(), String(status)).not.toContain('req_stub')
+      }
+      for (const status of [201, 409, 500]) {
+        stub.status = status
+        const response = await fetch(`${proxy!.base}/k7x2qm4a`, { method: 'POST', headers: visitorHeaders, body: '{}', redirect: 'manual' })
+        expect(response.status, String(status)).toBe(status)
+        expect(response.headers.get('location'), String(status)).toBeNull()
+        expect(response.headers.get('x-request-id'), String(status)).toBe('req_stub')
+      }
+    } finally {
+      stub.status = 200
+    }
   })
 
-  it.skipIf(template.kind !== 'container')('runs as an unprivileged user', () => {
-    expect(run(['exec', (proxy as Stack).name(0), 'id', '-u']).trim()).toBe('1000')
-  })
+  if (template.keyless) {
+    it('answers 503 rather than forwarding when the proxy key is missing', async () => {
+      stub.seen = []
+      const response = await fetch(`${keyless!.base}/k7x2qm4a`, { method: 'POST', headers: visitorHeaders, body: '{}' })
+      expect(response.status).toBe(503)
+      expect(response.headers.get('cache-control')).toBe('no-store')
+      expect(stub.seen).toHaveLength(0)
+    })
+  }
+
+  if (template.kind === 'container') {
+    it('runs as an unprivileged user', () => {
+      expect(run(['exec', (proxy as Stack).name(0), 'id', '-u']).trim()).toBe('1000')
+    })
+  }
 })

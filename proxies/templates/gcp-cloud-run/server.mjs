@@ -2,10 +2,11 @@
  * Fingerly first-party proxy as a small Node service, version 1.0.0.
  *
  * Your front proxy or load balancer routes the one path the Fingerly dashboard
- * issued (such as `/k7x2qm4a`) to this service, which forwards the browser
- * SDK's submissions to the Fingerly API. No dependencies: node:http and the
- * global fetch of Node 20 or later. The container and gcp-cloud-run templates
- * ship this same file; only PRESET differs.
+ * issued (such as `/k7x2qm4a`) to this service, which forwards single-pass
+ * browser and native SDK submissions as raw bytes to the Fingerly API. No
+ * dependencies: node:http and the global fetch of Node 20 or later. The
+ * container and gcp-cloud-run templates ship this same file; only PRESET
+ * differs.
  *
  * Environment:
  *   FINGERLY_PROXY_KEY         the `fly_px_...` key the dashboard issued, from
@@ -34,13 +35,28 @@ const UPSTREAM_TIMEOUT_MS = 5_000
 /**
  * The one URL this service can reach. A constant rather than anything derived
  * from configuration: a misconfigured service must not be able to send your
- * traffic somewhere else. Both of the browser SDK's calls go here; the API
- * tells them apart by their bodies.
+ * traffic somewhere else. Single-pass browser and native SDK submissions go
+ * here as raw bytes.
  */
 const UPSTREAM = 'https://api.fingerly.io/api/v1/ingest'
 
+/** Exact lowercase platform names accepted on the native SDK channel. */
+const SDK_PLATFORM_RE = /^(ios|android|react-native|react-native-ios|react-native-android|flutter|flutter-ios|flutter-android|lynx-ios|lynx-android|capacitor|kotlin-multiplatform)$/
+
+/** Allowlisted client headers forwarded verbatim when present. */
+const FORWARDED_CLIENT_HEADERS = [
+  'idempotency-key',
+  'user-agent',
+  'sec-fetch-site',
+  'sec-fetch-mode',
+  'sec-fetch-dest',
+  'sec-ch-ua',
+  'sec-ch-ua-mobile',
+  'sec-ch-ua-platform',
+]
+
 /**
- * The response headers relayed to the page, and nothing else. A blocker can
+ * The response headers relayed to the caller, and nothing else. A blocker can
  * match a response header by name, so an allowlist is what guarantees nothing
  * on the way back names Fingerly, whatever the API sends in future.
  */
@@ -49,6 +65,16 @@ const RELAYED_HEADERS = ['content-type', 'x-request-id', 'ratelimit-limit', 'rat
 /** Whether the configured value is shaped like a Fingerly proxy key. */
 function isProxyKey(key) {
   return /^fly_px_(?:production|staging|development)_[A-Za-z0-9_-]+$/.test(key)
+}
+
+/**
+ * Whether the caller's X-Api-Key is a public key of the proxy key's
+ * environment. Anything else, a secret `fly_sk_` key included, is answered 401
+ * here rather than sent upstream.
+ */
+function isPublicKeyFor(proxyKey, publicKey) {
+  const environment = /^fly_px_(production|staging|development)_/.exec(proxyKey)?.[1]
+  return Boolean(environment) && new RegExp(`^fly_pk_${environment}_[A-Za-z0-9_-]+$`).test(publicKey ?? '')
 }
 
 /**
@@ -72,7 +98,7 @@ function header(req, name) {
 /** An address as the API expects it, or '' when the source held none. */
 function address(value) {
   const ip = (value ?? '').trim().replace(/^::ffff:(?=\d+\.\d+\.\d+\.\d+$)/, '')
-  return isIP(ip) ? ip : ''
+  return !ip.includes('%') && isIP(ip) ? ip : ''
 }
 
 /**
@@ -106,9 +132,19 @@ export function clientIpReader(source) {
 /** Reported once per process rather than per request: it is configuration. */
 let reportedMissingAddress = false
 
+/** Only a final answer in 200 to 599, outside 300 to 399, is relayed. */
+function relayable(status) {
+  return status >= 200 && status <= 599 && (status < 300 || status > 399)
+}
+
 function plain(res, status, message, extra = {}) {
   res.writeHead(status, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', ...extra })
   res.end(message)
+}
+
+function jsonError(res, status, code, message) {
+  res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+  res.end(JSON.stringify({ error: { code, message } }))
 }
 
 /** Reads the body, or returns null once it passes the cap (draining the rest). */
@@ -161,9 +197,26 @@ export function createRelay(env = process.env) {
       if (req.method !== 'POST') return plain(res, 405, 'Method Not Allowed', { allow: 'POST' })
 
       const proxyKey = env.FINGERLY_PROXY_KEY ?? ''
-      if (!isProxyKey(proxyKey)) return plain(res, 503, 'Service Unavailable')
+      if (!isProxyKey(proxyKey)) {
+        req.resume()
+        return plain(res, 503, 'Service Unavailable')
+      }
+
+      // 1. Capture validated lowercase x-fingerly-sdk-platform; anything else is discarded.
+      const rawPlatform = header(req, 'x-fingerly-sdk-platform') ?? ''
+      const sdkPlatform = SDK_PLATFORM_RE.test(rawPlatform) ? rawPlatform : ''
+      const origin = header(req, 'origin') ?? ''
+      // 2-4. Reject with 400 missing_origin iff both Origin and validated sdkPlatform are empty.
+      if (!origin && !sdkPlatform) {
+        req.resume()
+        return jsonError(res, 400, 'missing_origin', 'Origin or X-Fingerly-SDK-Platform header is required')
+      }
+
       const publicKey = header(req, 'x-api-key')
-      if (!publicKey) return plain(res, 401, 'Unauthorized')
+      if (!isPublicKeyFor(proxyKey, publicKey)) {
+        req.resume()
+        return plain(res, 401, 'Unauthorized')
+      }
       const declaredLength = Number(header(req, 'content-length') ?? '0')
       if (Number.isFinite(declaredLength) && declaredLength > MAX_BODY_BYTES) {
         // Drained, not read: closing mid-upload would cut the answer off.
@@ -189,12 +242,19 @@ export function createRelay(env = process.env) {
         'x-api-key': publicKey,
         'x-fingerly-proxy-key': proxyKey,
         'x-fingerly-client-ip': visitorIp,
-        'x-fingerly-origin': header(req, 'origin') ?? `https://${header(req, 'host') ?? ''}`,
         'x-fingerly-user-agent': header(req, 'user-agent') ?? '',
         'x-fingerly-proxy-version': `${PRESET.kind}/${VERSION}`,
       })
-      const idempotency = header(req, 'idempotency-key')
-      if (idempotency) headers.set('idempotency-key', idempotency)
+      // One channel only: a browser Origin wins over a platform claim, as on
+      // the API, which refuses a proxied request carrying both.
+      if (origin) headers.set('x-fingerly-origin', origin)
+      else if (sdkPlatform) headers.set('x-fingerly-sdk-platform', sdkPlatform)
+      const host = header(req, 'host')
+      if (host) headers.set('x-fingerly-host', host)
+      for (const name of FORWARDED_CLIENT_HEADERS) {
+        const value = header(req, name)
+        if (value) headers.set(name, value)
+      }
 
       // One deadline for the whole exchange, ended early if the visitor goes away.
       const timeout = AbortSignal.timeout(UPSTREAM_TIMEOUT_MS)
@@ -205,6 +265,13 @@ export function createRelay(env = process.env) {
       let answer
       try {
         upstream = await fetch(UPSTREAM, { method: 'POST', headers, body, redirect: 'manual', signal })
+        // A redirect is never followed or relayed, and neither is a status
+        // outside 200 to 599: the key went to the pinned URL only.
+        if (!relayable(upstream.status) || upstream.redirected) {
+          upstream.body?.cancel().catch(() => {})
+          console.warn('proxy: upstream answered with an unusable status')
+          return plain(res, 502, 'Bad gateway')
+        }
         // Read whole, under the same deadline, before anything is sent back: a
         // truncated answer relayed with a 200 would be read as a success.
         answer = await readCapped(upstream.body, MAX_RESPONSE_BYTES)
@@ -225,7 +292,7 @@ export function createRelay(env = process.env) {
         if (value !== null) outgoing[name] = value
       }
       res.writeHead(upstream.status, outgoing)
-      res.end([204, 205, 304].includes(upstream.status) ? undefined : answer)
+      res.end(upstream.status === 204 || upstream.status === 205 ? undefined : answer)
     } catch {
       if (!res.headersSent) plain(res, 502, 'Bad gateway')
       else res.destroy()

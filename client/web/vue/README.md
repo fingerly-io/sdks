@@ -7,7 +7,7 @@
   </a>
 </p>
 
-<p align="center"><b>Fingerly for Vue</b><br>A plugin, three composables, and one shared result per page.</p>
+<p align="center"><b>Fingerly for Vue</b><br>A plugin, two composables, and one shared result per page.</p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@fingerly/vue"><img src="https://img.shields.io/npm/v/@fingerly/vue?style=flat-square" alt="npm version"></a>
@@ -22,16 +22,20 @@
 
 `@fingerly/vue` is the Vue 3 binding for the Fingerly browser SDK. The plugin
 holds one client and one shared result, and the `useIdentify()` composable reads
-it, so a checkout, a login form and a risk banner can all ask the same question
-and pay for one answer. [Fingerly](https://fingerly.io) helps you protect
-signups, logins and payments from fraud and abuse. Using Nuxt? See
+it (`useFingerly()` reaches the context and the client underneath), so a
+checkout, a login form and a risk banner can all ask the same question and pay
+for one answer. [Fingerly](https://fingerly.io) helps you protect signups,
+logins and payments from fraud and abuse. Using Nuxt? See
 [`@fingerly/nuxt`](https://www.npmjs.com/package/@fingerly/nuxt), which wraps
 this package.
 
-> **Not for apps.** This binding runs the browser SDK, which collects nothing
-> inside an app's web view (Capacitor, Cordova, Ionic, React Native WebView,
-> `WKWebView`, Android `WebView`, Electron). Use the Fingerly iOS or Android SDK
-> in an app; see section 3.3 of the
+> **Not for apps.** This binding runs the browser SDK, which collects no
+> device-identifying signals inside an app's web view (Capacitor, Cordova,
+> Ionic, React Native WebView, Flutter WebView, `WKWebView`, Android `WebView`,
+> Electron), so the server answers there with an empty `visitorId`. This keeps
+> apps within section 3.3.3(B) of Apple's developer licence. Use the Fingerly
+> iOS or Android SDK, or the React Native, Flutter or Lynx bridge, in an app;
+> see section 3.3 of the
 > [privacy notes](https://github.com/fingerly-io/sdks/blob/main/docs/privacy.md).
 
 ## Getting started
@@ -62,16 +66,25 @@ this package.
 
    ```vue
    <script setup lang="ts">
+   import { ref } from 'vue'
    import { useIdentify } from '@fingerly/vue'
 
-   const { identify, isSuspicious, isLoading, error } = useIdentify()
+   const props = defineProps<{ orderId: string }>()
+   const { identify, isLoading, error } = useIdentify({ tag: () => `checkout:${props.orderId}` })
+   const challenge = ref(false)
 
    async function onSubmit() {
-     await identify()
+     const { requestId } = await identify()
 
-     if (isSuspicious.value) {
-       // step up to MFA, hold for review, add friction
-     }
+     // The page only forwards the request ID. Your backend reads the event with
+     // the secret key and decides; the page acts on that decision.
+     const response = await fetch('/api/checkout', {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+       body: JSON.stringify({ orderId: props.orderId, requestId }),
+     })
+     const { decision } = await response.json()
+     challenge.value = decision === 'challenge'
    }
    </script>
 
@@ -81,9 +94,13 @@ this package.
          {{ isLoading ? 'Checking…' : 'Continue' }}
        </button>
      </form>
+     <StepUp v-if="challenge" />
      <p v-if="error">{{ error.message }}</p>
    </template>
    ```
+
+4. **Decide on your backend.** Read the event by `requestId` with the secret
+   key; see [Decide on your backend](#decide-on-your-backend).
 
 The key is a **public** SDK key from the dashboard, and it belongs in the page:
 it is scoped to the origins you list, which is what makes it safe there. A
@@ -93,13 +110,19 @@ does not work by design.
 Installing the plugin collects nothing. It makes the client available and
 nothing more; when to identify is the page's decision, not the plugin's.
 
-`identify()` collects and submits, and resolves with the server's answer in the
-same round trip: the `requestId`, who the visitor is (`visitorId`), and the
-`suspectScore` and `suspectLevel`, unless the key hides them. Nothing is decided
-in the page: scoring lives on the server, under the weights you set.
+`identify()` collects in a single pass (within a 350 ms budget by default) and
+submits once to `POST /api/v1/ingest`, resolving in the same round trip with
+the server's answer: the `requestId`, who the visitor is (`visitorId`), whether
+they could be identified (`identifiable`), and the `suspectScore` and
+`suspectLevel`, unless the key hides them. Nothing is decided in the page:
+scoring lives on the server, under the weights you set. Each report carries a
+single-use freshness ticket, held in memory only; when none is held, the ticket
+request runs in parallel with collection and never holds up or fails
+`identify()`.
 
 ## Contents
 
+- [Decide on your backend](#decide-on-your-backend)
 - [Identify on mount](#identify-on-mount)
 - [One identification per page](#one-identification-per-page)
 - [Reading the answer](#reading-the-answer)
@@ -115,6 +138,61 @@ in the page: scoring lives on the server, under the weights you set.
 - [Documentation](#documentation)
 - [Help](#help)
 - [Licence](#licence)
+
+## Decide on your backend
+
+Whoever controls the page controls every branch in it, so access decisions
+(allow, step up, hold, refuse) are made on your backend. The `requestId` the
+page sends is untrusted form input until your backend has verified it. Read the
+event with the secret key and run the checks described in
+[server-side verification](https://docs.fingerly.io/docs/server-side-verification):
+
+```ts
+// server (Node.js), never in the page
+import { BlockList } from 'node:net'
+import { Fingerly, FingerlyAPIError } from '@fingerly/node'
+
+const fingerly = new Fingerly({ secretKey: process.env.FINGERLY_SECRET_KEY })
+const MAX_AGE_MS = 2 * 60 * 1000
+
+// expectedTag comes from your server session (the order this visitor is
+// paying for), never from the request body. clientIp is the address of this
+// form post, as your framework resolves it behind your own proxies.
+export async function decide(requestId: string, expectedTag: string, clientIp: string) {
+  let event
+  try {
+    event = await fingerly.events.get(requestId)                       // 1. it exists
+  } catch (error) {
+    if (error instanceof FingerlyAPIError && error.isPending) return 'retry'
+    if (error instanceof FingerlyAPIError && error.code === 'event_not_found') return 'refuse'
+    throw error
+  }
+  if (event.tag !== expectedTag) return 'refuse'                           // 2. this action
+  if (Date.now() - Date.parse(event.occurred_at) > MAX_AGE_MS) return 'refuse' // 3. recent
+  if (!event.identifiable || event.suspect_score === null) return 'refuse' // 4. identifiable and scored
+  if (event.suspect_level === 'high') return 'review'                      // 5. your policy
+  // 6. another network than this post: step up (for example a second factor)
+  if (!event.ip_network || !inNetwork(clientIp, event.ip_network)) return 'challenge'
+  if (event.suspect_level === 'medium') return 'challenge'
+  return 'allow'
+}
+
+// ip_network is the /24 (IPv4) or /40 (IPv6) the identification came from;
+// the API never returns the address itself.
+function inNetwork(ip: string, cidr: string): boolean {
+  const [base = '', bits = '0'] = cidr.split('/')
+  const type = base.includes(':') ? 'ipv6' : 'ipv4'
+  const list = new BlockList()
+  list.addSubnet(base, Number(bits), type)
+  return list.check(ip, type)
+}
+```
+
+`isSuspicious`, `suspectScore` and `suspectLevel` in the page are a UI hint
+only (for example, to show a spinner a little longer). Never gate an action on
+them. One event can back more than one decision inside the recency window; for
+a flow that must be single use, record the `requestId` with the outcome and
+refuse one you have already seen.
 
 ## Identify on mount
 
@@ -156,8 +234,13 @@ await refresh() // ignores the cached result and collects afresh
 `suspectLevel` is the server's band for this submission, under the weights you
 set. `isSuspicious` is `true` for `medium` or `high`, `false` for `low`, and
 `null` when the level is absent: no server has answered yet, the submission went
-unscored, or the SDK key hides the score from the page, which cannot tell those
-apart. Null is not a clean result.
+unscored, or the SDK key hides the score from the page. Null is not a clean
+result.
+
+`visitorId.value` is `null` before the first identification completes.
+Afterwards it holds the server's answer, which is `""` (with
+`visitorIsNew.value` `false`) whenever `identifiable.value` is `false`, inside
+an app's web view, or when an unmatched browser report is high risk.
 
 Signals are read on your backend, by `requestId`, never in the page: which check
 tripped is what a fraudster wants to learn. See
@@ -178,11 +261,10 @@ const { identify } = useIdentify({ tag: () => `checkout:${route.params.orderId}`
 ## Consent
 
 Consent defaults to `pending`, and nothing is collected or sent until it is
-`granted`. A page with a consent banner leaves it `pending` and calls
-`setConsent('granted')` once the banner is accepted. If identifying a visitor
-needs their consent first, install the plugin with `consent: 'pending'`, the
-default: `useIdentify({ immediate: true })` waits, and the client is not even
-built.
+`granted`. If identifying a visitor needs their consent first, install the
+plugin with `consent: 'pending'`, the default, and call `setConsent('granted')`
+once your consent banner is accepted: until then `useIdentify({ immediate: true })`
+waits, and the client is not even built.
 
 ```ts
 app.use(createFingerly({ apiKey: 'fly_pk_production_…', consent: 'pending' }))
@@ -241,58 +323,68 @@ the [server SDK pages](https://docs.fingerly.io/docs/sdks).
 | `endpoints` | `string \| string[]` | Ordered first-party ingestion paths or URLs, compared by contents. |
 | `fallbackToDefaultEndpoint` | `boolean` | Try the Fingerly API only after the custom endpoints fail. |
 | `consent` | `'pending' \| 'granted' \| 'denied'` | Defaults to `pending`. |
-| `submit` | `boolean` | `false` collects without submitting (see below). |
+| `incognitoDetection` | `'standard' \| 'extended'` | Defaults to `standard` (see below). |
 | `apiVersion` | `string` | API route version. Defaults to `v1`. |
 
-`useIdentify()` options: `immediate` and `tag` (a string, a ref or a getter).
-`identify()` takes `{ tag, force }` and `refresh()` takes `{ tag }`.
+`useIdentify()` options: `immediate`, `tag` and `incognitoDetection` (each of
+the last two a value, a ref or a getter). `identify()` takes
+`{ tag, incognitoDetection, force }` and `refresh()` takes
+`{ tag, incognitoDetection }`.
+
+### Incognito detection
+
+`incognitoDetection` is accepted on `createFingerly()`, `useIdentify()`, and
+`identify()` / `refresh()`, the narrowest one winning. `'standard'` (the
+default) never writes to the visitor's storage; `'extended'` opts into an
+additional storage timing check on Chromium browsers, inside the same
+collection budget.
 
 ### Collect without submitting
 
-For a debug page that wants the raw report and nothing else:
+For a debug page that wants to inspect the raw `SignalReport` locally without
+posting it to `/api/v1/ingest`, call `collect()` on the underlying client:
 
 ```ts
-app.use(createFingerly({ apiKey: 'fly_pk_production_…', submit: false }))
+const fingerly = useFingerly()
+const client = await fingerly.client()
+const report = await client.collect()
 ```
 
-Everything the server decides comes back empty: no `requestId`, no `visitorId`,
-`suspectScore` is `null` rather than `0`, and `isSuspicious` is
-`null` rather than `false`. That is the honest answer rather than a gap: nothing
-was sent, so nobody scored it, and this SDK decides nothing on its own.
+Nothing is sent, so nothing is scored and nothing in `useIdentify()` changes.
+`collect()` still requires consent to be `granted` and rejects with a
+`ConsentError` otherwise.
 
 ## What you get back
 
 ```ts
 const {
-  requestId,         // Ref<string | null>:        identifies this submission
-  visitorId,         // Ref<string | null>:        who the server decided this is
-  visitorIsNew,      // Ref<boolean>:              never seen before
-  visitorConfidence, // Ref<number>:               0 to 100
-  identifiable,      // Ref<boolean>:              false when the signals were too thin
-  duplicate,         // Ref<boolean>:              answered before; this is the first answer
-  state,             // Ref<string | null>:        the server's disposition
-  suspectScore,      // Ref<number | null>:        null when nothing scored it
-  suspectLevel,      // Ref<string | null>:        low, medium, high
-  report,            // Ref<SignalReport | null>:  every source, with status and timing
-  error,             // Ref<Error | null>
-  consent,           // Ref<ConsentState>        (granted, pending or denied)
-  isLoading,    // Ref<boolean>
-  isReady,      // ComputedRef<boolean>:     finished, successfully or not
-  isSuspicious, // ComputedRef<boolean | null>: true for medium or high; null when the level is absent
-  identify,     // () => Promise<IdentifyResult>
-  refresh,      // () => Promise<IdentifyResult>
+  requestId,         // Readonly<ShallowRef<string | null>>:  identifies this submission
+  visitorId,         // Readonly<ShallowRef<string | null>>:  null before completion; "" when identifiable === false
+  visitorIsNew,      // Readonly<ShallowRef<boolean>>:        true only when a new visitor was minted
+  visitorConfidence, // Readonly<ShallowRef<number>>:         0 to 100
+  identifiable,      // Readonly<ShallowRef<boolean>>:        false when the signals were too thin
+  duplicate,         // Readonly<ShallowRef<boolean>>:        answered before; this is the cached answer
+  state,             // Readonly<ShallowRef<string | null>>:  the server's disposition
+  suspectScore,      // Readonly<ShallowRef<number | null>>:  null when unscored or hidden by the key
+  suspectLevel,      // Readonly<ShallowRef<SuspectLevel | null>>: low, medium, high
+  identified,        // Readonly<ShallowRef<boolean>>:        an identification has succeeded
+  error,             // Readonly<ShallowRef<Error | null>>
+  consent,           // Readonly<ShallowRef<ConsentState>>    (granted, pending or denied)
+  isLoading,         // Readonly<Ref<boolean>>
+  isReady,           // ComputedRef<boolean>:                 finished, successfully or not
+  isSuspicious,      // ComputedRef<boolean | null>:          UI hint only; true for medium or high, null when absent
+  identify,          // (opts?) => Promise<IdentifyAnswer>
+  refresh,           // (opts?) => Promise<IdentifyAnswer>
 } = useIdentify()
 ```
 
 Every ref is **readonly**. The state is shared, so a component that could assign
 to it would be changing what every other component sees.
 
-Weights and signal names never reach the browser: your backend reads them on the
-server-side event read.
-
-The detectors run on the server, over the report this package sends, so rules
-improve without every integration redeploying. Everything here that says
-anything about a visitor came from the server.
+The plugin never keeps the signal report: `identify()` resolves with the
+server's answer (`IdentifyAnswer`, the result without `report`), and nothing of
+the report stays in app state. Use `collect()`
+([Collect without submitting](#collect-without-submitting)) to inspect one.
 
 ## Errors
 
@@ -312,12 +404,11 @@ try {
 
 A failed identification is not repeated behind your back. When the server
 answers `429` with `Retry-After`, every call, `refresh()` included, gets the
-same error until that time has passed; the error carries it as
-`retryAfterMs`. After a transient failure without one (a `5xx`, a network
-error), components that identify automatically wait 5 seconds, doubling per
-consecutive failure up to a minute, so route changes during an outage send
-nothing; a call you make yourself, such as on a click, still tries at once.
-Any other failure, such as a wrong key, is tried again on the next call.
+same error until that time has passed; the error carries it as `retryAfterMs`.
+After a transient failure without one (a `5xx`, a network error), components
+that identify automatically wait 5 seconds, doubling per consecutive failure up
+to a minute, so route changes during an outage send nothing; a call you make
+yourself, such as on a click, still tries at once.
 
 `TransportError` carries a `status`. The two worth branching on are `401` (the
 key is wrong, or was used from an origin it does not list) and `402` (the
@@ -351,10 +442,11 @@ kind of thing that gets retrofitted. The context is on `this.$fingerly`:
 ```vue
 <script lang="ts">
 export default {
-  data: () => ({ suspicious: false }),
+  data: () => ({ requestId: null as string | null }),
   async mounted() {
-    const { suspectLevel } = await this.$fingerly.identify()
-    this.suspicious = suspectLevel === 'high'
+    // Forward this with the form; your backend verifies it and decides.
+    const { requestId } = await this.$fingerly.identify()
+    this.requestId = requestId
   },
 }
 </script>
@@ -365,8 +457,9 @@ export default {
 No permission prompt, no picker, no dialog, on any browser. Reading a
 permission's *state* prompts nobody and is used freely; requesting is banned
 outright and enforced by a test in `@fingerly/web-js`. The one browser API that
-can prompt (Tor Browser answers it with a doorhanger) is skipped whenever the
-SDK detects that browser would prompt.
+can prompt (Tor Browser, and Firefox with fingerprinting resistance on, answer
+it with a doorhanger) is skipped whenever the SDK detects that browser would
+prompt.
 
 You can drop this into a checkout without it ever interrupting the checkout.
 
@@ -377,7 +470,7 @@ You can drop this into a checkout without it ever interrupting the checkout.
 [repository](https://github.com/fingerly-io/sdks/tree/main/client/web/vue)) is
 this package's composables driving the real SDK (no mocks) with
 `useIdentify({ immediate: true })` in the root, showing `suspectScore` and
-`suspectLevel` beside the raw report, all sharing one identification.
+`suspectLevel`, all sharing one identification.
 
 ```sh
 pnpm --filter @fingerly/vue demo   # http://localhost:4174
@@ -386,20 +479,19 @@ pnpm --filter @fingerly/vue demo   # http://localhost:4174
 That bundles `demo/main.ts` (the binding, the SDK and Vue's runtime in one
 file, because `demo/index.html` is a plain `<script>` tag) and serves it.
 
-It is served rather than opened from disk because some collection needs a
-secure context and `file://` is not one. It uses `submit: false`, so it
-sends nothing and no server answers: the raw report fills in, and the score
-and level read hidden.
+Serve it over `localhost` rather than opening it from `file://`: some
+collection needs a secure context, and `file://` is not one.
 
 </details>
 
 ## TypeScript
 
 Types ship with the package. `FingerlyVueOptions`, `FingerlyContext`,
-`FingerlyState`, `ReadonlyState`, `UseIdentifyOptions` and `UseIdentifyReturn`
-are exported, together with the types you receive (`IdentifyResult`,
-`ConsentState`, `SignalReport`, `SignalOutcome`, `SignalStatus`,
-`IntegrityReport`, `Lie`, `Confidence` and `FingerlyWebEvent`). `this.$fingerly`
+`FingerlyState`, `ReadonlyState`, `IdentifyAnswer`, `UseIdentifyOptions` and
+`UseIdentifyReturn` are exported, together with the types you receive and pass
+(`IdentifyResult`, `IdentifyOptions`, `CollectOptions`, `ConsentState`,
+`IncognitoDetection`, `SuspectLevel`, `SignalReport`, `SignalOutcome`,
+`SignalStatus`, `IntegrityReport`, `Lie` and `Confidence`). `this.$fingerly`
 is typed on Vue's component properties. The values `ConsentError`,
 `TransportError`, `FingerlyServerError` and `fingerlyKey` (the injection key) are
 exported too. The package is side-effect free.

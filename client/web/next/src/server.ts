@@ -43,6 +43,13 @@ const SHAPE = /^[A-Za-z0-9_-]+$/
  * }
  * ```
  *
+ * The value is still untrusted after this: it only has the right shape. Read
+ * the event with `fingerly.events.get(requestId)` and a secret key, and check
+ * that it exists, that its `tag` is the one this action expects, that it is
+ * recent, and that its `ip_network` contains the address of this request,
+ * before acting on it. See
+ * https://docs.fingerly.io/docs/server-side-verification.
+ *
  * Returns null rather than throwing when the field is missing, empty or
  * malformed, because all three mean the same thing to the caller: this
  * submission has no identification attached. A form submitted before the SDK

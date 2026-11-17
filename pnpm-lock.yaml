@@ -37,6 +37,9 @@ importers:
         specifier: '>=0.73'
         version: 0.87.1(@babel/core@7.29.7)(@types/react@19.2.18)(react@19.2.8)
     devDependencies:
+      '@types/node':
+        specifier: 26.4.0
+        version: 26.4.0
       tsup:
         specifier: ^8.3.5
         version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(typescript@5.9.3)(yaml@2.9.0)

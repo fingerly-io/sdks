@@ -6,22 +6,21 @@ import type { Source } from '../src/source.js'
 import { TransportError, type SubmitResponse, type Transport } from '../src/transport.js'
 import type { ConsentState } from '../src/types.js'
 
-const ANSWER: SubmitResponse = { request_id: 'request-1', visitor_id: 'visitor-1' }
+const ANSWER: SubmitResponse = { request_id: 'request-1', visitor_id: 'visitor-1', identifiable: true }
 
 /** A transport that counts, and answers the way the server does. */
 function fakeTransport(answer: SubmitResponse = ANSWER) {
   return {
     submit: vi.fn<Transport['submit']>(async () => answer),
-    submitSupplement: vi.fn<NonNullable<Transport['submitSupplement']>>(async () => undefined),
   }
 }
 
 /** A source that records every run, so a test can say none happened. */
-function countingSource(id = 'counted', tier: Source['tier'] = 'fast', run: Source['run'] = () => 1) {
+function countingSource(id = 'counted', stage: Source['stage'] = 'collect', run: Source['run'] = () => 1) {
   const calls = { count: 0 }
   const source: Source = {
     id,
-    tier,
+    stage,
     run: (ctx) => {
       calls.count++
       return run(ctx)
@@ -50,25 +49,25 @@ describe('consent', () => {
 
     expect(calls.count).toBe(0)
     expect(transport.submit).not.toHaveBeenCalled()
-    expect(transport.submitSupplement).not.toHaveBeenCalled()
   })
 
-  it('identifies when granted, and says so in both submission bodies', async () => {
-    const { source, calls } = countingSource()
-    const late = countingSource('late', 'deferred')
-    const transport = fakeTransport({ ...ANSWER, deferred_token: 'continuation' })
-    const fingerly = client({ sources: [source, late.source], transport, consent: 'granted' })
+  it('identifies in one v: 3 pass when granted, and states consent in the submission body', async () => {
+    const prereq = countingSource('engine', 'prerequisite')
+    const main = countingSource('canvas', 'collect')
+    const transport = fakeTransport()
+    const fingerly = client({ sources: [prereq.source, main.source], transport, consent: 'granted' })
 
     const result = await fingerly.identify()
     expect(result.visitorId).toBe('visitor-1')
-    expect((await result.deferred).status).toBe('submitted')
 
-    expect(calls.count).toBe(1)
-    expect(late.calls.count).toBe(1)
+    expect(prereq.calls.count).toBe(1)
+    expect(main.calls.count).toBe(1)
     expect(transport.submit).toHaveBeenCalledTimes(1)
-    expect(transport.submit.mock.calls[0]![0]).toMatchObject({ consent: 'granted', sdk: { platform: 'web' } })
-    expect(transport.submitSupplement).toHaveBeenCalledTimes(1)
-    expect(transport.submitSupplement.mock.calls[0]![1]).toMatchObject({ consent: 'granted', token: 'continuation' })
+    expect(transport.submit.mock.calls[0]![0]).toMatchObject({
+      v: 3,
+      consent: 'granted',
+      sdk: { platform: 'web' },
+    })
   })
 
   it('reports the server refusing consent as a ConsentError', async () => {
@@ -79,7 +78,7 @@ describe('consent', () => {
     }
     const fingerly = client({ sources: [countingSource().source], transport, consent: 'granted' })
 
-    await expect(fingerly.identify({ tiers: ['fast'] })).rejects.toMatchObject({
+    await expect(fingerly.identify()).rejects.toMatchObject({
       name: 'ConsentError',
       code: 'consent_required',
       state: 'pending',
@@ -103,12 +102,10 @@ describe('consent', () => {
         state,
         message: `Fingerly needs consent before it can identify this visitor (consent is ${state})`,
       })
-      await expect(fingerly.identify({ submit: false })).rejects.toBeInstanceOf(ConsentError)
       await expect(fingerly.collect()).rejects.toBeInstanceOf(ConsentError)
 
       expect(calls.count).toBe(0)
       expect(transport.submit).not.toHaveBeenCalled()
-      expect(transport.submitSupplement).not.toHaveBeenCalled()
     },
   )
 
@@ -135,7 +132,7 @@ describe('consent', () => {
     expect(fingerly.consent).toBe('granted')
     expect(listener).toHaveBeenCalledTimes(1)
     expect(listener).toHaveBeenCalledWith('granted')
-    const result = await fingerly.identify({ tiers: ['fast'] })
+    const result = await fingerly.identify()
     expect(result.requestId).toBe('request-1')
     expect(calls.count).toBe(1)
     expect(transport.submit).toHaveBeenCalledTimes(1)
@@ -170,11 +167,11 @@ describe('consent', () => {
   it('does not submit when consent is withdrawn inside a source, and starts no further source', async () => {
     const transport = fakeTransport()
     let fingerly!: FingerlyClient
-    const first = countingSource('first', 'fast', () => {
+    const first = countingSource('first', 'prerequisite', () => {
       fingerly.setConsent('denied')
       return 1
     })
-    const second = countingSource('second')
+    const second = countingSource('second', 'collect')
     fingerly = client({
       sources: [first.source, second.source],
       transport,
@@ -191,7 +188,7 @@ describe('consent', () => {
 
   it('discards a collect() report when consent is withdrawn while it runs', async () => {
     let fingerly!: FingerlyClient
-    const { source } = countingSource('first', 'fast', () => {
+    const { source } = countingSource('first', 'collect', () => {
       fingerly.setConsent('pending')
       return 1
     })
@@ -202,9 +199,10 @@ describe('consent', () => {
 
   it('abandons a submission in flight when consent is withdrawn', async () => {
     let started!: () => void
-    const inFlight = new Promise<void>((resolve) => { started = resolve })
+    const inFlight = new Promise<void>((resolve) => {
+      started = resolve
+    })
     const transport: Transport = {
-      // Waits on the signal the way HttpTransport's fetch does.
       submit: (_submission, signal) =>
         new Promise<SubmitResponse>((_resolve, reject) => {
           started()
@@ -213,40 +211,11 @@ describe('consent', () => {
     }
     const fingerly = client({ sources: [countingSource().source], transport, consent: 'granted' })
 
-    const identified = fingerly.identify({ tiers: ['fast'] })
+    const identified = fingerly.identify()
     await inFlight
     fingerly.setConsent('denied')
 
     await expect(identified).rejects.toBeInstanceOf(ConsentError)
-  })
-
-  it('skips the deferred supplement when consent is withdrawn after the first response', async () => {
-    const transport = fakeTransport({ ...ANSWER, deferred_token: 'continuation' })
-    const deferred = countingSource('late', 'deferred')
-    const fingerly = client({ sources: [countingSource().source, deferred.source], transport, consent: 'granted' })
-
-    const result = await fingerly.identify()
-    fingerly.setConsent('denied')
-
-    expect(await result.deferred).toEqual({ status: 'skipped', reason: 'consent-withdrawn' })
-    expect(transport.submitSupplement).not.toHaveBeenCalled()
-  })
-
-  it('skips the deferred supplement when consent is withdrawn during deferred collection', async () => {
-    const transport = fakeTransport({ ...ANSWER, deferred_token: 'continuation' })
-    let fingerly!: FingerlyClient
-    const deferred = countingSource('late', 'deferred', () => {
-      fingerly.setConsent('pending')
-      return 2
-    })
-    fingerly = client({ sources: [countingSource().source, deferred.source], transport, consent: 'granted' })
-
-    const result = await fingerly.identify()
-
-    expect(await result.deferred).toEqual({ status: 'skipped', reason: 'consent-withdrawn' })
-    expect(deferred.calls.count).toBe(1)
-    expect(transport.submit).toHaveBeenCalledTimes(1)
-    expect(transport.submitSupplement).not.toHaveBeenCalled()
   })
 
   it('keeps notifying the others when one listener throws', () => {
@@ -261,7 +230,6 @@ describe('consent', () => {
 
       expect(() => fingerly.setConsent('denied')).not.toThrow()
       expect(after).toHaveBeenCalledWith('denied')
-      // Reported on a clean stack rather than swallowed.
       expect(() => vi.runAllTimers()).toThrow('listener exploded')
     } finally {
       vi.useRealTimers()

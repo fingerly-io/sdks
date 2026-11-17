@@ -1,27 +1,26 @@
 /**
- * The tamper layer.
+ * The tamper layer (`F-11`).
  *
- * Runs after collection, over the outcomes, and produces the
- * [[IntegrityReport]] that goes on the wire beside them. It is not a source,
- * for two reasons: it reads what the other sources produced, so it cannot run
- * beside them; and a tamper check that competed for the budget could be starved
- * by a slow source, which is precisely the outcome an attacker would arrange.
- *
- * What it reports is raw: which natives are patched, which properties were
- * redefined. Whether the reported values contradict each other - a user agent
- * claiming a phone that hovers, a language that is not the first of its own
- * languages - is the server's reading of the same sources, not something the
- * page decides.
+ * Runs after collection over the gathered outcomes and produces the
+ * [[IntegrityReport]] that goes on the wire alongside `sources`.
  */
 
-import { SOURCE, valueOf, type EngineSignal, type IntegrityReport, type SignalOutcome } from '@fingerly/core'
+import {
+  SOURCE,
+  valueOf,
+  type EngineSignal,
+  type IntegrityReport,
+  type Lie,
+  type SignalOutcome,
+} from '@fingerly/core'
 
+import { detectEmbedding } from '../embedding.js'
 import { windowOrNull } from '../util.js'
 import { findRedefinedProperties } from './descriptors.js'
-import { findPatchedNatives } from './natives.js'
+import { borrowRealmToString, findPatchedNatives } from './natives.js'
 
 export { findRedefinedProperties } from './descriptors.js'
-export { findPatchedNatives } from './natives.js'
+export { borrowRealmToString, findPatchedNatives, type BorrowedRealm } from './natives.js'
 
 export function inspectIntegrity(sources: Record<string, SignalOutcome>): IntegrityReport {
   const w = windowOrNull()
@@ -31,7 +30,6 @@ export function inspectIntegrity(sources: Record<string, SignalOutcome>): Integr
       schema: 1,
       budget_ms: 0,
       elapsed_ms: 0,
-      tiers: [],
       sources,
       integrity: { patched_natives: [], lies: [], engine: {} },
     },
@@ -44,17 +42,30 @@ export function inspectIntegrity(sources: Record<string, SignalOutcome>): Integr
   }
 
   if (!w) {
-    // No DOM to inspect, so nothing here to report. The server still compares
-    // the reported sources against each other.
     return { patched_natives: [], lies: [], engine: identity }
   }
 
-  const natives = findPatchedNatives(w)
-  const descriptors = findRedefinedProperties(w)
+  // Each pass reads page globals an earlier script controls. One that throws
+  // is recorded as a lie and the other pass still runs (`WEB-04`).
+  const realm = borrowRealmToString()
+  let patched: string[] = []
+  const lies: Lie[] = []
+  try {
+    const natives = findPatchedNatives(w, realm)
+    patched = natives.patched
+    lies.push(...natives.lies)
+  } catch {
+    lies.push({ id: 'natives', kind: 'unverified_realm', detail: 'inspection-threw' })
+  }
+  try {
+    lies.push(...findRedefinedProperties(w, realm.stringify, { readValues: !detectEmbedding() }))
+  } catch {
+    lies.push({ id: 'descriptors', kind: 'unverified_realm', detail: 'inspection-threw' })
+  }
 
   return {
-    patched_natives: natives.patched,
-    lies: [...natives.lies, ...descriptors],
+    patched_natives: patched,
+    lies,
     engine: identity,
   }
 }

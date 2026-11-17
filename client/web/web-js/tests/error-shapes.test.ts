@@ -7,6 +7,8 @@
  * value of the test is that they are quoted rather than constructed.
  */
 
+import { readdirSync, readFileSync } from 'node:fs'
+
 import { describe, expect, it } from 'vitest'
 
 import { observedFromErrors } from '../src/sources/engine.js'
@@ -51,35 +53,55 @@ describe('error shapes name the engine', () => {
   })
 })
 
-describe('under a Content-Security-Policy without unsafe-eval', () => {
-  it('reports nothing for the string probes, and tries compiling once', async () => {
+describe('under a Content-Security-Policy without unsafe-eval (WEB-10)', () => {
+  it('never compiles a string, and still measures every probe', async () => {
     const { errorsSource } = await import('../src/sources/engine.js')
     const Real = globalThis.Function
+    const realEval = globalThis.eval
     let attempts = 0
-    // What a strict CSP does to `new Function`: refuse it with an EvalError
-    // whose message is the browser's CSP wording, not the engine's.
+    // What a strict CSP does to `new Function` and `eval`: refuse them.
     const Refused = function () {
       attempts++
       throw new EvalError("Refused to evaluate a string as JavaScript because 'unsafe-eval' is not allowed")
     } as unknown as FunctionConstructor
     globalThis.Function = Refused
+    globalThis.eval = Refused as unknown as typeof eval
     try {
       const shapes = errorsSource.run({} as Parameters<typeof errorsSource.run>[0]) as Record<string, unknown>
-      expect(shapes.syntax_length).toBeUndefined()
-      expect(shapes.const_assign_length).toBeUndefined()
-      // The rest still measure.
-      expect(shapes.json_parse_length).toBeTypeOf('number')
-      // One refusal is one violation report to the customer's endpoint.
-      expect(attempts).toBe(1)
+      expect(attempts).toBe(0)
+      for (const field of [
+        'null_property_length',
+        'json_parse_length',
+        'invalid_array_length',
+        'regexp_syntax_length',
+        'redefine_length',
+      ]) {
+        expect(shapes[field], field).toBeTypeOf('number')
+      }
+      expect(shapes).not.toHaveProperty('syntax_length')
+      expect(shapes).not.toHaveProperty('const_assign_length')
     } finally {
       globalThis.Function = Real
+      globalThis.eval = realEval
     }
   })
 
-  it('measures both string probes where compiling is allowed', async () => {
+  it('measures the V8 lengths and votes on them', async () => {
     const { errorsSource } = await import('../src/sources/engine.js')
     const shapes = errorsSource.run({} as Parameters<typeof errorsSource.run>[0]) as Record<string, unknown>
-    expect(shapes.syntax_length).toBeTypeOf('number')
-    expect(shapes.const_assign_length).toBeTypeOf('number')
+    expect(shapes.regexp_syntax_length).toBe(51)
+    expect(shapes.redefine_length).toBe(27)
+    expect(observedFromErrors({ regexp_syntax_length: 51, redefine_length: 27 })).toBe('chromium')
+    expect(observedFromErrors({ regexp_syntax_length: 37, redefine_length: 50 })).toBe('webkit')
+  })
+
+  it('has no string-compiling call anywhere in the source tree', () => {
+    const root = new URL('../src/', import.meta.url)
+    const files = readdirSync(root, { recursive: true }) as string[]
+    for (const file of files.filter((name) => name.endsWith('.ts'))) {
+      const text = readFileSync(new URL(file, root), 'utf8')
+      expect(text, file).not.toMatch(/new Function\s*\(/)
+      expect(text, file).not.toMatch(/\beval\s*\(/)
+    }
   })
 })

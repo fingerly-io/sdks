@@ -1,14 +1,5 @@
 // @vitest-environment happy-dom
 
-/**
- * Consent, through the entry point a page actually calls.
- *
- * The kernel's tests cover the rules. What is worth checking here is the
- * browser half: that `load()` with the real source set touches nothing, and
- * that a page waiting on its banner gets a ConsentError it can import from
- * this package.
- */
-
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { browserSources, ConsentError, load } from '../src/index.js'
@@ -40,17 +31,20 @@ describe('consent', () => {
     const fingerly = await load({ apiKey: 'fly_pk_development_test' })
 
     expect(fingerly.consent).toBe('pending')
-    await expect(fingerly.identify()).rejects.toMatchObject({ code: 'consent_required', state: 'pending' })
+    await expect(fingerly.identify()).rejects.toMatchObject({
+      code: 'consent_required',
+      state: 'pending',
+    })
     expect(createElement).not.toHaveBeenCalled()
     expect(fetchImpl).not.toHaveBeenCalled()
   })
 
-  it('sends consent granted in the identification and the deferred report', async () => {
+  it('sends a single v: 3 submission with consent granted', async () => {
     const sources = browserSources.map((source) => ({ ...source, run: () => 1 }))
     const bodies: Record<string, unknown>[] = []
     const fetchImpl = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       bodies.push(JSON.parse(String(init?.body)))
-      return new Response('{"request_id":"req_1","visitor_id":"vis_1","deferred_token":"continuation"}', {
+      return new Response('{"request_id":"req_1","visitor_id":"vis_1","identifiable":true}', {
         status: 200,
         headers: { 'content-type': 'application/json' },
       })
@@ -59,11 +53,16 @@ describe('consent', () => {
 
     const fingerly = await load({ apiKey: 'fly_pk_development_test', consent: 'granted', sources })
     const result = await fingerly.identify()
-    expect((await result.deferred).status).toBe('submitted')
+    expect(result.visitorId).toBe('vis_1')
 
+    // One ticket request beside collection, then one report.
     expect(bodies).toHaveLength(2)
-    expect(bodies[0]).toMatchObject({ consent: 'granted', sdk: { platform: 'web' } })
-    expect(bodies[1]).toMatchObject({ consent: 'granted', token: 'continuation' })
+    expect(bodies[0]).toEqual({ v: 3, op: 'ticket', sdk: { platform: 'web', version: '0.3.0' } })
+    expect(bodies[1]).toMatchObject({
+      v: 3,
+      consent: 'granted',
+      sdk: { platform: 'web', version: '0.3.0' },
+    })
   })
 
   it('runs no browser source until consent is granted', async () => {
@@ -75,24 +74,29 @@ describe('consent', () => {
         return 1
       },
     }))
-    const fetchImpl = vi.fn(async () =>
-      new Response('{"request_id":"req_1","visitor_id":"vis_1"}', {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      }),
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response('{"request_id":"req_1","visitor_id":"vis_1"}', {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
     )
     vi.stubGlobal('fetch', fetchImpl)
 
     const fingerly = await load({ apiKey: 'fly_pk_development_test', consent: 'denied', sources })
-    await expect(fingerly.identify()).rejects.toMatchObject({ code: 'consent_required', state: 'denied' })
+    await expect(fingerly.identify()).rejects.toMatchObject({
+      code: 'consent_required',
+      state: 'denied',
+    })
     expect(runs).toEqual([])
     expect(fetchImpl).not.toHaveBeenCalled()
 
     fingerly.setConsent('granted')
-    const result = await fingerly.identify({ tiers: ['fast'] })
+    const result = await fingerly.identify()
 
     expect(result.visitorId).toBe('vis_1')
     expect(runs.length).toBeGreaterThan(0)
-    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    // The ticket request and the report.
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
   })
 })

@@ -1,88 +1,99 @@
 # Private-browsing validation matrix
 
-Manual runs are recorded here without IP addresses, profile names, or other
-visitor-specific values. Quota and usage are diagnostic observations, not
-identity material.
+Manual runs and `0.3.0` (`v: 3`) single-pass contract invariants are recorded
+here without IP addresses, profile names, or other visitor-specific values.
+Quota and usage are diagnostic observations, not identity material.
 
-## Firefox (2026-09-14)
+## `v: 3` single-pass collection & Option B summary
 
-| Window | Tracking protection | Verdict | OPFS | Service worker | Storage usage |
+Across all browser engines in `@fingerly/core` and `@fingerly/web-js` `0.3.0`:
+
+- **Single-pass `<= 350ms` budget (`1-RTT`)**: Stage 1 (`prerequisite`) runs
+  `engine` detection plus—on Gecko only—the bounded `<= 3ms` (`2.5ms–3.0ms`)
+  single-tick `performance.now()` RFP timer probe (`0.0ms` overhead on WebKit
+  and Blink). Stage 2 (`collect`) runs all active browser collectors
+  concurrently within `350ms` (retiring `deferred` and `/api/v1/ingest/supplement`).
+- **Option B unidentifiable output (`visitorId: ""`)**: Whenever correlated
+  cohort masking or RFP blocking leaves fewer than `6` independent Tier-A hard
+  components (`identifiable: false`—such as Safari 17+ Private Browsing,
+  aggressive Brave Shields, or Tor Browser / Firefox RFP), the server skips
+  `ExactKey` and fuzzy candidate matching, writes **zero** PostgreSQL
+  `visitor_identities` rows, returns `identifiable: false`, `visitorId: ""`,
+  `visitorIsNew: false`, `visitorConfidence: 0`, and **exempts
+  `fingerprint_suppressed` (`+16`)** when engine consistency checks confirm a
+  genuine privacy-hardened browser rather than a tampered bot.
+
+## Firefox (`engine === 'gecko'`)
+
+| Window | Tracking protection / RFP | `incognito` verdict | OPFS | Stage 1 RFP guard (`<= 3ms`) | `shields` & `canvas` | Identity output |
+| --- | --- | --- | --- | --- | --- | --- |
+| Normal | Standard (`1ms` timer) | `false` / silent | `ok` | unlocked (`0 < delta <= 1.2ms`) | raw-RGBA `ok` | `identifiable: true`, stable `visitorId` |
+| Private | Standard (`1ms` timer) | `true` / medium | `refused` | unlocked (`0 < delta <= 1.2ms`) | raw-RGBA `ok` | `identifiable: true` (or `""` if masked) |
+| Normal | Strict (`1ms` timer) | `false` / silent | `ok` | unlocked (`0 < delta <= 1.2ms`) | raw-RGBA `ok` | `identifiable: true` (or `""` if masked) |
+| Private | Strict / `resistFingerprinting` | `true` / medium | `refused` | clamped (`delta == 0` or `>= 1.5ms` under RFP) | `blocked` (`rfp-canvas-prompt-avoided` under RFP) | Option B (`visitorId: ""`, `fingerprint_suppressed` exempted when RFP active) |
+
+All runs report Gecko (`SpiderMonkey`, `-moz-appearance`, FDLIBM math)
+consistently. `firefox-private-origin-filesystem-refused` separates normal and
+private windows across Standard and Strict tracking protection without treating
+Strict tracking protection in a normal window as private browsing. Zero storage
+usage is retained only as a diagnostic observation because a fresh normal
+profile also reports zero usage; service workers remain available in modern
+Firefox private windows (`>= 138`) and serve only as a legacy fallback.
+
+## Safari 17+ / 26 on macOS & iOS (`engine === 'webkit'`)
+
+| Window | `incognito` verdict | OPFS | Correlated mask (`renderingFamily`) | `fingerprint_suppressed` | Identity output (`v: 3` Option B) |
 | --- | --- | --- | --- | --- | --- |
-| Normal | Standard | `false` / low | `ok` | available | non-zero |
-| Private | Standard | `true` / medium | `refused` | available | zero |
-| Normal | Strict | `false` / low | `ok` | available | non-zero |
-| Private | Strict | `true` / medium | `refused` | available | zero |
+| Normal (macOS 26.5 / iOS 26.0) | `false` / silent | `ok` (`82.5 GB` / `41.2 GB` quota) | `false` | silent | `identifiable: true`, stable `visitorId` |
+| Private (Safari 17+ / 26) | `true` / medium (`+4`) | `transient` (`1,048,576,000` quota) | `true` (`canvas_noise` + `"Apple GPU"` collapsed to `1` family) | **exempted** (engine-consistent WebKit) | `identifiable: false`, `visitorId: ""`, `visitorIsNew: false`, `visitorConfidence: 0`, `0` DB rows |
 
-All four runs reported Gecko consistently. The result validates
-`firefox-private-origin-filesystem-refused` across both protection modes and
-also shows that Strict protection alone must not be interpreted as private
-browsing.
+Both macOS and iOS Safari claim and observe WebKit (`JavaScriptCore`,
+`-webkit-touch-callout`) consistently within a single pass. Private windows
+reject OPFS with `transient` (`safari-private-origin-filesystem-refused`).
 
-Zero storage usage is retained only as a test observation. A fresh normal
-profile can also have zero usage, so it is not promoted to a second verdict
-reason. Current Firefox also exposes service workers in private windows; the
-legacy service-worker reason remains useful only for older releases and custom
-history policies. Until another signal separates a fresh normal profile from a
-private one independently, OPFS remains the sole modern Gecko verdict signal.
+Because Safari 17+ Private Browsing applies uniform hardware/GPU cohort masking
+alongside per-session canvas noise, `Vector.Identifiable()` groups the 6
+rendering/WebGL traits (`canvas.geometry`, `canvas.text`, `webgl.vendor`,
+`webgl.renderer`, `webgl.params`, `webgl.precision`) into **1** correlated
+family. That prevents two strangers on identical iPhone or Mac models from
+colliding onto one shared `visitorId`, prevents per-tab canvas noise from
+bloating `visitor_identities`, and suppresses `fingerprint_suppressed` (`+16`)
+because WebKit engine grammar is consistent.
 
-## Safari 26.5 on macOS (2026-09-14)
+Mobile Safari inside the iOS Simulator intentionally leaves web
+`virtual_machine` silent because Simulator Mobile Safari exposes an
+iPhone-shaped WebKit surface (`Apple GPU`, DPR 3, coarse pointer); the native
+iOS `0.3.0` SDK detects `#if targetEnvironment(simulator)` directly at weight
+`16`.
 
-| Window | Verdict | OPFS | Storage quota | Storage usage | Service worker |
-| --- | --- | --- | --- | --- | --- |
-| Normal | `false` / low | `ok` | 82,463,372,084 | 0 | available |
-| Private | `true` / medium | `transient` | 1,048,576,000 | 25,899,753 | available |
+## Chromium `>= 152` & Brave (`engine === 'blink'`)
 
-Both runs claimed and observed WebKit consistently, and both submitted all 13
-deferred sources. The private-window OPFS rejection is represented by the
-collector as `transient` and produces the stable verdict reason
-`safari-private-origin-filesystem-refused`.
+| Browser & mode | `incognitoDetection` option | `incognito` verdict | Discriminator | Behavioral Brave check & identity output |
+| --- | --- | --- | --- | --- |
+| Chrome 152+ Normal | `'standard'` (default) | `false` / silent | Static `10 GiB + usage` quota (`isStaticChromiumQuota`); `storage_durability` skipped | `identifiable: true`, stable `visitorId` |
+| Chrome 152+ Incognito | `'standard'` (default) | `false` / silent | Static `10 GiB + usage` quota flattened by `kIncognitoStaticStorageQuota`; zero `fsync` overhead | `identifiable: true`, stable `visitorId` |
+| Chrome 152+ Incognito | `'extended'` (opt-in) | `true` / medium (`+4`) | `storage_durability` strict/relaxed commit ratio `< 1.30` (`<= 4` pairs × `3` rounds, `<= 60ms`, `honored === true`) | `identifiable: true`, stable `visitorId` |
+| Brave 152+ Normal | `'standard'` or `'extended'` | `false` / silent | Modern quota pinned at `2147483648`; `legacy_quota` `10 GiB` | Verified via Blink consistency + `2147483648` quota / `canvas_noise`; farbled fields stripped, dual buckets (`BucketGPU` + `BucketComputeScreen`) match returning visitor (or Option B `visitorId: ""` with `fingerprint_suppressed` exempted under aggressive Shields) |
+| Brave 152+ Private | `'standard'` or `'extended'` | `true` / medium (`high` with `'extended'`) | `legacy_quota - usage < 10 GiB` (`chromium-quota-below-static-pool`), corroborated by `storage_durability` when `'extended'` is set | Farbled fields stripped or Option B (`visitorId: ""`, `fingerprint_suppressed` exempted, `0` DB rows) |
 
-The quota difference is retained as supporting test evidence, not as an
-additional verdict rule. Quotas can vary with disk capacity and browser policy;
-the OPFS behavior is the measured discriminator.
+## Tor Browser (Firefox 140 ESR) on macOS (`engine === 'gecko'`)
 
-## Safari 26.0 on iOS 26 Simulator (2026-09-14)
+| Security level | `tor` verdict | `incognito` verdict | Clock clamp | Stage 1 guard (`<= 3ms`) | `shields` & `canvas` | Doorhanger prompt | Identity output (`v: 3` Option B) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Standard | `true` / medium or high | `true` / high | `16.667ms` or `100ms` | tripped (`delta == 0` within `3.0ms` or `>= 1.5ms`) | both `blocked` (`rfp-canvas-prompt-avoided`) | **none** (`0` pixel readbacks) | `identifiable: false`, `visitorId: ""`, `visitorIsNew: false`, `visitorConfidence: 0`, `fingerprint_suppressed` exempted |
+| Safest | `true` / high | `true` / high | `100ms` | tripped | both `blocked` (`rfp-canvas-prompt-avoided`) | **none** (`0` pixel readbacks) | `identifiable: false`, `visitorId: ""`, `visitorIsNew: false`, `visitorConfidence: 0`, `fingerprint_suppressed` exempted |
 
-| Window | Verdict | OPFS | Storage quota | Storage usage | Service worker |
-| --- | --- | --- | --- | --- | --- |
-| Normal | `false` / low | `ok` | 41,231,686,042 | 0 | available |
-| Private | `true` / medium | `transient` | 1,048,576,000 | 0 | available |
-
-Both runs completed all 36 sources under the simulator probe bench's enlarged
-5-second budget: 32 were `ok` and four correctly reported unsupported APIs.
-Both claimed and observed WebKit consistently. The same
-`safari-private-origin-filesystem-refused` rule validated on macOS therefore
-also separates normal and private Mobile Safari in the iOS simulator.
-
-The web `emulator` verdict remained false by design. Mobile Safari exposes a
-real-iPhone-shaped browser surface in Simulator: five touch points, a coarse
-pointer without hover, DPR 3, motion APIs, and an `Apple GPU` WebGL renderer.
-Those values cannot distinguish Simulator from a physical iPhone without false
-positives. The native iOS SDK is the authoritative layer for this question and
-detects `targetEnvironment(simulator)` directly at high confidence.
-
-## Tor Browser (Firefox 140 ESR) on macOS (2026-09-14)
-
-| Security level | Tor verdict | Incognito verdict | Clock | Canvas | Prompt after fix |
-| --- | --- | --- | --- | --- | --- |
-| Standard | `true` / medium or high | `true` / high | 16.667ms or 100ms | guarded / blocked | no |
-| Safest | `true` / high | `true` / high | 100ms | guarded / blocked | no readback attempted |
-
-Both levels letterboxed the viewport and disabled service-worker registration.
-The regular Tor window correctly reads as incognito because Tor applies
-private-session storage behavior; this does not require opening a separate
-private window.
-
-The first Standard run exposed a compatibility defect: current Tor sometimes
-uses a 16.667ms timer clamp, while the canvas prompt guard only recognized the
-historical 100ms clamp. The collector consequently attempted readback and Tor
-opened its canvas permission doorhanger. The guard now recognizes both measured
-profiles and aborts before creating a canvas. A fresh-identity Standard rerun
-produced `rfp-canvas-prompt-avoided`, showed no prompt, and retained the Tor
-verdict. Both clock profiles are pinned by behavioral regression tests.
+Both security levels letterbox the viewport and disable service-worker
+registration. In `0.3.0`, Stage 1 (`runtime.ts`) gates **both** `shieldsSource`
+and `canvasSource` behind the Gecko-only `2.5ms–3.0ms` single-tick
+`performance.now()` probe before Stage 2 starts, recognizing both `16.67ms` and
+`100ms` timer clamps (verified in CI by `tests/no-permission-prompts.test.ts`
+spying on `getImageData`, `toDataURL`, `toBlob`, `convertToBlob`, and
+`readPixels`). Neither collector touches canvas readback APIs under clamping,
+guaranteeing zero Tor Browser or Firefox RFP permission doorhangers (**Rule #1**).
 
 ## Still requiring physical/manual coverage
 
-- Physical-iPhone confirmation of Safari normal/private behavior
-- A second independent modern Firefox signal, if one becomes available without
-  increasing false positives
+- Physical-iPhone confirmation across upcoming iOS point releases
+- A second independent zero-prompt Firefox private-browsing tell before Mozilla
+  enables OPFS in private windows (Bug 1975760)

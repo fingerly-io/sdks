@@ -1,10 +1,10 @@
 # Fingerly first-party proxy for Caddy
 
 A `handle` block for the Caddy site that already serves your pages. It answers
-one path the Fingerly dashboard issued, on your own host, and forwards only the
-browser SDK's submissions to the Fingerly API. It is not an open proxy: the
-upstream is fixed in the configuration, and every other path and method is
-refused.
+one path the Fingerly dashboard issued, on your own host, and forwards
+single-pass browser and native SDK submissions as raw bytes to the Fingerly
+API. It is not an open proxy: the upstream is fixed in the configuration, and
+every other path and method is refused.
 
 ## Steps
 
@@ -86,16 +86,32 @@ visitor can write anything.
 
 ## What it sends and relays
 
-Upstream, to `https://api.fingerly.io/api/v1/ingest` only: the request with
-`Cookie` and `Authorization` removed, every visitor-sent `X-Fingerly-*` header
-removed, and the `x-fingerly-*` headers the proxy sets itself (the proxy key,
-the client address, the page origin, the user agent and
-`x-fingerly-proxy-version: caddy/1.0.0`, which the dashboard shows per proxy).
-Bodies over 1 MiB are refused with `413`, redirects are not followed, and a
-missing or malformed key answers `503`. Other methods answer `405` with
-`Allow: POST`.
+Upstream, to `https://api.fingerly.io/api/v1/ingest` only: an allowlist of
+the visitor's headers (`Content-Type`, `X-Api-Key`, `Idempotency-Key`,
+`User-Agent`, `Sec-Fetch-Site`, `Sec-Fetch-Mode`, `Sec-Fetch-Dest`,
+`Sec-CH-UA`, `Sec-CH-UA-Mobile`, `Sec-CH-UA-Platform`, each only when sent).
+Every other incoming header is removed first, so cookies, `Authorization`,
+`Referer`, forwarding headers, application headers and any visitor-sent
+`X-Fingerly-*` header never reach the API, and Caddy's own
+`X-Forwarded-*` and `Via` are removed too. Validated lowercase
+`X-Fingerly-SDK-Platform` is restored when present and `Origin` was not sent
+(one channel header goes upstream, never both), plus the `x-fingerly-*`
+headers the proxy sets itself (the proxy key, the client address,
+`X-Fingerly-Origin` only when `Origin` was sent, `X-Fingerly-Host`, the user
+agent and `x-fingerly-proxy-version: caddy/1.0.0`, which the dashboard shows
+per proxy). Requests missing both `Origin` and a valid
+`X-Fingerly-SDK-Platform` answer `400` (`missing_origin`) without synthesizing
+`X-Fingerly-Origin`. A request whose `X-Api-Key` is missing or is not a
+`fly_pk_` key of the proxy key's environment (a secret `fly_sk_` key
+included) answers `401` and is not forwarded. Bodies over 1 MiB are refused
+with `413`, redirects are not followed, and a missing or malformed proxy key
+answers `503`. Other methods answer `405` with `Allow: POST`.
 
-Back to the page: the API's status and body, with `Set-Cookie` dropped and
-`Cache-Control: no-store`. The API itself sends nothing naming Fingerly to
-proxied callers, and the server tests that, so dropping headers here is defense
-in depth.
+Back to the page: an API redirect (`3xx`), or any status outside `200` to
+`599`, answers `502` marked `no-store` with none of its headers or body (a
+`handle_response` matching those statuses), so `Location` never reaches the
+page. Any other answer: the API's status and body with only `Content-Type`,
+`X-Request-Id`, `RateLimit-Limit`, `RateLimit-Remaining` and `Retry-After`,
+plus `Cache-Control: no-store`. Every other upstream header is removed
+(`header_down -*`) and only those five are set again, so a header the API adds
+later never reaches the page.

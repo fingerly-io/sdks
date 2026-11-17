@@ -231,6 +231,27 @@ describe('FingerlyRequestId', () => {
     expect((container.querySelector('input') as HTMLInputElement).value).toBe('req_1')
   })
 
+  it('keeps no signal report in hook state once the field is filled', async () => {
+    let seen: Record<string, unknown> | undefined
+    const Probe = () => {
+      seen = useIdentify() as unknown as Record<string, unknown>
+      return null
+    }
+    const { container } = render(
+      provider(
+        <>
+          <FingerlyRequestId />
+          <Probe />
+        </>,
+      ),
+    )
+    await act(async () => undefined)
+
+    expect((container.querySelector('input') as HTMLInputElement).value).toBe('req_1')
+    expect(seen?.identified).toBe(true)
+    expect(seen).not.toHaveProperty('report')
+  })
+
   it('costs one identification however many fields a page has', async () => {
     await act(async () => {
       render(
@@ -257,6 +278,14 @@ describe('FingerlyRequestId', () => {
     await act(async () => undefined)
 
     expect(container.querySelector('input')?.getAttribute('name')).toBe('risk_ref')
+  })
+
+  it('sends the tag the backend will check the event against', async () => {
+    render(provider(<FingerlyRequestId tag="signup:att_42" />))
+    await act(async () => undefined)
+
+    expect(identifyMock).toHaveBeenCalledTimes(1)
+    expect(identifyMock).toHaveBeenCalledWith({ tag: 'signup:att_42' })
   })
 
   it('defaults to pending, leaving the field empty and sending nothing', async () => {
@@ -344,5 +373,34 @@ describe('a public response', () => {
     expect(seen.identify.isSuspicious).toBe(suspicious)
     expect(seen.identify).not.toHaveProperty('triggers')
     expect(seen.identify).not.toHaveProperty('verdicts')
+  })
+
+  it('forwards incognitoDetection and exposes visitorId "" on Option B unidentifiable answers', async () => {
+    await answering({ visitor_id: '', identifiable: false, suspect_score: 40, suspect_level: 'high' })
+    environment.NEXT_PUBLIC_FINGERLY_API_KEY = 'pk_from_env'
+    let seen!: ReturnType<typeof useIdentify>
+    const Probe = () => {
+      seen = useIdentify({ immediate: true })
+      return null
+    }
+
+    await act(async () => {
+      render(
+        <FingerlyProvider consent="granted" incognitoDetection="extended">
+          <Probe />
+        </FingerlyProvider>,
+      )
+    })
+    await vi.waitFor(() => expect(seen.isReady).toBe(true))
+
+    expect(loadMock).toHaveBeenCalledWith({
+      apiKey: 'pk_from_env',
+      consent: 'granted',
+      incognitoDetection: 'extended',
+    })
+    expect(seen.visitorId).toBe('')
+    expect(seen.visitorIsNew).toBe(false)
+    expect(seen.identifiable).toBe(false)
+    expect(seen.suspectLevel).toBe('high')
   })
 })

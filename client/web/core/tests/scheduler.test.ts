@@ -1,15 +1,19 @@
 import { describe, expect, it } from 'vitest'
 
-import { collect } from '../src/scheduler.js'
+import { collect, DEFAULT_BUDGET_MS } from '../src/scheduler.js'
 import { BlockedSignal, UnsupportedSignal, type Source } from '../src/source.js'
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 function source(id: string, run: Source['run'], overrides: Partial<Source> = {}): Source {
-  return { id, tier: 'fast', run, ...overrides }
+  return { id, stage: 'collect', run, ...overrides }
 }
 
 describe('collect', () => {
+  it('uses a 350ms default single-pass budget ceiling', () => {
+    expect(DEFAULT_BUDGET_MS).toBe(350)
+  })
+
   it('records a value for a source that succeeds', async () => {
     const { outcomes } = await collect([source('ok', () => 42)])
 
@@ -30,7 +34,6 @@ describe('collect', () => {
       }),
     ])
 
-    // Three different facts, never collapsed into one `error` token.
     expect(outcomes.missing).toMatchObject({ status: 'unsupported', reason: 'no-api' })
     expect(outcomes.refused).toMatchObject({ status: 'blocked', reason: 'SecurityError' })
     expect(outcomes.broken).toMatchObject({ status: 'error', reason: 'TypeError' })
@@ -56,7 +59,7 @@ describe('collect', () => {
         source('hangs', () => new Promise(() => {}), { timeoutMs: 30 }),
         source('fine', () => 'value'),
       ],
-      { budgetMs: 500, concurrency: 2 },
+      { budgetMs: 350, concurrency: 2 },
     )
 
     expect(outcomes.hangs).toMatchObject({ status: 'timeout', reason: 'source-timeout' })
@@ -76,9 +79,6 @@ describe('collect', () => {
     })
     const elapsed = Date.now() - started
 
-    // The whole point of the file: no upper bound on any individual source,
-    // but a hard one on the run. Generous slack so this is not flaky on a
-    // loaded CI box - what is being asserted is "bounded", not a precise time.
     expect(elapsed).toBeLessThan(600)
     expect(truncated).toBe(true)
     expect(Object.keys(outcomes)).toHaveLength(8)
@@ -88,13 +88,6 @@ describe('collect', () => {
   })
 
   it('reports every source even when the budget ran out before they started', async () => {
-    // The first source blocks the thread synchronously for well past the
-    // budget. That is what makes this deterministic: a source that *times out*
-    // finishes exactly at the deadline, because its slice is capped by the
-    // remaining budget, so whether the next source sees any time left comes
-    // down to sub-millisecond scheduling. Overrunning by 40ms leaves no doubt -
-    // and it is the honest case anyway, since `setTimeout` cannot interrupt
-    // synchronous work.
     const blockFor = (ms: number) => {
       const until = Date.now() + ms
       while (Date.now() < until) {
@@ -117,8 +110,6 @@ describe('collect', () => {
       { budgetMs: 40, concurrency: 1 },
     )
 
-    // A report whose *keys* varied with load would be a fingerprint of the
-    // load rather than of the device, so the set is constant regardless.
     expect(Object.keys(outcomes).sort()).toEqual(['blocks', 'never-started'])
     expect(outcomes['never-started']).toMatchObject({
       status: 'timeout',
@@ -127,7 +118,7 @@ describe('collect', () => {
     })
   })
 
-  it('runs the fast tier before the deferred one', async () => {
+  it('runs the prerequisite stage before the collect stage', async () => {
     const order: string[] = []
     const record = (id: string) => () => {
       order.push(id)
@@ -136,97 +127,120 @@ describe('collect', () => {
 
     await collect(
       [
-        source('deferred-a', record('deferred-a'), { tier: 'deferred' }),
-        source('fast-a', record('fast-a')),
-        source('deferred-b', record('deferred-b'), { tier: 'deferred' }),
-        source('fast-b', record('fast-b')),
+        source('collect-a', record('collect-a'), { stage: 'collect' }),
+        source('prereq-a', record('prereq-a'), { stage: 'prerequisite' }),
+        source('collect-b', record('collect-b')),
+        source('prereq-b', record('prereq-b'), { stage: 'prerequisite' }),
       ],
       { concurrency: 1 },
     )
 
-    expect(order).toEqual(['fast-a', 'fast-b', 'deferred-a', 'deferred-b'])
+    expect(order).toEqual(['prereq-a', 'prereq-b', 'collect-a', 'collect-b'])
   })
 
-  it('completes the whole fast tier before any deferred source starts', async () => {
-    // A barrier, not just an ordering. A deferred source that looks up a fast
-    // source's outcome must not be able to lose that race - losing it, in the
-    // canvas case, means prompting the user.
-    let fastFinished = 0
-    let deferredSawAllFast: boolean | undefined
+  it('completes the whole prerequisite stage as a barrier before any collect source starts', async () => {
+    let prereqFinished = 0
+    let collectSawAllPrereq: boolean | undefined
 
     await collect(
       [
-        source('slow-fast', async () => {
-          await sleep(40)
-          fastFinished++
-          return 'a'
-        }),
-        source('quick-fast', () => {
-          fastFinished++
-          return 'b'
-        }),
         source(
-          'deferred',
+          'slow-prereq',
+          async () => {
+            await sleep(40)
+            prereqFinished++
+            return 'a'
+          },
+          { stage: 'prerequisite' },
+        ),
+        source(
+          'quick-prereq',
           () => {
-            deferredSawAllFast = fastFinished === 2
+            prereqFinished++
+            return 'b'
+          },
+          { stage: 'prerequisite' },
+        ),
+        source(
+          'canvas',
+          () => {
+            collectSawAllPrereq = prereqFinished === 2
             return 'c'
           },
-          { tier: 'deferred' },
+          { stage: 'collect' },
         ),
       ],
       { budgetMs: 1000, concurrency: 6 },
     )
 
-    expect(deferredSawAllFast).toBe(true)
+    expect(collectSawAllPrereq).toBe(true)
   })
 
-  it('lets a deferred source read a completed fast source', async () => {
-    let seen: unknown
+  it('passes completed Stage 1 outcomes and shared context into Stage 2', async () => {
+    let seenOutcome: unknown
+    let seenShared: unknown
 
     await collect(
       [
-        source('clock', () => ({ now_resolution: 100 })),
         source(
-          'reader',
+          'timing',
           (ctx) => {
-            seen = ctx.completed('clock')
+            ctx.shared?.set('rfpBlocked', true)
+            return { now_resolution: 100, rfp_canvas_blocked: true }
+          },
+          { stage: 'prerequisite' },
+        ),
+        source(
+          'shields',
+          (ctx) => {
+            seenOutcome = ctx.completed('timing')
+            seenShared = ctx.shared?.get('rfpBlocked')
             return 'ok'
           },
-          { tier: 'deferred' },
+          { stage: 'collect' },
         ),
       ],
       { budgetMs: 1000 },
     )
 
-    expect(seen).toMatchObject({ status: 'ok', value: { now_resolution: 100 } })
+    expect(seenOutcome).toMatchObject({
+      status: 'ok',
+      value: { now_resolution: 100, rfp_canvas_blocked: true },
+    })
+    expect(seenShared).toBe(true)
   })
 
-  it('reports undefined for a source that has not run yet', async () => {
-    let sameTier: unknown = 'unset'
+  it('hides same-stage sibling outcomes so concurrent sources cannot race', async () => {
+    let sameStage: unknown = 'unset'
 
-    await collect([
-      source('asks', (ctx) => {
-        sameTier = ctx.completed('sibling')
-        return 1
-      }),
-      source('sibling', () => 2),
-    ])
-
-    // Siblings run together, so a source must not depend on one. The contract
-    // says undefined rather than a stale or racy value.
-    expect(sameTier).toBeUndefined()
-  })
-
-  it('runs only the requested tiers', async () => {
-    const { outcomes } = await collect(
+    await collect(
       [
-        source('fast', () => 'f'),
-        source('deferred', () => 'd', { tier: 'deferred' }),
+        source('first', () => 1),
+        source('asks', (ctx) => {
+          sameStage = ctx.completed('first')
+          return 2
+        }),
       ],
-      { tiers: ['fast'] },
+      { concurrency: 1 },
     )
 
-    expect(Object.keys(outcomes)).toEqual(['fast'])
+    expect(sameStage).toBeUndefined()
+  })
+
+  it('gates extended-incognito sources behind incognitoDetection === "extended"', async () => {
+    const sources: Source[] = [
+      source('always', () => 'a'),
+      source('durability', () => 'd', { optIn: 'extended-incognito' }),
+    ]
+
+    const standard = await collect(sources)
+    expect(Object.keys(standard.outcomes)).toEqual(['always'])
+
+    const explicitStandard = await collect(sources, { incognitoDetection: 'standard' })
+    expect(Object.keys(explicitStandard.outcomes)).toEqual(['always'])
+
+    const extended = await collect(sources, { incognitoDetection: 'extended' })
+    expect(Object.keys(extended.outcomes).sort()).toEqual(['always', 'durability'])
   })
 
   it('honours an external abort', async () => {
@@ -261,8 +275,6 @@ describe('collect', () => {
       { budgetMs: 300 },
     )
 
-    // A source that can cancel real work - a fetch, a frame callback - needs
-    // this, or giving up would leave the work running behind a settled promise.
     expect(aborted).toBe(true)
   })
 
@@ -288,8 +300,6 @@ describe('collect', () => {
   it('rounds durations to whole milliseconds', async () => {
     const { outcomes } = await collect([source('quick', () => 1)])
 
-    // Sub-millisecond precision would hand a reader a timer oracle and would
-    // make every report differ in the noise.
     expect(Number.isInteger(outcomes.quick?.ms)).toBe(true)
   })
 })
