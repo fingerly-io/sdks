@@ -1,7 +1,7 @@
 # Hardened browsers
 
 What Brave, Tor, Firefox `resistFingerprinting`, and Safari Private Browsing
-actually do to the signals this SDK collects, and how the `0.3.0` (`v: 3`)
+actually do to the signals this SDK collects, and how the `0.4.0` (`v: 3`)
 single-pass pipeline handles them without user prompts, shared-ID collisions,
 or false-positive risk scores.
 
@@ -168,7 +168,7 @@ In Chromium 152+, `QuotaManagerImpl::CalculateReportedQuota` enables
 `isStaticChromiumQuota` and a tightened `0.25` legacy ratio ceiling prevent
 inverted false positives on nearly full disks.
 
-### Why `storage_durability` is opt-in (`incognitoDetection: 'extended'`) in `0.3.0`
+### Why `storage_durability` is opt-in (`incognitoDetection: 'extended'`) in `0.4.0`
 
 Chromium's incognito IndexedDB store runs on `leveldb_chrome::NewMemEnv`
 (in-memory), where `durability: "strict"` skips real disk `fsync`s while
@@ -187,7 +187,7 @@ writes onto every ordinary login and checkout for a signal weighted `4` out of
 `30`—and Chromium's `IdbSqliteBackingStore` rollout is progressively phasing out
 the LevelDB differential.
 
-In `@fingerly/core` and `@fingerly/web-js` `0.3.0`:
+In `@fingerly/core` and `@fingerly/web-js` `0.4.0`:
 
 - **Default (`incognitoDetection: 'standard'`)**: `storage_durability` does
   **not** run, keeping single-pass Web collection fast (`< 80ms` typical,

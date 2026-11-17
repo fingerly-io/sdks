@@ -26,8 +26,8 @@ driven by Turborepo) for the browser SDK and its framework bindings, and it moun
 SDKs, the server SDKs and the Cloudflare Worker proxy as git submodules, each of them an
 independently versioned repository.
 
-The browser SDK and its bindings and every server SDK are at `0.4.0`; the mobile SDKs and bridges
-and the Cloudflare Worker proxy are at `0.3.0`. All of them speak wire contract `v: 3`.
+The browser SDK and its bindings and the mobile SDKs and bridges are at `0.4.0`, every server SDK
+is at `0.4.1`, and the Cloudflare Worker proxy is at `0.3.0`. All of them speak wire contract `v: 3`.
 
 Pick the SDK for your platform below. Each one has its own README and a page on
 [docs.fingerly.io](https://docs.fingerly.io/docs/sdks).
@@ -81,9 +81,9 @@ The native iOS and Android SDKs are closed binaries under the Fingerly SDK Licen
 `sdk-ios` and `sdk-android` repositories hold the install notes and the licence, not source. The
 React Native, Flutter and Lynx bridges are open source under Apache-2.0.
 
-On Android, two optional sibling artifacts sit next to `io.fingerly:fingerly:0.3.0`:
-`io.fingerly:fingerly-app-checks:0.3.0` (opt-in package visibility) and
-`io.fingerly:fingerly-play-integrity:0.3.0` (Play Integrity token binding). Neither is added to
+On Android, two optional sibling artifacts sit next to `io.fingerly:fingerly:0.4.0`:
+`io.fingerly:fingerly-app-checks:0.4.0` (opt-in package visibility) and
+`io.fingerly:fingerly-play-integrity:0.4.0` (Play Integrity token binding). Neither is added to
 the core artifact.
 
 ### Server
@@ -403,7 +403,7 @@ Bump the package's `version` and merge to `main`. The Release workflow
 ([`.github/workflows/release.yml`](.github/workflows/release.yml), steps in
 [`scripts/release-npm.mjs`](scripts/release-npm.mjs)) then publishes every npm package whose
 version is not on the registry yet, in dependency order, and tags each one with a GitHub Release
-named like `@fingerly/core@0.3.0`. A push that changes no version does nothing. Before publishing
+named like `@fingerly/core@0.4.0`. A push that changes no version does nothing. Before publishing
 it installs from the lockfile, builds, lints, runs the tests and `pnpm check:packs`, then packs
 every tarball and inspects it. A manual run can leave packages out with its `exclude` input.
 

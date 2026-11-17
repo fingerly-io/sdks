@@ -6,7 +6,7 @@ If you are embedding a Fingerly SDK, you are the controller for the data it
 collects about your visitors and we are your processor. That means the notice,
 the legal basis and the consent are yours to get right, and you cannot do any
 of it without knowing exactly what the code reads, stores and sends. This
-document is that list, checked against the `0.3.0` SDKs (`v: 3` wire protocol)
+document is that list, checked against the `0.4.0` SDKs (`v: 3` wire protocol)
 on 2026-11-16.
 
 > **Read §4 before shipping to visitors in the EU or UK.** Every SDK has a
@@ -45,7 +45,7 @@ keep one container-scoped `install_id` and a local hardware attestation signing
 key (§3.1), both of which the app can atomically delete (§3.2) and both of
 which are removed if the user uninstalls the app.
 
-## 2. Browser (`@fingerly/core`, `@fingerly/web-js` `0.3.0` and framework bindings)
+## 2. Browser (`@fingerly/core`, `@fingerly/web-js` `0.4.0` and framework bindings)
 
 Collection runs in a **single pass** (`1-RTT` submission to `POST /api/v1/ingest`
 with `v: 3`, retiring `/api/v1/ingest/supplement` and `deferred_token`) under a
@@ -79,7 +79,7 @@ sending one request:
 | Runtime & embedding | `timing`, `permissions`, `automation`, `embedding` | Clock resolution, read-only `Notification` and `geolocation` permission **states** (never prompting), WebDriver/CDP/Playwright/Selenium automation globals, and in-app WebView environment markers |
 
 Retired browser sources (`speech`, `sensors`, `battery`, and `dom_blockers`)
-have been deleted from `@fingerly/core` and `@fingerly/web-js` `0.3.0`: the SDK
+have been deleted from `@fingerly/core` and `@fingerly/web-js` `0.4.0`: the SDK
 no longer enumerates speech synthesis voices, motion sensor events, battery
 levels, or content-blocker DOM filter lists.
 
@@ -126,7 +126,7 @@ Nothing that outlives the call. It writes no cookies, sends no cookies
 Reading device characteristics remains in scope for ePrivacy Art. 5(3) whether
 or not persistent storage is written (§4).
 
-## 3. Mobile (`ios`, `android` `0.3.0`, and the React Native, Flutter and Lynx bridges)
+## 3. Mobile (`ios`, `android` `0.4.0`, and the React Native, Flutter and Lynx bridges)
 
 The native SDKs read operating system and hardware characteristics, app
 installation details, security state and runtime integrity indicators, and sign
@@ -135,7 +135,7 @@ steady-state `v: 3` request. None of those hardware, OS or attestation signals
 is ever used to recognise the device or link `visitor_id` (§1); they serve
 integrity verification and fraud scoring only.
 
-**iOS (`Fingerly` `0.3.0`, 15 sources)**
+**iOS (`Fingerly` `0.4.0`, 15 sources)**
 
 - Machine & OS (`system`, `hardware`, `display`, `sensors`, `intl`): model
   identifier (`hw.machine` / `uname`), Metal GPU capability tier
@@ -168,7 +168,7 @@ integrity verification and fraud scoring only.
   `UserDefaults`, `UIPasteboard`, battery monitoring, accessibility feature
   states, audio routes, installed font counts, or carrier names.
 
-**Android (`io.fingerly:fingerly` `0.3.0`, 20 sources, pure Kotlin, zero `.so`)**
+**Android (`io.fingerly:fingerly` `0.4.0`, 20 sources, pure Kotlin, zero `.so`)**
 
 - Machine, OS & settings (`system`, `hardware`, `display`, `storage`, `sensors`,
   `audio`, `intl`, `accessibility`, `battery`, `security`): OS version,
@@ -208,13 +208,13 @@ integrity verification and fraud scoring only.
     when the customer configures a Google Cloud project and the server's
     challenge offers `play_integrity: true`.
 
-The React Native (`@fingerly/react-native` `0.3.0`), Flutter
-(`fingerly_flutter` `0.3.0`) and Lynx (`@fingerly/lynx` `0.3.0`) packages are
-thin bridges over the native iOS and Android `0.3.0` SDKs.
+The React Native (`@fingerly/react-native` `0.4.0`), Flutter
+(`fingerly_flutter` `0.4.0`) and Lynx (`@fingerly/lynx` `0.4.0`) packages are
+thin bridges over the native iOS and Android `0.4.0` SDKs.
 
 ### 3.1 What the mobile SDKs store and send
 
-| | iOS (`0.3.0`) | Android (`0.3.0`) |
+| | iOS (`0.4.0`) | Android (`0.4.0`) |
 |---|---|---|
 | Identity & key state stored on the device | Files under `Application Support/io.fingerly.sdk/` protected with `FileProtectionType.completeUntilFirstUserAuthentication` and `isExcludedFromBackup = true`, holding the random UUIDv4 `install_id`, launch count, first-seen timestamp, and App Attest key state (`keyId`, `pending`, replacement backoff). **Zero Keychain storage** and **zero `UserDefaults`**: uninstalling the app removes all stored state | One file, `io.fingerly.sdk.install`, under `context.noBackupFilesDir`, holding the random UUIDv4 `install_id`, first-seen time, launch count, signing certificate digest, and 24-hour attestation key lease metadata, plus one hardware-backed EC P-256 signing key in `AndroidKeyStore` (`alias = "io.fingerly.sdk.attest.v3"`). Never backed up, and **removed on uninstall** |
 | Hardware signing key lifecycle | Per-install Secure Enclave App Attest key (`DCAppAttestService`), replaced only on `deleteStoredIdentity()` or server `rekey_required` / `attestation_key_unknown` (with `0d -> 7d -> 14d -> 30d` storm backoff). Never linked to `visitor_id` | **24-hour TEE EC P-256 signing key lease** (`alias = "io.fingerly.sdk.attest.v3"`). Signs the `v: 3` framed preimage locally in ~3–8ms (`SHA256withECDSA`) without per-call key creation/deletion, and rotates every 24 hours (or on OS patch change / `deleteStoredIdentity()`). **Never** linked to `visitor_id`, **never** requests hardware serial/IMEI IDs (`setDevicePropertiesAttestationIncluded` is never called), and **never** prompts for lockscreen/biometrics (`setUserAuthenticationRequired` is never called) |
