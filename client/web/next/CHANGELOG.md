@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0
+
+- Uses @fingerly/web-js 0.4.0, which exports runtime constants for the
+  fixed contract values such as `SuspectLevel` and `Signal`.
+- Uses @fingerly/node 0.4.0, which exports the server constants such as
+  `SuspectLevel`, `Signal`, `VerifyReason` and `WebhookEventType`.
+
 ## 0.3.0
 
 - `FingerlyRequestId` takes a `tag` the backend checks the event against.

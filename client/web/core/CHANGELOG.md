@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.0
+
+- Re-exports the runtime constants of `@fingerly/types` 0.4.0: `Signal`,
+  `SuspectLevel`, `Confidence`, `EventState`, `ConsentState`,
+  `IncognitoDetection` and `SdkPlatform`.
+- The signal list matches the server: `repeated_reinstall`,
+  `device_activity_high` and `device_activity_very_high` are added and
+  `app_attest_key_churn` is gone.
+
 ## 0.3.0
 
 - `identify()` collects and submits in one `v: 3` round trip and resolves

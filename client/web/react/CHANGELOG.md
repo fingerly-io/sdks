@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.0
+
+- Uses @fingerly/web-js 0.4.0, which exports runtime constants for the
+  fixed contract values such as `SuspectLevel` and `Signal`.
+
 ## 0.3.0
 
 - The store keeps no signal report; it exposes `identified` once an

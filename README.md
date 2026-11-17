@@ -26,8 +26,8 @@ driven by Turborepo) for the browser SDK and its framework bindings, and it moun
 SDKs, the server SDKs and the Cloudflare Worker proxy as git submodules, each of them an
 independently versioned repository.
 
-The browser SDK and its bindings, the mobile SDKs and bridges, the Node.js SDK and the Cloudflare
-Worker proxy are at `0.3.0`, on wire contract `v: 3`.
+The browser SDK and its bindings and every server SDK are at `0.4.0`; the mobile SDKs and bridges
+and the Cloudflare Worker proxy are at `0.3.0`. All of them speak wire contract `v: 3`.
 
 Pick the SDK for your platform below. Each one has its own README and a page on
 [docs.fingerly.io](https://docs.fingerly.io/docs/sdks).

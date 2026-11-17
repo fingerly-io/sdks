@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0
+
+- Exports the runtime constants `Signal`, `SuspectLevel`, `Confidence`,
+  `EventState`, `ConsentState`, `IncognitoDetection` and `SdkPlatform`, so
+  `result.suspectLevel === SuspectLevel.High` works without raw strings.
+- Uses @fingerly/core 0.4.0 and @fingerly/types 0.4.0.
+
 ## 0.3.0
 
 - `identify()` collects and submits in one `v: 3` round trip and resolves

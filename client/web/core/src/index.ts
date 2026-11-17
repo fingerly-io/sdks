@@ -79,3 +79,13 @@ export { SDK_VERSION } from './version.js'
 
 export type { NativeIdentifyResult } from './types.js'
 export type * from './types.js'
+// Runtime constants for the closed string sets in the contract.
+export {
+  Confidence,
+  ConsentState,
+  EventState,
+  IncognitoDetection,
+  SdkPlatform,
+  Signal,
+  SuspectLevel,
+} from '@fingerly/types'
