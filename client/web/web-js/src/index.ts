@@ -44,13 +44,10 @@ export { inspectIntegrity } from './lies/index.js'
 
 export type {
   CollectOptions,
-  Confidence,
-  ConsentState,
   IdentifyOptions,
   IdentifyResult,
   IdentifySubmission,
   IdentifyTrigger,
-  IncognitoDetection,
   IntegrityReport,
   Lie,
   LieKind,
@@ -60,7 +57,19 @@ export type {
   SignalStatus,
   SourceOptIn,
   SourceStage,
-  SuspectLevel,
   WorkerRealmSignal,
 } from '@fingerly/core'
-export { ConsentError, FingerlyClient, isSuspiciousLevel, SOURCE, TransportError } from '@fingerly/core'
+export {
+  Confidence,
+  ConsentError,
+  ConsentState,
+  EventState,
+  FingerlyClient,
+  IncognitoDetection,
+  isSuspiciousLevel,
+  SdkPlatform,
+  Signal,
+  SOURCE,
+  SuspectLevel,
+  TransportError,
+} from '@fingerly/core'
