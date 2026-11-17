@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.0
+
+- Uses @fingerly/web-js 0.4.0, which exports runtime constants for the
+  fixed contract values such as `SuspectLevel` and `Signal`.
+
 ## 0.3.0
 
 - Consent comes only from `setConsent()` at runtime. It is not published in

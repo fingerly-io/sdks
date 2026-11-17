@@ -79,7 +79,7 @@ describe('web freshness ticket (R8)', () => {
     const ticket = vi.fn<NonNullable<Transport['ticket']>>(async () => fresh('t1'))
     await client({ submit: async () => ({ request_id: 'r1' }), ticket }).identify()
     const request: TicketRequest = ticket.mock.calls[0]![0]
-    expect(request).toEqual({ v: 3, op: 'ticket', sdk: { platform: 'web', version: '0.3.0' } })
+    expect(request).toEqual({ v: 3, op: 'ticket', sdk: { platform: 'web', version: '0.4.0' } })
   })
 
   it('reuses a held next_ticket instead of asking, once', async () => {
@@ -384,7 +384,7 @@ describe('HttpTransport ticket requests', () => {
       endpoints: '/k7x2qm4a',
       fetchImpl: fetchImpl as unknown as typeof fetch,
     })
-    const request: TicketRequest = { v: 3, op: 'ticket', sdk: { platform: 'web', version: '0.3.0' } }
+    const request: TicketRequest = { v: 3, op: 'ticket', sdk: { platform: 'web', version: '0.4.0' } }
     await expect(transport.ticket(request)).resolves.toMatchObject({ ticket: 'abc_-9' })
     const [url, init] = fetchImpl.mock.calls[0]!
     expect(url).toBe('/k7x2qm4a')
@@ -405,7 +405,7 @@ describe('HttpTransport ticket requests', () => {
       endpoints: ['/first', '/second'],
       fetchImpl: fetchImpl as unknown as typeof fetch,
     })
-    const request: TicketRequest = { v: 3, op: 'ticket', sdk: { platform: 'web', version: '0.3.0' } }
+    const request: TicketRequest = { v: 3, op: 'ticket', sdk: { platform: 'web', version: '0.4.0' } }
     await expect(transport.ticket(request)).resolves.toMatchObject({ ticket: 'ok' })
     expect(fetchImpl.mock.calls.map((call) => call[0])).toEqual(['/first', '/second'])
 
@@ -418,7 +418,7 @@ describe('HttpTransport ticket requests', () => {
   })
 
   it('rejects an answer without a usable ticket', async () => {
-    const request: TicketRequest = { v: 3, op: 'ticket', sdk: { platform: 'web', version: '0.3.0' } }
+    const request: TicketRequest = { v: 3, op: 'ticket', sdk: { platform: 'web', version: '0.4.0' } }
     for (const body of [{}, { ticket: 'a b', expires_at: expiresIn(1) }, { ticket: 'ok' }]) {
       const transport = new HttpTransport({
         apiKey: 'k',
