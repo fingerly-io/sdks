@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.1
+
+- Uses @fingerly/web-js 0.5.1: the extended private-window check is waited
+  for on the first identification of a visit.
+
 ## 0.5.0
 
 - Uses @fingerly/web-js 0.5.0: opt-in session continuity, more reliable

@@ -1,5 +1,5 @@
 /**
- * The shared state, in Svelte 5 runes (`0.5.0`, single-pass `v: 3`).
+ * The shared state, in Svelte 5 runes (`0.5.1`, single-pass `v: 3`).
  */
 
 import {

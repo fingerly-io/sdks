@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.1
+
+- With `incognitoDetection: 'extended'`, `identify()` called straight after
+  `load()` waits for the private-window check instead of giving up after
+  200 ms, within the collection budget and its grace period. The first
+  identification of a visit in a fresh private window now carries it.
+
 ## 0.5.0
 
 - Opt-in session continuity: `load({ continuity: 'session' })` carries an

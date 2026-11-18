@@ -1,5 +1,5 @@
 /**
- * @fingerly/angular - Angular bindings for the Fingerly SDK (`0.5.0`, single-pass `v: 3`).
+ * @fingerly/angular - Angular bindings for the Fingerly SDK (`0.5.1`, single-pass `v: 3`).
  */
 
 export { FINGERLY, FINGERLY_OPTIONS, provideFingerly } from './provide.js'

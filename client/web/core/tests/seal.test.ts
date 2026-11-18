@@ -585,7 +585,7 @@ describe("continuity 'session'", () => {
 
     expect(ticket).toHaveBeenCalled()
     for (const [request] of ticket.mock.calls) {
-      expect(request).toEqual({ v: 3, op: 'ticket', sdk: { platform: 'web', version: '0.5.0' } })
+      expect(request).toEqual({ v: 3, op: 'ticket', sdk: { platform: 'web', version: '0.5.1' } })
       expect(request).not.toHaveProperty('seal')
       expect(request).not.toHaveProperty('continuity')
     }

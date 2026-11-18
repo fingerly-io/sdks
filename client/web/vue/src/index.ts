@@ -1,5 +1,5 @@
 /**
- * @fingerly/vue - Vue 3 bindings for the Fingerly SDK (`0.5.0`, single-pass `v: 3`).
+ * @fingerly/vue - Vue 3 bindings for the Fingerly SDK (`0.5.1`, single-pass `v: 3`).
  */
 
 export { createFingerly, fingerlyKey, FingerlyServerError } from './plugin.js'

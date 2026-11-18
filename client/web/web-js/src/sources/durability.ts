@@ -13,8 +13,10 @@
  * That is too long to run inside `identify()`, so the probe starts as soon as
  * collection is permitted on a page that asked for it ([startDurabilityProbe])
  * and the source reports its result when `identify()` runs. A page that calls
- * `identify()` before the probe has finished reports nothing for it that
- * time, and the next call carries it.
+ * `identify()` straight after `load()` waits for the probe within the
+ * collection budget and its grace period: a fresh private window took longer
+ * than the 200 ms this used to wait, so the first identification of a visit
+ * missed it and only a second one found it.
  *
  * In an ordinary window the probe writes a few megabytes to disk once per
  * page, which is why it runs only for callers who opt in.
@@ -160,9 +162,12 @@ export const storageDurabilitySource: Source<StorageDurabilitySignal> = {
   id: SOURCE.storageDurability,
   stage: 'collect',
   optIn: 'extended-incognito',
-  // How long identify() waits for a probe still running. Most pages call it
-  // well after the probe started and find the answer ready.
-  timeoutMs: 200,
+  // The caller asked for this answer, so identify() waits for a probe still
+  // running, into the grace period after the default budget. The probe takes
+  // about 100 ms in a private window and about 350 ms in an ordinary one; a
+  // page that calls identify() later finds it ready and waits not at all.
+  identityCritical: true,
+  timeoutMs: 750,
   async run(ctx) {
     requireWindow()
     if (typeof indexedDB !== 'object' || indexedDB === null) {

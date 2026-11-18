@@ -57,11 +57,11 @@ describe('consent', () => {
 
     // One ticket request beside collection, then one report.
     expect(bodies).toHaveLength(2)
-    expect(bodies[0]).toEqual({ v: 3, op: 'ticket', sdk: { platform: 'web', version: '0.5.0' } })
+    expect(bodies[0]).toEqual({ v: 3, op: 'ticket', sdk: { platform: 'web', version: '0.5.1' } })
     expect(bodies[1]).toMatchObject({
       v: 3,
       consent: 'granted',
-      sdk: { platform: 'web', version: '0.5.0' },
+      sdk: { platform: 'web', version: '0.5.1' },
     })
   })
 

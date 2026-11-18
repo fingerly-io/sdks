@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.1
+
+- Released with @fingerly/web-js 0.5.1. No change of its own.
+
 ## 0.5.0
 
 - Opt-in session continuity: `continuity: 'session'` (the `Continuity`
