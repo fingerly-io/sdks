@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.2
+
+- The font sources run ahead of the slow ones. On a real HTTPS page
+  Safari's Apple Pay check takes about 400 ms; with the other slow sources it
+  kept the fonts from starting inside the budget, and a Safari private window
+  that needs them to be recognised was reported as unidentifiable.
+
 ## 0.5.1
 
 - With `incognitoDetection: 'extended'`, `identify()` called straight after

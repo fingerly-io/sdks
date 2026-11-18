@@ -26,7 +26,7 @@ driven by Turborepo) for the browser SDK and its framework bindings, and it moun
 SDKs, the server SDKs and the Cloudflare Worker proxy as git submodules, each of them an
 independently versioned repository.
 
-The browser SDK and its bindings are at `0.5.1`, the mobile SDKs and bridges are at `0.4.0`, every
+The browser SDK and its bindings are at `0.5.2`, the mobile SDKs and bridges are at `0.4.0`, every
 server SDK is at `0.4.1`, and the Cloudflare Worker proxy is at `0.3.0`. All of them speak wire
 contract `v: 3`.
 

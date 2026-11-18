@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.2
+
+- Uses @fingerly/web-js 0.5.2: Safari private windows are recognised on
+  real HTTPS pages again.
+
 ## 0.5.1
 
 - Uses @fingerly/web-js 0.5.1: the extended private-window check is waited

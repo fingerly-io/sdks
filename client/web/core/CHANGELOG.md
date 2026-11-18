@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.2
+
+- Released with @fingerly/web-js 0.5.2. No change of its own.
+
 ## 0.5.1
 
 - Released with @fingerly/web-js 0.5.1. No change of its own.

@@ -1,5 +1,5 @@
 /**
- * @fingerly/svelte - Svelte 5 bindings for the Fingerly SDK (`0.5.1`, single-pass `v: 3`).
+ * @fingerly/svelte - Svelte 5 bindings for the Fingerly SDK (`0.5.2`, single-pass `v: 3`).
  */
 
 export { FINGERLY_KEY, setupFingerly, useFingerly } from './context.js'

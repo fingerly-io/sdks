@@ -19,7 +19,7 @@
 
 ## What is this
 
-`@fingerly/web-js` is the Fingerly browser SDK (`0.5.1`, wire contract `v: 3`).
+`@fingerly/web-js` is the Fingerly browser SDK (`0.5.2`, wire contract `v: 3`).
 It reads the signals a browser exposes in a single pass (`350 ms` by default),
 sends them to Fingerly in one request, and returns the server's answer: a
 `requestId`, a stable `visitorId`, whether the visitor is `identifiable`, and
@@ -28,7 +28,7 @@ returning visitors and spot automation, tampering and abuse.
 [Fingerly](https://fingerly.io) helps you protect signups, logins and payments
 from fraud and abuse.
 
-Using a framework? The `0.5.1` bindings wrap this package and install it for you:
+Using a framework? The `0.5.2` bindings wrap this package and install it for you:
 [`@fingerly/react`](https://www.npmjs.com/package/@fingerly/react),
 [`@fingerly/vue`](https://www.npmjs.com/package/@fingerly/vue),
 [`@fingerly/next`](https://www.npmjs.com/package/@fingerly/next),
@@ -369,13 +369,13 @@ not an error.
 
 ## Without a bundler
 
-The package (`0.5.1`) includes a minified IIFE script-tag build,
+The package (`0.5.2`) includes a minified IIFE script-tag build,
 `dist/browser.global.js`, which defines a global `Fingerly`. Serve that file
 from your own origin under a neutral path (for example copied from
-`@fingerly/web-js@0.5.1/dist/browser.global.js`) and load it before your code:
+`@fingerly/web-js@0.5.2/dist/browser.global.js`) and load it before your code:
 
 ```html
-<script src="/assets/app-core-0.5.1.js"></script>
+<script src="/assets/app-core-0.5.2.js"></script>
 <script>
   Fingerly.load({ apiKey: 'fly_pk_production_…', consent: 'granted' })
     .then((fingerly) => fingerly.identify({ tag: 'login' }))

@@ -1,5 +1,5 @@
 /**
- * The shared state, in Angular signals (`0.5.1`, single-pass `v: 3`).
+ * The shared state, in Angular signals (`0.5.2`, single-pass `v: 3`).
  */
 
 import { computed, signal, type Signal } from '@angular/core'

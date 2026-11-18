@@ -66,7 +66,7 @@ describe('FingerlyClient single-pass v3 collection', () => {
     const sent = submit.mock.calls[0]![0]
     expect(sent).toMatchObject({
       v: 3,
-      sdk: { platform: 'web', version: '0.5.1' },
+      sdk: { platform: 'web', version: '0.5.2' },
       consent: 'granted',
       tag: 'checkout-1',
     })
@@ -227,7 +227,7 @@ describe('reported version', () => {
     const { readFileSync } = await import('node:fs')
     const { SDK_VERSION } = await import('../src/version.js')
     const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
-    expect(pkg.version).toBe('0.5.1')
+    expect(pkg.version).toBe('0.5.2')
     expect(SDK_VERSION).toBe(pkg.version)
   })
 })

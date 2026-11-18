@@ -78,6 +78,11 @@ const CANDIDATES = [
 export const fontsSource: Source<FontsSignal> = {
   id: SOURCE.fonts,
   stage: 'collect',
+  // Mandatory for recognising a Safari private window, and fast, so it runs
+  // ahead of the slow sources: on a real HTTPS page Safari's Apple Pay check
+  // takes about 400 ms, and with five other slow sources it filled every
+  // worker until the budget was gone, so the fonts never started.
+  identityCritical: true,
   // Generous: this measures ~300 spans, and forcing layout on a busy page is
   // genuinely slow. Still bounded, which is the part that matters.
   timeoutMs: 250,
@@ -146,6 +151,8 @@ export const fontsSource: Source<FontsSignal> = {
 export const fontPreferencesSource: Source<FontPreferencesSignal> = {
   id: SOURCE.fontPreferences,
   stage: 'collect',
+  // Mandatory for recognising a Safari private window; see the fonts source.
+  identityCritical: true,
   // Inside the default collection budget: a cold page builds its first
   // measuring frame slowly.
   timeoutMs: 320,
