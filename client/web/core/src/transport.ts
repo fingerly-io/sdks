@@ -13,6 +13,7 @@ import type {
   FreshnessTicket,
   IdentifySubmission,
   IdentifyTrigger,
+  SessionSeal,
   SuspectLevel,
   TicketRequest,
 } from './types.js'
@@ -44,6 +45,11 @@ export interface SubmitResponse {
   triggers?: IdentifyTrigger[]
   /** Web only: the ticket for this page's next report. */
   next_ticket?: FreshnessTicket
+  /**
+   * Web only: the session seal for this tab's next report, when the report
+   * asked for `continuity: 'session'` and the server issued one.
+   */
+  next_seal?: SessionSeal
 }
 
 export interface Transport {
@@ -79,6 +85,26 @@ export function readTicket(value: unknown): FreshnessTicket | undefined {
   const powBits = own(candidate, 'pow_bits')
   const solvable = typeof powBits === 'number' && Number.isInteger(powBits) && powBits >= 1 && powBits <= 22
   return { ticket, expires_at: expiresAt, ...(solvable ? { pow_bits: powBits } : {}) }
+}
+
+/** The longest seal the server issues or accepts. */
+const MAX_SEAL_CHARS = 256
+
+/**
+ * A session seal as the server sends it in `next_seal`, or `undefined` for
+ * anything else: an unpadded base64url string of at most 256 characters and a
+ * parseable expiry.
+ */
+export function readSeal(value: unknown): SessionSeal | undefined {
+  if (value === null || typeof value !== 'object') return undefined
+  const candidate = value as Record<string, unknown>
+  const seal = own(candidate, 'seal')
+  const expiresAt = own(candidate, 'expires_at')
+  if (typeof seal !== 'string' || typeof expiresAt !== 'string') return undefined
+  if (seal.length === 0 || seal.length > MAX_SEAL_CHARS) return undefined
+  if (!/^[A-Za-z0-9_-]+$/.test(seal)) return undefined
+  if (!Number.isFinite(Date.parse(expiresAt))) return undefined
+  return { seal, expires_at: expiresAt }
 }
 
 export class TransportError extends Error {

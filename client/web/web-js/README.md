@@ -113,6 +113,7 @@ report is high-risk.
 - [Decide on your backend](#decide-on-your-backend)
 - [Consent](#consent)
 - [Incognito detection](#incognito-detection)
+- [Session continuity](#session-continuity)
 - [Serve it from your own site](#serve-it-from-your-own-site)
 - [Options](#options)
 - [Errors](#errors)
@@ -225,6 +226,40 @@ In any mode the SDK never triggers a browser permission prompt, picker or
 dialog, including in Firefox and Tor Browser with their strictest privacy
 settings.
 
+## Session continuity
+
+`continuity` takes `'none'` or `'session'`. Set it on `load()`.
+
+- `'none'` (the default) keeps nothing in the browser.
+- `'session'` carries an identified private window across the reports of one
+  tab. Each answer may carry a session seal, a signed token naming the visitor
+  the server already answered with, and the SDK keeps it in `sessionStorage`
+  under the single key `__fingerly_seal__` and sends it with the next report.
+
+```ts
+import { Continuity, load } from '@fingerly/web-js'
+
+const fingerly = await load({
+  apiKey: 'fly_pk_production_…',
+  continuity: Continuity.Session,
+})
+```
+
+The seal lives as long as the tab: it is accepted for 30 minutes, each answer
+that honours it carries the next one, and a session ends 12 hours after it
+began. It is never written to `localStorage`, a cookie, IndexedDB or
+`window.name`.
+
+- The seal is read and written only while consent is `granted`, and
+  `setConsent('denied')` removes it at once.
+- Where `sessionStorage` is unavailable or refuses access, `identify()` works
+  as it does with `'none'`.
+- Anything other than the two modes throws a `TypeError`.
+
+Keeping the seal is storage access under ePrivacy Art. 5(3), covered by the
+same consent as the rest of the SDK. See section 2.1 of the
+[privacy notes](https://github.com/fingerly-io/sdks/blob/main/docs/privacy.md).
+
 ## Serve it from your own site
 
 Content blockers refuse requests to third-party hosts and to paths they know.
@@ -269,6 +304,7 @@ server SDK pages for
 | `fallbackToDefaultEndpoint` | `boolean` | Try the Fingerly API after your custom endpoints fail, as a last resort. |
 | `consent` | `'pending' \| 'granted' \| 'denied'` | Defaults to `pending`. |
 | `incognitoDetection` | `'standard' \| 'extended'` | Defaults to `standard`. See [Incognito detection](#incognito-detection). |
+| `continuity` | `'none' \| 'session'` | Defaults to `none`, which keeps nothing in the browser. See [Session continuity](#session-continuity). |
 | `apiVersion` | `string` | API route version. Defaults to `v1`. |
 | `schedule` | object | Overrides for the collection scheduler: `budgetMs` (default `350`), `defaultSourceTimeoutMs`, `concurrency`, `filter`, `signal`. |
 | `transport` | `Transport` | Replaces the HTTP transport, for tests or a custom network stack. |

@@ -65,6 +65,15 @@ package for you.
   `ticket_pow`. Solving starts as soon as the ticket arrives, runs in a Worker
   when the page allows one (in short time slices otherwise), and stops after
   1500 ms, in which case the report goes without `ticket_pow`.
+- **Session continuity (web).** Off by default (`continuity: 'none'`): the
+  client keeps nothing in the browser. With `continuity: 'session'` every
+  report asks for a session seal, a signed token naming the visitor the server
+  already answered with, and the client keeps the one the answer carries in
+  `sessionStorage` under the single key `__fingerly_seal__` and sends it with
+  the next report from the same tab. It is read and written only while consent
+  is `granted`, removed when consent is set to `denied`, and removed when an
+  answer carries no seal. Storage that is missing or throws never fails
+  `identify()`.
 
 ## Getting started
 
@@ -86,7 +95,7 @@ browser set). For a working example, start from the
 - `FingerlyClient`, the client every SDK wraps: `identify()`, `collect()`,
   `setConsent()`, `onConsentChange()` and the `consent` state.
 - `ConsentError`, `HttpTransport` and `TransportError`, plus `DEFAULT_ENDPOINT`
-  (`https://api.fingerly.io`).
+  (`https://api.fingerly.io`) and `SEAL_STORAGE_KEY` (`__fingerly_seal__`).
 - `collect()`, the scheduler that runs sources under a budget, and the
   `Source` type with its helper errors.
 - `isSuspiciousLevel()`, which reads the server's `suspectLevel` the same way in
@@ -97,7 +106,8 @@ browser set). For a working example, start from the
 
 `FingerlyClientOptions` takes `apiKey`, `endpoints`, `fallbackToDefaultEndpoint`,
 `apiVersion`, `consent` (defaults to `pending`), `platform`, `sources`,
-`integrity`, `embedding`, `schedule`, `transport` and `incognitoDetection`. Consent works as in the
+`integrity`, `embedding`, `schedule`, `transport`, `incognitoDetection` and
+`continuity` (`'none'` by default, or `'session'`). Consent works as in the
 browser SDK: until it is `granted` nothing runs and nothing is sent, and
 `identify()` and `collect()` reject with a `ConsentError`.
 

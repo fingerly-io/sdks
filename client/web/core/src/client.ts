@@ -3,6 +3,7 @@
  */
 
 import { assertConsentState, ConsentError } from './consent.js'
+import { assertContinuity, clearSeal, loadSeal, sealUsable, storeSeal } from './continuity.js'
 import { collect, DEFAULT_BUDGET_MS, type ScheduleOptions } from './scheduler.js'
 import { own, ownCopy } from './own.js'
 import { solvePow } from './pow.js'
@@ -11,6 +12,7 @@ import type { Source } from './source.js'
 import {
   HttpTransport,
   INSPECT,
+  readSeal,
   readTicket,
   REDACTED,
   TransportError,
@@ -19,6 +21,7 @@ import {
 } from './transport.js'
 import type {
   ConsentState,
+  Continuity,
   FreshnessTicket,
   IdentifyResult,
   IdentifySubmission,
@@ -60,6 +63,15 @@ export interface FingerlyClientOptions {
   embedding?: () => string | undefined
   /** Whether the visitor has agreed to be identified. Defaults to `pending`. */
   consent?: ConsentState
+  /**
+   * Whether an identified private window is carried across the reports of one
+   * tab. Defaults to `'none'`, which keeps nothing in the browser. With
+   * `'session'` every report asks for a session seal, and the one the answer
+   * carries is kept in `sessionStorage` (one key, for the life of the tab)
+   * and sent with the next report. It is read and written only while consent
+   * is `granted`, and removed when consent is set to `denied`.
+   */
+  continuity?: Continuity
   /** Default incognito detection mode (`'standard'` or `'extended'`). */
   incognitoDetection?: IncognitoDetection
 }
@@ -213,6 +225,12 @@ export class FingerlyClient {
   private readonly transport: Transport
   private readonly platform: SdkPlatform
   private consentState: ConsentState
+  /**
+   * Whether this client keeps a session seal: a web client built with
+   * `continuity: 'session'`. When false it reads and writes no storage, sends
+   * neither `continuity` nor `seal`, and ignores a `next_seal`.
+   */
+  private readonly sealed: boolean
   private readonly consentListeners = new Set<(state: ConsentState) => void>()
   /**
    * The ticket for this page's next report. In memory only: a ticket is never
@@ -228,8 +246,11 @@ export class FingerlyClient {
     const consent = options.consent ?? 'pending'
     assertConsentState(consent)
     this.consentState = consent
+    const continuity = options.continuity ?? 'none'
+    assertContinuity(continuity)
     this.#options = options
     this.platform = options.platform ?? 'web'
+    this.sealed = continuity === 'session' && this.platform === 'web'
     this.transport =
       options.transport ??
       new HttpTransport({
@@ -263,6 +284,8 @@ export class FingerlyClient {
     assertConsentState(state)
     if (state === this.consentState) return
     this.consentState = state
+    // A visitor who said no keeps nothing of ours in the browser.
+    if (this.sealed && state === 'denied') clearSeal()
 
     for (const listener of [...this.consentListeners]) {
       try {
@@ -323,6 +346,9 @@ export class FingerlyClient {
   ): Promise<IdentifyResult> {
     const incognitoDetection =
       options.incognitoDetection ?? this.#options.incognitoDetection ?? 'standard'
+    // Read here, after the consent check in `identify()`: nothing is read from
+    // the device, storage included, before consent is granted.
+    const seal = this.sealed ? loadSeal() : undefined
     // The ticket request runs beside collection, so it adds no round trip.
     const pendingTicket = this.ticketFor(signal)
     let sentTicket: HeldTicket | undefined
@@ -353,6 +379,8 @@ export class FingerlyClient {
       ...(typeof options.tag === 'string' && options.tag !== '' ? { tag: options.tag } : {}),
       ...(sentTicket === undefined ? {} : { ticket: sentTicket.ticket }),
       ...(sentTicket === undefined || ticketPow === undefined ? {} : { ticket_pow: ticketPow }),
+      ...(this.sealed ? { continuity: 'session' as const } : {}),
+      ...(seal === undefined ? {} : { seal }),
     }
 
     let response: SubmitResponse
@@ -370,6 +398,7 @@ export class FingerlyClient {
       const next = heldTicket(answer.next_ticket, false)
       if (next) this.holdTicket(next)
     }
+    if (this.sealed) this.keepSeal(answer.next_seal)
     const visitorId = typeof answer.visitor_id === 'string' ? answer.visitor_id : ''
     // The report is not part of the result (`WEB-14`): it describes the
     // device, and callers that keep the result in application state would
@@ -393,6 +422,20 @@ export class FingerlyClient {
           : null,
       suspectLevel: isSuspectLevel(answer.suspect_level) ? answer.suspect_level : null,
     }
+  }
+
+  /**
+   * What an answer leaves in `sessionStorage`: its `next_seal`, replacing the
+   * one held, or nothing. An answer without a usable `next_seal` means the
+   * server did not honour or renew the seal, so the held one is stale and is
+   * removed. Storage is left alone once consent is no longer `granted`:
+   * setting it to `denied` has already removed the seal.
+   */
+  private keepSeal(value: unknown): void {
+    if (this.consentState !== 'granted') return
+    const next = readSeal(value)
+    if (next && sealUsable(next)) storeSeal(next)
+    else clearSeal()
   }
 
   /**
