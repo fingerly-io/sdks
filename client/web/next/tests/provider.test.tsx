@@ -115,6 +115,22 @@ describe('FingerlyProvider', () => {
     expect(loadMock).toHaveBeenCalledWith({ apiKey: 'pk_from_prop', consent: 'granted' })
   })
 
+  it('passes continuity through to the client', async () => {
+    await act(async () => {
+      render(
+        <FingerlyProvider apiKey="pk_from_prop" consent="granted" continuity="session">
+          <FingerlyRequestId />
+        </FingerlyProvider>,
+      )
+    })
+
+    expect(loadMock).toHaveBeenCalledWith({
+      apiKey: 'pk_from_prop',
+      continuity: 'session',
+      consent: 'granted',
+    })
+  })
+
   it('says which variable to set when there is no key, and keeps the page up', async () => {
     delete environment.NEXT_PUBLIC_FINGERLY_API_KEY
     const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)

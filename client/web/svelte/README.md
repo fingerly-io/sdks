@@ -342,6 +342,7 @@ language on the [server SDK pages](https://docs.fingerly.io/docs/sdks).
 | `fallbackToDefaultEndpoint` | `boolean` | Try the Fingerly API only after the custom endpoints fail. |
 | `consent` | `'pending' \| 'granted' \| 'denied'` | Defaults to `pending`. |
 | `incognitoDetection` | `'standard' \| 'extended'` | Defaults to `standard` (see below). |
+| `continuity` | `'none' \| 'session'` | Defaults to `none`, which keeps nothing in the browser; `session` keeps one signed value in `sessionStorage` for the life of the tab, so an identified private window is carried across its reports. |
 | `apiVersion` | `string` | API route version. Defaults to `v1`. |
 
 `useIdentify()` options: `immediate`, `tag` and `incognitoDetection` (each of

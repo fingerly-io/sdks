@@ -34,6 +34,7 @@ export type {
   IdentifyAnswer,
   Confidence,
   ConsentState,
+  Continuity,
   IdentifyOptions,
   IdentifyResult,
   IncognitoDetection,

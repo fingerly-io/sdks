@@ -255,6 +255,7 @@ as `createFingerlyProxy` (with its `FingerlyProxyOptions` type). See
 | `fallbackToDefaultEndpoint` | `boolean` | Opt into the Fingerly API after the custom endpoints fail. |
 | `consent` | `'pending' \| 'granted' \| 'denied'` | Defaults to `pending`. Never read from the environment. |
 | `incognitoDetection` | `'standard' \| 'extended'` | Defaults to `standard`, which checks for private browsing without writing to the visitor's storage; `extended` adds a further check on Chromium browsers inside the same budget. |
+| `continuity` | `'none' \| 'session'` | Defaults to `none`, which keeps nothing in the browser; `session` keeps one signed value in `sessionStorage` for the life of the tab, so an identified private window is carried across its reports. |
 | `apiVersion` | `string` | API route version. Defaults to `v1`. |
 
 `<FingerlyRequestId />` takes `name` (the field name), `tag` and `immediate`

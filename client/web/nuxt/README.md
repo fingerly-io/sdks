@@ -206,8 +206,8 @@ which is what makes it safe in a page. A **secret** key is refused by the API
 whenever a request carries an `Origin`.
 
 The module publishes `fingerly.apiKey`, `fingerly.apiVersion`,
-`fingerly.endpoints`, `fingerly.fallbackToDefaultEndpoint` and
-`fingerly.incognitoDetection`, each overridable at server startup with its
+`fingerly.endpoints`, `fingerly.fallbackToDefaultEndpoint`,
+`fingerly.incognitoDetection` and `fingerly.continuity`, each overridable at server startup with its
 environment variable (see [Options](#options)). There is no consent variable: a
 deployment-wide value would apply to every visitor before any of them answered.
 
@@ -294,6 +294,7 @@ The `fingerly` block in `nuxt.config.ts`, published at
 | `endpoints` | `NUXT_PUBLIC_FINGERLY_ENDPOINTS` | An array of first-party ingestion paths, such as `['/k7x2qm4a']`. In the environment, a JSON array such as `'["/k7x2qm4a"]'`. |
 | `fallbackToDefaultEndpoint` | `NUXT_PUBLIC_FINGERLY_FALLBACK_TO_DEFAULT_ENDPOINT` | Try the Fingerly API only after the custom endpoints fail. Defaults to `false`. |
 | `incognitoDetection` | `NUXT_PUBLIC_FINGERLY_INCOGNITO_DETECTION` | `'standard'` (the default) checks for private browsing without writing to the visitor's storage; `'extended'` adds a further check on Chromium browsers inside the same budget. |
+| `continuity` | `NUXT_PUBLIC_FINGERLY_CONTINUITY` | `'none'` (the default) keeps nothing in the browser; `'session'` keeps one signed value in `sessionStorage` for the life of the tab, so an identified private window is carried across its reports. |
 | `apiVersion` | `NUXT_PUBLIC_FINGERLY_API_VERSION` | API route version. Defaults to `v1`. |
 
 Every key is present in the runtime config even when nothing set it, which is

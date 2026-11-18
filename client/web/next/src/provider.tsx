@@ -7,6 +7,7 @@
 import {
   FingerlyProvider as ReactFingerlyProvider,
   type ConsentState,
+  type Continuity,
   type IncognitoDetection,
 } from '@fingerly/react'
 import type { ReactNode } from 'react'
@@ -31,6 +32,12 @@ export interface FingerlyNextProviderProps {
   fallbackToDefaultEndpoint?: boolean
   /** Opt-in extended incognito probe control (`'standard'` or `'extended'`). */
   incognitoDetection?: IncognitoDetection
+  /**
+   * Whether an identified private window is carried across the reports of
+   * one tab: `'none'` (the default) keeps nothing in the browser, `'session'`
+   * keeps one signed value in `sessionStorage` for the life of the tab.
+   */
+  continuity?: Continuity
   /**
    * Whether the visitor has agreed to be identified. Defaults to `pending`.
    *
@@ -155,6 +162,7 @@ export function FingerlyProvider(props: FingerlyNextProviderProps): ReactNode {
       {...(endpoints === undefined ? {} : { endpoints })}
       {...(props.fallbackToDefaultEndpoint === undefined ? {} : { fallbackToDefaultEndpoint: props.fallbackToDefaultEndpoint })}
       {...(props.incognitoDetection === undefined ? {} : { incognitoDetection: props.incognitoDetection })}
+      {...(props.continuity === undefined ? {} : { continuity: props.continuity })}
       {...(props.consent === undefined ? {} : { consent: props.consent })}
     >
       {props.children}

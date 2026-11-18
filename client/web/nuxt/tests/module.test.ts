@@ -51,7 +51,22 @@ describe('the module', () => {
       endpoints: [],
       fallbackToDefaultEndpoint: false,
       incognitoDetection: 'extended',
+      continuity: 'none',
     })
+  })
+
+  it('publishes session continuity from the options, and lets the environment override it', () => {
+    const configured = nuxtWith()
+    module_.setup({ apiKey: 'pk', continuity: 'session' }, configured)
+    expect(fingerlyConfig(configured)).toMatchObject({ continuity: 'session' })
+
+    const environment = nuxtWith({ fingerly: { continuity: 'session' } })
+    module_.setup({ apiKey: 'pk', continuity: 'none' }, environment)
+    expect(fingerlyConfig(environment)).toMatchObject({ continuity: 'session' })
+
+    const empty = nuxtWith({ fingerly: { continuity: '' } })
+    module_.setup({ apiKey: 'pk', continuity: 'session' }, empty)
+    expect(fingerlyConfig(empty)).toMatchObject({ continuity: 'session' })
   })
 
   it('survives a runtime config with no public block at all', () => {
@@ -63,6 +78,7 @@ describe('the module', () => {
       endpoints: [],
       fallbackToDefaultEndpoint: false,
       incognitoDetection: 'standard',
+      continuity: 'none',
     })
   })
 
@@ -76,6 +92,7 @@ describe('the module', () => {
       endpoints: [],
       fallbackToDefaultEndpoint: false,
       incognitoDetection: 'standard',
+      continuity: 'none',
     })
   })
 
@@ -89,6 +106,7 @@ describe('the module', () => {
       endpoints: [],
       fallbackToDefaultEndpoint: false,
       incognitoDetection: 'standard',
+      continuity: 'none',
     })
   })
 
@@ -99,6 +117,7 @@ describe('the module', () => {
     expect(Object.keys(fingerlyConfig(nuxt) as object).sort()).toEqual([
       'apiKey',
       'apiVersion',
+      'continuity',
       'endpoints',
       'fallbackToDefaultEndpoint',
       'incognitoDetection',
@@ -145,6 +164,7 @@ describe('the module', () => {
       endpoints: [],
       fallbackToDefaultEndpoint: false,
       incognitoDetection: 'standard',
+      continuity: 'none',
     })
   })
 

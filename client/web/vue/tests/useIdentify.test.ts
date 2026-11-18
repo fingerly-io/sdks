@@ -133,6 +133,20 @@ describe('createFingerly', () => {
     })
   })
 
+  it('passes continuity through to the client', async () => {
+    const { result } = withSetup(
+      () => useIdentify(),
+      createFingerly({ apiKey: 'fly_pk_development_test', consent: 'granted', continuity: 'session' }),
+    )
+    await result.identify()
+
+    expect(loadMock).toHaveBeenCalledWith({
+      apiKey: 'fly_pk_development_test',
+      continuity: 'session',
+      consent: 'granted',
+    })
+  })
+
   it('works from an Options-API component via this.$fingerly', async () => {
     // The README documents this path, so it is tested as written rather than
     // by poking at globalProperties: not every Vue 3 component is

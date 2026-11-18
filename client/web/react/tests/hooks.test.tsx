@@ -231,6 +231,23 @@ describe('FingerlyProvider', () => {
     })
   })
 
+  it('passes continuity through from the provider props', async () => {
+    const { latest, element } = probe(() => useIdentify())
+    render(
+      <FingerlyProvider apiKey="pk_sealed" consent="granted" continuity="session">
+        {element}
+      </FingerlyProvider>,
+    )
+
+    await act(() => latest().identify())
+
+    expect(loadMock).toHaveBeenCalledWith({
+      apiKey: 'pk_sealed',
+      continuity: 'session',
+      consent: 'granted',
+    })
+  })
+
   it('keeps no signal report in the store and hands none back, on the first call or a reused one', async () => {
     const { createFingerlyStore } = await import('../src/store.js')
     const store = createFingerlyStore({ apiKey: 'pk_request', consent: 'granted' })

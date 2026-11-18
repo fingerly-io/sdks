@@ -140,6 +140,13 @@ describe('setupFingerly', () => {
 
     expect(loadMock).toHaveBeenCalledWith({ apiKey: 'fly_pk_development_test', endpoints: 'http://localhost:8099', consent: 'granted' })
   })
+
+  it('passes continuity through to the client', async () => {
+    const page = render({ options: { apiKey: 'fly_pk_development_test', consent: 'granted', continuity: 'session' } })
+    await page.state.identify()
+
+    expect(loadMock).toHaveBeenCalledWith({ apiKey: 'fly_pk_development_test', continuity: 'session', consent: 'granted' })
+  })
 })
 
 describe('useFingerly', () => {

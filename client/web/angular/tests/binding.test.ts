@@ -113,6 +113,15 @@ describe('provideFingerly', () => {
     expect(loadMock).toHaveBeenCalledWith({ apiKey: 'fly_pk_development_test', endpoints: 'http://localhost:8099', consent: 'granted' })
   })
 
+  it('passes continuity through to the client', async () => {
+    application({ apiKey: 'fly_pk_development_test', consent: 'granted', continuity: 'session' })
+    const fingerly = TestBed.runInInjectionContext(() => injectFingerly())
+
+    await fingerly.identify()
+
+    expect(loadMock).toHaveBeenCalledWith({ apiKey: 'fly_pk_development_test', continuity: 'session', consent: 'granted' })
+  })
+
   it('builds the state once for the whole application', async () => {
     application({ apiKey: 'fly_pk_development_test', consent: 'granted' })
 

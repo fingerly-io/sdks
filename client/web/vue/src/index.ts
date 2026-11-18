@@ -19,6 +19,7 @@ export type {
   CollectOptions,
   Confidence,
   ConsentState,
+  Continuity,
   IdentifyOptions,
   IdentifyResult,
   IncognitoDetection,

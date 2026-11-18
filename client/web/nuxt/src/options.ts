@@ -2,7 +2,7 @@
  * What the module is configured with, and what ends up in `runtimeConfig.public.fingerly`.
  */
 
-import type { ConsentState, IncognitoDetection } from '@fingerly/vue'
+import type { ConsentState, Continuity, IncognitoDetection } from '@fingerly/vue'
 
 /** The `fingerly` block in `nuxt.config.ts`. */
 export interface ModuleOptions {
@@ -18,6 +18,12 @@ export interface ModuleOptions {
    * execute (`'standard'` default or `'extended'`).
    */
   incognitoDetection?: IncognitoDetection
+  /**
+   * Whether an identified private window is carried across the reports of
+   * one tab: `'none'` (the default) keeps nothing in the browser, `'session'`
+   * keeps one signed value in `sessionStorage` for the life of the tab.
+   */
+  continuity?: Continuity
   /**
    * Not a setting. Consent is the visitor's answer, so it is never read from
    * `nuxt.config.ts` or the environment: the client always starts `pending`
@@ -42,6 +48,7 @@ export interface FingerlyPublicConfig {
   endpoints: string[]
   fallbackToDefaultEndpoint: boolean
   incognitoDetection: IncognitoDetection
+  continuity: Continuity
 }
 
 /** The build-time warning for a `consent` value in the module options. */
@@ -64,5 +71,6 @@ export function resolvePublicConfig(
       existing?.fallbackToDefaultEndpoint ?? options.fallbackToDefaultEndpoint ?? false,
     incognitoDetection:
       pick(existing?.incognitoDetection, options.incognitoDetection) ?? 'standard',
+    continuity: pick(existing?.continuity, options.continuity) ?? 'none',
   }
 }

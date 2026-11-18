@@ -29,6 +29,9 @@ export function toVueOptions(config: Partial<FingerlyPublicConfig> | undefined):
     ...(config?.incognitoDetection === undefined || (config.incognitoDetection as string) === ''
       ? {}
       : { incognitoDetection: config.incognitoDetection }),
+    ...(config?.continuity === undefined || (config.continuity as string) === ''
+      ? {}
+      : { continuity: config.continuity }),
     // No `consent`: the client starts `pending` whatever the runtime config
     // holds, and only a runtime `setConsent()` after a visitor answer moves it.
   }

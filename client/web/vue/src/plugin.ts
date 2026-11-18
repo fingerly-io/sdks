@@ -5,6 +5,7 @@
 import {
   load,
   type ConsentState,
+  type Continuity,
   type FingerlyClient,
   type IdentifyResult,
   type IncognitoDetection,
@@ -51,6 +52,12 @@ export interface FingerlyVueOptions {
    * execute (`'standard'` default or `'extended'`).
    */
   incognitoDetection?: IncognitoDetection
+  /**
+   * Whether an identified private window is carried across the reports of
+   * one tab: `'none'` (the default) keeps nothing in the browser, `'session'`
+   * keeps one signed value in `sessionStorage` for the life of the tab.
+   */
+  continuity?: Continuity
   /** Whether the visitor has agreed to be identified. Defaults to `pending`. */
   consent?: ConsentState
 }
@@ -165,6 +172,7 @@ export function createFingerly(options: FingerlyVueOptions): Plugin {
         ...(options.incognitoDetection === undefined
           ? {}
           : { incognitoDetection: options.incognitoDetection }),
+        ...(options.continuity === undefined ? {} : { continuity: options.continuity }),
         consent: state.consent.value,
       }).then((fingerly) => {
         if (fingerly.consent !== state.consent.value) fingerly.setConsent(state.consent.value)

@@ -133,6 +133,24 @@ describe('the runtime plugin', () => {
     expect(identifyMock).toHaveBeenCalledTimes(1)
   })
 
+  it('passes continuity through to the client, and leaves it out when it is not set', async () => {
+    __setRuntimeConfig({ fingerly: { apiKey: 'pk_runtime', continuity: 'session' } })
+    const sealed = mountWithPlugin(() => ({ ...useIdentify(), setConsent: useFingerly().setConsent }))
+    sealed.setConsent('granted')
+    await sealed.identify()
+    expect(loadMock).toHaveBeenLastCalledWith({
+      apiKey: 'pk_runtime',
+      continuity: 'session',
+      consent: 'granted',
+    })
+
+    __setRuntimeConfig({ fingerly: { apiKey: 'pk_runtime', continuity: '' } })
+    const plain = mountWithPlugin(() => ({ ...useIdentify(), setConsent: useFingerly().setConsent }))
+    plain.setConsent('granted')
+    await plain.identify()
+    expect(loadMock).toHaveBeenLastCalledWith({ apiKey: 'pk_runtime', consent: 'granted' })
+  })
+
   it('passes incognitoDetection through and preserves visitorId "" on Option B answers', async () => {
     __setRuntimeConfig({
       fingerly: { apiKey: 'pk_runtime', incognitoDetection: 'extended' },
