@@ -146,7 +146,9 @@ export const fontsSource: Source<FontsSignal> = {
 export const fontPreferencesSource: Source<FontPreferencesSignal> = {
   id: SOURCE.fontPreferences,
   stage: 'collect',
-  timeoutMs: 250,
+  // Inside the default collection budget: a cold page builds its first
+  // measuring frame slowly.
+  timeoutMs: 320,
   run() {
     if (typeof document === 'undefined' || !document.body) {
       throw new UnsupportedSignal('no-document-body')

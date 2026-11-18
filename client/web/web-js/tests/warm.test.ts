@@ -3,11 +3,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // The answers a cold browser gives late (the voice list, the hardware-decode
-// queries) are started as soon as collection is permitted, and never before.
+// queries, the audio engine) are started as soon as collection is permitted, and never before.
 
 function stubSlowApis() {
   const getVoices = vi.fn(() => [])
   const decodingInfo = vi.fn(async () => ({ supported: true, powerEfficient: true, smooth: true }))
+  const startRendering = vi.fn(async () => ({}))
+  const OfflineAudioContext = vi.fn(function (this: { startRendering: typeof startRendering }) {
+    this.startRendering = startRendering
+  })
+  vi.stubGlobal('OfflineAudioContext', OfflineAudioContext)
   vi.stubGlobal('speechSynthesis', {
     getVoices,
     addEventListener: vi.fn(),
@@ -17,7 +22,7 @@ function stubSlowApis() {
     configurable: true,
     value: { decodingInfo },
   })
-  return { getVoices, decodingInfo }
+  return { getVoices, decodingInfo, startRendering }
 }
 
 async function freshSdk() {
@@ -37,23 +42,25 @@ afterEach(() => {
 
 describe('warming the slow sources', () => {
   it('reads nothing while consent is pending', async () => {
-    const { getVoices, decodingInfo } = stubSlowApis()
+    const { getVoices, decodingInfo, startRendering } = stubSlowApis()
     const { load } = await freshSdk()
 
     await load({ apiKey: 'fly_pk_development_test', consent: 'pending' })
 
     expect(getVoices).not.toHaveBeenCalled()
     expect(decodingInfo).not.toHaveBeenCalled()
+    expect(startRendering).not.toHaveBeenCalled()
   })
 
   it('starts on load when consent is already granted', async () => {
-    const { getVoices, decodingInfo } = stubSlowApis()
+    const { getVoices, decodingInfo, startRendering } = stubSlowApis()
     const { load } = await freshSdk()
 
     await load({ apiKey: 'fly_pk_development_test', consent: 'granted' })
 
     expect(getVoices).toHaveBeenCalledTimes(1)
     expect(decodingInfo).toHaveBeenCalledTimes(3)
+    expect(startRendering).toHaveBeenCalledTimes(1)
   })
 
   it('starts when consent is granted later, once', async () => {

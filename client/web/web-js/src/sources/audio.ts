@@ -91,10 +91,31 @@ async function render(ctx: SourceContext): Promise<number> {
   return sum
 }
 
+/**
+ * Starts the browser's audio rendering engine with a tiny silent render, so
+ * the probe is not the first render of a browser that has just started: on a
+ * cold start the first render took longer than the source may wait, and a
+ * missing audio value leaves a phone too few components to be identified.
+ * Its result is discarded. Reads only after consent.
+ */
+export function warmAudio(): void {
+  attempt(() => {
+    const w = globalThis as unknown as {
+      OfflineAudioContext?: OfflineContextConstructor
+      webkitOfflineAudioContext?: OfflineContextConstructor
+    }
+    const OfflineContext = w.OfflineAudioContext ?? w.webkitOfflineAudioContext
+    if (!OfflineContext) return
+    const started = new OfflineContext(1, 128, 44100).startRendering()
+    if (started && typeof started.catch === 'function') started.catch(() => undefined)
+  })
+}
+
 export const audioSource: Source<AudioSignal> = {
   id: SOURCE.audio,
   stage: 'collect',
-  timeoutMs: 250,
+  // Inside the default collection budget, which the worker realm already fills.
+  timeoutMs: 340,
   async run(ctx) {
     const first = await render(ctx)
 

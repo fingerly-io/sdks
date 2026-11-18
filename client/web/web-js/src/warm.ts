@@ -1,9 +1,10 @@
+import { warmAudio } from './sources/audio.js'
 import { warmCodecs } from './sources/device.js'
 import { warmVoices } from './sources/text.js'
 
 /**
  * Starts the browser answers that are slow on a cold start: the system voice
- * list and the hardware-decode queries. A browser that has just started can
+ * list, the hardware-decode queries and the audio rendering engine. A browser that has just started can
  * take longer to answer them than a source may wait, and a missing answer
  * changes the profile a private window is recognised by.
  *
@@ -17,4 +18,5 @@ export function warmSlowSources(): void {
   warmed = true
   warmVoices()
   warmCodecs()
+  warmAudio()
 }
