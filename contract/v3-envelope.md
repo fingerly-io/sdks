@@ -215,7 +215,7 @@ A `seal` without `continuity: "session"` is ignored. Neither field is part of a 
 | `seal` | `string` | always | Unpadded `base64url` seal, sent as `seal` on the next report from this tab. Opaque to the client. |
 | `expires_at` | `string` | always | RFC 3339 UTC time the seal stops being accepted. |
 
-`next_seal` is left out when the window was not identified, when the report did not ask, or when no seal could be signed.
+`next_seal` is left out when the window was not identified, when the report did not ask, or when no seal could be signed, and always on a replayed answer (`duplicate: true`).
 
 **Lifetime.** A seal is accepted for 30 minutes from the answer that issued it (`issued + 1800s`). Every answer that honours a seal issues the next one, which keeps the birth time of the session's first seal, so the session slides forward in 30 minute steps and ends 12 hours after its first seal at the latest: the last seal of a session expires at `born + 43200s`. After that the window is identified afresh or not at all. A seal is not single use and nothing is claimed in a store for it.
 
@@ -244,7 +244,7 @@ A `seal` without `continuity: "session"` is ignored. Neither field is part of a 
 - On, send `continuity: "session"` on every report, and `seal` when a held seal has more than 10 seconds left before `expires_at`.
 - Keep the seal in `sessionStorage` only, under the single key `__fingerly_seal__`, as `{"seal":"...","expires_at":"..."}`. Never in `localStorage`, a cookie, IndexedDB or `window.name`. It lives and dies with the tab.
 - Read it only after consent is `granted`. Remove a stored value that is not a seal or has expired.
-- After an answer, store its `next_seal` in place of the held seal. When the answer carries none, remove the held seal.
+- After an answer, store its `next_seal` in place of the held seal. When the answer carries none, remove the held seal. A replayed answer (`duplicate: true`) changes nothing: keep the held seal.
 - Remove the seal at once when consent is set to `denied`.
 - Storage that is missing or throws means no seal is held. Never block, fail or log from `identify()` on it.
 - The rule of section 1.6 still holds for tickets: keep tickets in memory only; never write them to storage.

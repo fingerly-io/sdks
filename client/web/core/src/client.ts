@@ -398,7 +398,9 @@ export class FingerlyClient {
       const next = heldTicket(answer.next_ticket, false)
       if (next) this.holdTicket(next)
     }
-    if (this.sealed) this.keepSeal(answer.next_seal)
+    // A replayed answer is the stored verdict of an earlier request and never
+    // carries a seal, so it says nothing about the one held.
+    if (this.sealed && answer.duplicate !== true) this.keepSeal(answer.next_seal)
     const visitorId = typeof answer.visitor_id === 'string' ? answer.visitor_id : ''
     // The report is not part of the result (`WEB-14`): it describes the
     // device, and callers that keep the result in application state would

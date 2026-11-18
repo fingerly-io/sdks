@@ -320,6 +320,18 @@ describe("continuity 'session'", () => {
     expect(submit.mock.calls[1]![0].continuity).toBe('session')
   })
 
+  it('keeps the stored seal when the answer is a replay', async () => {
+    const session = stubSession(stored(sealed('held')))
+    const submit = vi.fn<Transport['submit']>(async () => ({ request_id: 'r', visitor_id: 'v1', duplicate: true }))
+    const c = client({ submit }, { continuity: 'session' })
+
+    await c.identify()
+    expect(session.items.has(SEAL_STORAGE_KEY)).toBe(true)
+
+    await c.identify()
+    expect(submit.mock.calls[1]![0].seal).toBe('held')
+  })
+
   it('clears the stored seal when next_seal is unusable', async () => {
     const future = expiresIn(60 * 60_000)
     const unusable: unknown[] = [
