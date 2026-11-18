@@ -22,6 +22,7 @@ import { attempt, compact, requireWindow } from '../util.js'
 export const screenSource: Source<ScreenSignal> = {
   id: SOURCE.screen,
   stage: 'collect',
+  identityCritical: true,
   run() {
     const w = requireWindow()
     // `availTop` and `availLeft` are not in the standard `Screen` interface -
@@ -69,6 +70,7 @@ function readFrame(w: Window): (number | null)[] {
 export const screenFrameSource: Source<ScreenFrameSignal> = {
   id: SOURCE.screenFrame,
   stage: 'collect',
+  identityCritical: true,
   run() {
     const w = requireWindow()
     const frame = readFrame(w)
@@ -103,6 +105,7 @@ function matchFirst(w: Window, queries: string[]): string | undefined {
 export const mediaQueriesSource: Source<MediaQueriesSignal> = {
   id: SOURCE.mediaQueries,
   stage: 'collect',
+  identityCritical: true,
   run() {
     const w = requireWindow()
     if (typeof w.matchMedia !== 'function') throw new UnsupportedSignal('no-match-media')
@@ -138,6 +141,7 @@ export const mediaQueriesSource: Source<MediaQueriesSignal> = {
 export const colorGamutSource: Source<ColorGamutSignal> = {
   id: SOURCE.colorGamut,
   stage: 'collect',
+  identityCritical: true,
   run() {
     const w = requireWindow()
     if (typeof w.matchMedia !== 'function') throw new UnsupportedSignal('no-match-media')

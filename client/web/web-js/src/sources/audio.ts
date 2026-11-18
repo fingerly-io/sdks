@@ -40,16 +40,31 @@ function offlineConstructor(): OfflineContextConstructor {
   return ctor
 }
 
+interface AudioProbeReading {
+  sum: number
+  crestRatio: number | undefined
+  shapeRatio: number | undefined
+  decayRatio: number | undefined
+  negativeSamples: number
+}
+
 /**
- * Render the probe signal once and return the summed buffer.
+ * Render the probe signal once and return the summed buffer together with
+ * scale-invariant ratios over `[4500..5000)`.
  *
  * The oscillator and compressor settings are arbitrary but fixed: what matters
  * is that they are the same on every device forever, because the value is only
  * comparable against other runs of exactly this graph. Changing any constant
  * here invalidates every stored audio fingerprint, so they are written out
  * rather than derived.
+ *
+ * Brave's standard audio farbling multiplies every sample by one per-session
+ * constant `fudge_factor` in `[0.999, 1.0)`. Homogeneous degree-0 ratios
+ * (`sum / maxAbs`, `sqrt(sumSq) / sum`, `earlySum / lateSum`) cancel that
+ * scalar exactly, while `negativeSamples === 0` exposes Brave's strict-mode
+ * non-negative LFSR replacement (`(v / UINT64_MAX) / 10`).
  */
-async function render(ctx: SourceContext): Promise<number> {
+async function render(ctx: SourceContext): Promise<AudioProbeReading> {
   const OfflineContext = offlineConstructor()
   const context = new OfflineContext(1, 5000, 44100)
 
@@ -83,12 +98,33 @@ async function render(ctx: SourceContext): Promise<number> {
 
   const samples = buffer.getChannelData(0)
   let sum = 0
+  let sumSq = 0
+  let maxAbs = 0
+  let earlySum = 0
+  let lateSum = 0
+  let negativeSamples = 0
   // From 4500 rather than 0: the compressor's attack is still settling before
   // that, and the early samples are where throttled or suspended contexts
   // differ from ordinary slow ones for reasons that are about scheduling
   // rather than about the device.
-  for (let i = 4500; i < samples.length; i++) sum += Math.abs(samples[i] ?? 0)
-  return sum
+  const mid = 4500 + Math.floor(Math.max(0, samples.length - 4500) / 2)
+  for (let i = 4500; i < samples.length; i++) {
+    const raw = samples[i] ?? 0
+    if (raw < 0) negativeSamples++
+    const abs = Math.abs(raw)
+    sum += abs
+    sumSq += abs * abs
+    if (abs > maxAbs) maxAbs = abs
+    if (i < mid) earlySum += abs
+    else lateSum += abs
+  }
+  return {
+    sum,
+    crestRatio: sum > 0 && maxAbs > 0 ? sum / maxAbs : undefined,
+    shapeRatio: sum > 0 ? Math.sqrt(sumSq) / sum : undefined,
+    decayRatio: earlySum > 0 && lateSum > 0 ? earlySum / lateSum : undefined,
+    negativeSamples,
+  }
 }
 
 /**
@@ -117,20 +153,25 @@ export const audioSource: Source<AudioSignal> = {
   // A phone's one component that tells two identical models apart: it may
   // run into the scheduler's grace period on a cold start.
   identityCritical: true,
-  timeoutMs: 600,
+  timeoutMs: 750,
   async run(ctx) {
     const first = await render(ctx)
 
     // A context that renders nothing at all has been suspended rather than
     // merely being unsupported - iOS does this until a user gesture, and
     // several privacy builds do it permanently.
-    if (first === 0) throw new BlockedSignal('audio-silent')
+    if (first.sum === 0) throw new BlockedSignal('audio-silent')
 
     const second = await render(ctx)
+    const unstable = first.sum !== second.sum
 
     return compact<AudioSignal>({
-      value: first,
-      unstable: first !== second,
+      value: first.sum,
+      crest_ratio: unstable ? undefined : first.crestRatio,
+      shape_ratio: unstable ? undefined : first.shapeRatio,
+      decay_ratio: unstable ? undefined : first.decayRatio,
+      negative_samples: first.negativeSamples,
+      unstable,
       sample_rate: 44100,
     })
   },

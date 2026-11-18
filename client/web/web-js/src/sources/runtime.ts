@@ -242,6 +242,7 @@ export const automationSource: Source<AutomationSignal> = {
   id: SOURCE.automation,
   stage: 'collect',
   embeddedSafe: true,
+  identityCritical: true,
   run() {
     const w = requireWindow()
 

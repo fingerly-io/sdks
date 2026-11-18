@@ -1,10 +1,13 @@
 /**
  * Canvas and WebGL collectors.
  *
- * - Both `shieldsSource` and `canvasSource` consult `isRfpCanvasBlocked(ctx)`
- *   from Stage 1 before creating a `<canvas>` or calling `getImageData`.
+ * - `shieldsSource`, `canvasSource`, and `webglSource`'s pixel readback all
+ *   consult `isRfpCanvasBlocked(ctx)` from Stage 1 before reading pixels so
+ *   Firefox `resistFingerprinting` / Tor Browser never displays a doorhanger.
  * - When unlocked, `canvasSource` hashes raw `Uint8ClampedArray` RGBA pixel
- *   bytes via `hash64` (`< 1.5ms`), avoiding slow PNG encoding (`toDataURL`).
+ *   bytes via `hash64` (`< 1.5ms`), avoiding slow PNG encoding (`toDataURL`),
+ *   and also hashes `byte & 0xfe` over geometry and generic-font text to
+ *   recover the exact image from Brave's 1-bit LSB pixel perturbation.
  */
 
 import {
@@ -70,8 +73,27 @@ function requireCanvas2D(
   return pair
 }
 
+/**
+ * Hashes `data` with bit 0 cleared on every byte (`byte & 0xfe`).
+ *
+ * Brave's `BraveSessionCache::PerturbPixelsInternal` XORs at most 512 RGB
+ * channel bytes with `bit & 0x1`, leaving bits 7..1 untouched.
+ */
+function hashHighBits(data: Uint8ClampedArray | Uint8Array): string {
+  const masked = new Uint8Array(data.length)
+  for (let i = 0; i < data.length; i++) {
+    masked[i] = (data[i] ?? 0) & 0xfe
+  }
+  return hash64(masked)
+}
+
+interface GeometryRender {
+  full: string
+  high: string
+}
+
 /** Shapes, blend modes and arcs — hashed directly over raw RGBA pixel bytes. */
-function renderGeometryHash(ctx: SourceContext): string {
+function renderGeometry(ctx: SourceContext): GeometryRender {
   const width = 240
   const height = 60
   const [, context] = requireCanvas2D(ctx, width, height)
@@ -94,7 +116,8 @@ function renderGeometryHash(ctx: SourceContext): string {
   context.arc(100, 50, 20, 0, Math.PI * 2, true)
   context.fill('evenodd')
 
-  return hash64(context.getImageData(0, 0, width, height).data)
+  const pixels = context.getImageData(0, 0, width, height).data
+  return { full: hash64(pixels), high: hashHighBits(pixels) }
 }
 
 /** Multi-script text rasterisation — hashed directly over raw RGBA pixel bytes. */
@@ -118,6 +141,57 @@ function renderTextHash(ctx: SourceContext): string {
   return hash64(context.getImageData(0, 0, width, height).data)
 }
 
+interface GenericTextRender {
+  high: string
+  metricsWidth: number | undefined
+}
+
+/**
+ * Text rasterisation using only CSS generic font families (`serif`,
+ * `sans-serif`, `monospace`) and ASCII glyphs.
+ *
+ * Brave's `BRAVE_GET_FONT_DATA` exempts `curr_family->FamilyIsGeneric()`
+ * unconditionally while randomly hiding non-allowlisted named fonts per
+ * session, so generic families with ASCII text render identically across
+ * sessions once bit 0 is masked (`byte & 0xfe`). Also probes `measureText`
+ * width, which Brave's strict mode stubs to an empty `TextMetrics` (`0`).
+ */
+function renderGenericTextHigh(ctx: SourceContext): GenericTextRender {
+  const width = 300
+  const height = 60
+  const [, context] = requireCanvas2D(ctx, width, height)
+
+  context.fillStyle = '#ffffff'
+  context.fillRect(0, 0, width, height)
+
+  context.textBaseline = 'alphabetic'
+  context.fillStyle = '#f60'
+  context.fillRect(100, 1, 62, 20)
+
+  context.fillStyle = '#069'
+  context.font = '11pt serif'
+  context.fillText('Fingerly <canvas> 1.0 Cwm fjordbank glyphs vext quiz, 0123456789', 2, 15)
+
+  context.font = '18pt sans-serif'
+  context.fillStyle = 'rgba(102, 204, 0, 0.7)'
+  context.fillText('Fingerly <canvas> 1.0 !@#$%&*()', 4, 45)
+
+  const metricsWidth = attempt(() => {
+    if (typeof context.measureText !== 'function') return undefined
+    const measured = context.measureText('Fingerly <canvas> 1.0')?.width
+    return typeof measured === 'number' && Number.isFinite(measured)
+      ? Math.round(measured * 1000) / 1000
+      : undefined
+  })
+
+  context.font = '13pt monospace'
+  context.fillStyle = '#314'
+  context.fillText('0O1lI {}[]<> ~+=', 180, 52)
+
+  const pixels = context.getImageData(0, 0, width, height).data
+  return { high: hashHighBits(pixels), metricsWidth }
+}
+
 /** Whether the renderer supports an even-odd winding rule. */
 function supportsWinding(ctx: SourceContext): boolean {
   const [, context] = requireCanvas2D(ctx, 1, 1)
@@ -129,7 +203,8 @@ function supportsWinding(ctx: SourceContext): boolean {
 export const canvasSource: Source<CanvasSignal> = {
   id: SOURCE.canvas,
   stage: 'collect',
-  timeoutMs: 250,
+  identityCritical: true,
+  timeoutMs: 750,
   run(ctx) {
     requireWindow()
     if (typeof document === 'undefined') throw new UnsupportedSignal('no-document')
@@ -139,16 +214,23 @@ export const canvasSource: Source<CanvasSignal> = {
     }
 
     try {
-      const geometryFirst = renderGeometryHash(ctx)
-      const geometrySecond = renderGeometryHash(ctx)
+      const geometryFirst = renderGeometry(ctx)
+      const geometrySecond = renderGeometry(ctx)
       const textFirst = renderTextHash(ctx)
       const textSecond = renderTextHash(ctx)
+      const genericFirst = renderGenericTextHigh(ctx)
+      const genericSecond = renderGenericTextHigh(ctx)
 
-      const unstable = geometryFirst !== geometrySecond || textFirst !== textSecond
+      const unstable = geometryFirst.full !== geometrySecond.full || textFirst !== textSecond
+      const highStable =
+        geometryFirst.high === geometrySecond.high && genericFirst.high === genericSecond.high
 
       return compact<CanvasSignal>({
-        geometry: geometryFirst,
+        geometry: geometryFirst.full,
         text: textFirst,
+        geometry_high: highStable ? geometryFirst.high : undefined,
+        text_high: highStable ? genericFirst.high : undefined,
+        text_metrics_width: genericFirst.metricsWidth,
         winding: attempt(() => supportsWinding(ctx)),
         unstable,
       })
@@ -158,9 +240,144 @@ export const canvasSource: Source<CanvasSignal> = {
   },
 }
 
-function webglContext(): WebGLRenderingContext {
+const WEBGL_SCENE_SIZE = 64
+
+const WEBGL_VERTEX_SHADER = `
+attribute vec2 aPos;
+attribute vec3 aCol;
+varying vec3 vCol;
+varying vec2 vPos;
+void main() {
+  vCol = aCol;
+  vPos = aPos;
+  gl_Position = vec4(aPos.x * 0.93 - 0.04, aPos.y * 0.91 + 0.03, 0.0, 1.0);
+}
+`
+
+const WEBGL_FRAGMENT_SHADER = `
+precision mediump float;
+varying vec3 vCol;
+varying vec2 vPos;
+void main() {
+  float wave = sin(vPos.x * 13.7 + vPos.y * 9.3) * 0.5 + 0.5;
+  float rad = sqrt(dot(vPos, vPos) + 0.01);
+  vec3 c = mix(vCol, vec3(wave, 1.0 - wave, fract(rad * 7.13)), 0.37);
+  gl_FragColor = vec4(c, 1.0);
+}
+`
+
+const WEBGL_VERTICES = new Float32Array([
+  -0.85, -0.75, 0.9, 0.2, 0.4,
+  0.9, -0.65, 0.1, 0.8, 0.6,
+  -0.15, 0.88, 0.3, 0.4, 0.95,
+  -0.6, 0.7, 0.8, 0.7, 0.1,
+  0.75, 0.8, 0.2, 0.9, 0.8,
+  0.2, -0.85, 0.95, 0.3, 0.7,
+])
+
+interface WebGLSceneReading {
+  renderHash?: string | undefined
+  shaderBlocked?: boolean | undefined
+}
+
+/**
+ * Draws two overlapping wave-shaded triangles into `gl` and hashes raw
+ * `readPixels` RGBA bytes. Brave leaves WebGL rasterisation and `readPixels`
+ * completely untouched in standard mode, while stubbing `createShader` to
+ * `null` in strict mode.
+ */
+function renderWebGLScene(gl: WebGLRenderingContext): WebGLSceneReading {
+  if (typeof gl.createShader !== 'function' || typeof gl.readPixels !== 'function') {
+    return {}
+  }
+
+  let vs: WebGLShader | null = null
+  let fs: WebGLShader | null = null
+  let program: WebGLProgram | null = null
+  let buffer: WebGLBuffer | null = null
+
+  try {
+    const compile = (type: number, source: string): WebGLShader | null => {
+      const shader = gl.createShader(type)
+      if (!shader) return null
+      gl.shaderSource(shader, source)
+      gl.compileShader(shader)
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        attempt(() => gl.deleteShader(shader))
+        return null
+      }
+      return shader
+    }
+
+    vs = compile(gl.VERTEX_SHADER, WEBGL_VERTEX_SHADER)
+    if (!vs) return { shaderBlocked: true }
+    fs = compile(gl.FRAGMENT_SHADER, WEBGL_FRAGMENT_SHADER)
+    if (!fs) return { shaderBlocked: true }
+
+    program = gl.createProgram()
+    if (!program) return { shaderBlocked: true }
+    gl.attachShader(program, vs)
+    gl.attachShader(program, fs)
+    gl.linkProgram(program)
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      return {}
+    }
+
+    gl.useProgram(program)
+    buffer = gl.createBuffer()
+    if (!buffer) return {}
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
+    gl.bufferData(gl.ARRAY_BUFFER, WEBGL_VERTICES, gl.STATIC_DRAW)
+
+    const aPos = gl.getAttribLocation(program, 'aPos')
+    const aCol = gl.getAttribLocation(program, 'aCol')
+    if (aPos < 0 || aCol < 0) return {}
+    gl.enableVertexAttribArray(aPos)
+    gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 20, 0)
+    gl.enableVertexAttribArray(aCol)
+    gl.vertexAttribPointer(aCol, 3, gl.FLOAT, false, 20, 8)
+
+    gl.viewport(0, 0, WEBGL_SCENE_SIZE, WEBGL_SCENE_SIZE)
+    gl.clearColor(0.11, 0.17, 0.23, 1.0)
+    gl.clear(gl.COLOR_BUFFER_BIT)
+    gl.enable(gl.BLEND)
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA)
+    gl.drawArrays(gl.TRIANGLES, 0, 6)
+
+    const pixels = new Uint8Array(WEBGL_SCENE_SIZE * WEBGL_SCENE_SIZE * 4)
+    gl.readPixels(0, 0, WEBGL_SCENE_SIZE, WEBGL_SCENE_SIZE, gl.RGBA, gl.UNSIGNED_BYTE, pixels)
+    if (typeof gl.getError === 'function' && gl.getError() !== gl.NO_ERROR) {
+      return {}
+    }
+
+    const r0 = pixels[0] ?? 0
+    const g0 = pixels[1] ?? 0
+    const b0 = pixels[2] ?? 0
+    let varied = false
+    for (let i = 4; i < pixels.length; i += 4) {
+      if (pixels[i] !== r0 || pixels[i + 1] !== g0 || pixels[i + 2] !== b0) {
+        varied = true
+        break
+      }
+    }
+    if (!varied) return {}
+
+    return { renderHash: hash64(pixels) }
+  } catch {
+    return {}
+  } finally {
+    if (buffer) attempt(() => gl.deleteBuffer(buffer))
+    if (program) attempt(() => gl.deleteProgram(program))
+    if (vs) attempt(() => gl.deleteShader(vs))
+    if (fs) attempt(() => gl.deleteShader(fs))
+  }
+}
+
+function webglContext(width?: number, height?: number): WebGLRenderingContext {
   if (typeof document === 'undefined') throw new UnsupportedSignal('no-document')
   const canvas = document.createElement('canvas')
+  if (width !== undefined) canvas.width = width
+  if (height !== undefined) canvas.height = height
   const gl =
     canvas.getContext('webgl') ??
     (canvas.getContext('experimental-webgl') as WebGLRenderingContext | null)
@@ -171,9 +388,10 @@ function webglContext(): WebGLRenderingContext {
 export const webglSource: Source<WebGLSignal> = {
   id: SOURCE.webgl,
   stage: 'collect',
-  timeoutMs: 250,
-  run() {
-    const gl = webglContext()
+  identityCritical: true,
+  timeoutMs: 750,
+  run(ctx) {
+    const gl = webglContext(WEBGL_SCENE_SIZE, WEBGL_SCENE_SIZE)
 
     try {
       const debug = attempt(() => gl.getExtension('WEBGL_debug_renderer_info'))
@@ -218,6 +436,8 @@ export const webglSource: Source<WebGLSignal> = {
         }
       }
 
+      const scene: WebGLSceneReading = isRfpCanvasBlocked(ctx) ? {} : renderWebGLScene(gl)
+
       return compact<WebGLSignal>({
         vendor: attempt(() => gl.getParameter(gl.VENDOR) as string),
         renderer: attempt(() => gl.getParameter(gl.RENDERER) as string),
@@ -236,6 +456,8 @@ export const webglSource: Source<WebGLSignal> = {
         parameters_hash:
           Object.keys(parameters).length > 0 ? hash64(JSON.stringify(parameters)) : undefined,
         shader_precision_hash: precisions.length > 0 ? hash64(precisions.join(',')) : undefined,
+        render_hash: scene.renderHash,
+        shader_blocked: scene.shaderBlocked,
       })
     } finally {
       attempt(() => gl.getExtension('WEBGL_lose_context')?.loseContext())
@@ -286,7 +508,8 @@ const WEBGL2_LIMIT_NAMES = [
 export const webgl2Source: Source<WebGL2Signal> = {
   id: SOURCE.webgl2,
   stage: 'collect',
-  timeoutMs: 200,
+  identityCritical: true,
+  timeoutMs: 750,
   run() {
     if (typeof document === 'undefined') throw new UnsupportedSignal('no-document')
     const canvas = document.createElement('canvas')

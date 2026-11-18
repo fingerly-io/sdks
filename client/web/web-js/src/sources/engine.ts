@@ -221,6 +221,7 @@ export const mathSource: Source<MathSignal> = {
   id: SOURCE.math,
   stage: 'collect',
   embeddedSafe: true,
+  identityCritical: true,
   timeoutMs: 50,
   run() {
     let probed = 0
@@ -325,6 +326,7 @@ export const errorsSource: Source<ErrorsSignal> = {
   id: SOURCE.errors,
   stage: 'collect',
   embeddedSafe: true,
+  identityCritical: true,
   timeoutMs: 50,
   // No `new Function` or `eval` call (`WEB-10`): under a policy without
   // 'unsafe-eval' each one raised a CSP violation report on every run, and

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.3
+
+- Adds `geometry_high`, `text_high` and `text_metrics_width` to `CanvasSignal`,
+  `render_hash` and `shader_blocked` to `WebGLSignal`, and `crest_ratio`,
+  `shape_ratio`, `decay_ratio` and `negative_samples` to `AudioSignal` for
+  session-invariant Brave Shields recovery and strict-mode detection.
+
 ## 0.5.2
 
 - Released with @fingerly/web-js 0.5.2. No change of its own.

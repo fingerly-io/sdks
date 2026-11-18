@@ -59,18 +59,18 @@ function guarded(source: Source): Source {
 }
 
 const allBrowserSources: readonly Source[] = [
-  // Stage 1: prerequisite barrier (completes before shields & canvas run)
+  // Stage 1: prerequisite barrier (completes before shields, canvas & webgl run)
   engineSource,
   timingSource,
 
-  // Stage 2: single-pass collect
+  // Stage 2: single-pass collect.
+  // 1. Instantaneous synchronous critical getters (< 2ms total) run first so a
+  //    cold GPU process or 90-font layout pass can never starve them.
   errorsSource,
   mathSource,
   navigatorSource,
   languagesSource,
   vendorSource,
-  userAgentDataSource,
-  workerRealmSource,
   screenSource,
   screenFrameSource,
   mediaQueriesSource,
@@ -80,25 +80,37 @@ const allBrowserSources: readonly Source[] = [
   networkSource,
   intlSource,
   timezoneSource,
-  storageSource,
   storageQuotaSource,
-  storageDurabilitySource,
-  shieldsSource,
-  permissionsSource,
   automationSource,
-  webglSource,
-  webgl2Source,
-  webglExtensionsSource,
-  webgpuSource,
-  mediaDevicesSource,
-  codecsSource,
   applePaySource,
-  canvasSource,
+
+  // 2. Five async IPC critical sources dispatch background browser work across
+  //    5 of the 6 worker slots and yield immediately, leaving slot 6 free.
+  userAgentDataSource,
+  shieldsSource,
+  storageSource,
+  codecsSource,
   audioSource,
-  audioLatencySource,
+
+  // 3. CPU 2D canvas (`willReadFrequently: true`) & DOM layout critical sources
+  //    finish in a few ms before WebGL initializes a cold GPU process.
+  canvasSource,
   fontsSource,
   fontPreferencesSource,
+  webglSource,
+  webgl2Source,
+
+  // 4. Remaining async critical sources (picked up as soon as a worker frees).
   voicesSource,
+  storageDurabilitySource,
+
+  // 5. Remaining non-critical sources.
+  webglExtensionsSource,
+  permissionsSource,
+  webgpuSource,
+  mediaDevicesSource,
+  audioLatencySource,
+  workerRealmSource,
 ]
 
 export const browserSources: readonly Source[] = allBrowserSources.map(guarded)

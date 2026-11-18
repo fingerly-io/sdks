@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.3
+
+- Uses @fingerly/web-js 0.5.3: standard Brave Shields windows are recognised
+  across normal, private and restarted sessions, and strict Brave mode is
+  surfaced as `identity_obfuscated`.
+
 ## 0.5.2
 
 - Uses @fingerly/web-js 0.5.2: Safari private windows are recognised on

@@ -1,5 +1,5 @@
 /**
- * The Vue plugin, and the state every composable shares (`0.5.2`, single-pass `v: 3`).
+ * The Vue plugin, and the state every composable shares (`0.5.3`, single-pass `v: 3`).
  */
 
 import {

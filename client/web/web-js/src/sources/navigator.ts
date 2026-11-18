@@ -29,6 +29,7 @@ export const navigatorSource: Source<NavigatorSignal> = {
   id: SOURCE.navigator,
   stage: 'collect',
   embeddedSafe: true,
+  identityCritical: true,
   run() {
     if (typeof navigator === 'undefined') throw new UnsupportedSignal('no-navigator')
     const nav = navigator as Navigator & {
@@ -72,6 +73,7 @@ export const navigatorSource: Source<NavigatorSignal> = {
 export const languagesSource: Source<LanguagesSignal> = {
   id: SOURCE.languages,
   stage: 'collect',
+  identityCritical: true,
   run() {
     if (typeof navigator === 'undefined') throw new UnsupportedSignal('no-navigator')
     return compact({
@@ -84,6 +86,7 @@ export const languagesSource: Source<LanguagesSignal> = {
 export const vendorSource: Source<VendorSignal> = {
   id: SOURCE.vendor,
   stage: 'collect',
+  identityCritical: true,
   run() {
     if (typeof navigator === 'undefined') throw new UnsupportedSignal('no-navigator')
     return compact({ vendor: attempt(() => navigator.vendor) })
@@ -93,6 +96,7 @@ export const vendorSource: Source<VendorSignal> = {
 export const userAgentDataSource: Source<Record<string, unknown>> = {
   id: SOURCE.userAgentData,
   stage: 'collect',
+  identityCritical: true,
   timeoutMs: 150,
   async run() {
     if (typeof navigator === 'undefined') throw new UnsupportedSignal('no-navigator')

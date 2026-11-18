@@ -119,6 +119,7 @@ function readCanary(ctx: SourceContext | undefined): CanaryReading | undefined {
 export const shieldsSource: Source<ShieldsSignal> = {
   id: SOURCE.shields,
   stage: 'collect',
+  identityCritical: true,
   timeoutMs: 100,
   async run(ctx) {
     if (isRfpCanvasBlocked(ctx)) {

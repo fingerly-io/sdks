@@ -254,6 +254,13 @@ export interface WebGLSignal {
   max_render_buffer_size?: number
   parameters_hash?: string
   shader_precision_hash?: string
+  /**
+   * Offscreen WebGL 1 shaded scene hashed over raw `readPixels` RGBA bytes.
+   * Skipped under Gecko `resistFingerprinting` and omitted when shaders fail.
+   */
+  render_hash?: string
+  /** True when `createShader` returned `null` or failed to compile (e.g. Brave strict mode). */
+  shader_blocked?: boolean
 }
 
 export interface WebGL2Signal {
@@ -271,12 +278,26 @@ export interface WebGPUSignal {
 export interface CanvasSignal {
   geometry?: string
   text?: string
+  /** `geometry` pixel buffer hashed with bit 0 cleared (`byte & 0xfe`), undoing 1-bit LSB farbling. */
+  geometry_high?: string
+  /** Generic-font (`serif`/`sans-serif`/`monospace`) text render hashed with bit 0 cleared (`byte & 0xfe`). */
+  text_high?: string
+  /** `measureText` advance width on a fixed ASCII probe (`0` when `TextMetrics` is stubbed). */
+  text_metrics_width?: number
   winding?: boolean
   unstable?: boolean
 }
 
 export interface AudioSignal {
   value?: number
+  /** Scale-invariant crest ratio (`sum / maxAbs`) over `[4500..5000)`, cancelling constant gain farbling. */
+  crest_ratio?: number
+  /** Scale-invariant RMS-to-mean ratio (`sqrt(sumSq) / sum`) over `[4500..5000)`. */
+  shape_ratio?: number
+  /** Scale-invariant compressor decay ratio (`earlySum / lateSum`) over `[4500..4750)` vs `[4750..5000)`. */
+  decay_ratio?: number
+  /** Count of negative samples in `[4500..5000)` (`0` when replaced by non-negative PRNG noise). */
+  negative_samples?: number
   sample_rate?: number
   unstable?: boolean
   state?: string

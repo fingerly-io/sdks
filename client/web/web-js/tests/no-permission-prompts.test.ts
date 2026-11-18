@@ -471,7 +471,7 @@ describe('full runtime pipeline prompt & Gecko RFP pixel-readback spies', () => 
     },
   )
 
-  it('never calls prompting APIs, toDataURL, toBlob, convertToBlob, or readPixels on an unlocked browser', async () => {
+  it('never calls prompting APIs, toDataURL, toBlob, or convertToBlob on an unlocked browser', async () => {
     const spies = installRuntimePromptAndPixelSpies()
     try {
       const client = await load({
@@ -498,12 +498,6 @@ describe('full runtime pipeline prompt & Gecko RFP pixel-readback spies', () => 
       expect(spies.pixelReadbackSpies['HTMLCanvasElement.prototype.toBlob']).not.toHaveBeenCalled()
       expect(
         spies.pixelReadbackSpies['OffscreenCanvas.prototype.convertToBlob'],
-      ).not.toHaveBeenCalled()
-      expect(
-        spies.pixelReadbackSpies['WebGLRenderingContext.prototype.readPixels'],
-      ).not.toHaveBeenCalled()
-      expect(
-        spies.pixelReadbackSpies['WebGL2RenderingContext.prototype.readPixels'],
       ).not.toHaveBeenCalled()
       expect(spies.enumerateDevicesSpy).toHaveBeenCalled()
     } finally {

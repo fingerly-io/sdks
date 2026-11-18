@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.3
+
+- Recognises standard Brave Shields across normal windows, private windows and
+  browser restarts by reading 2D canvas geometry and generic-font text with the
+  least-significant bit masked, rendering an offscreen WebGL scene, and
+  computing scale-invariant `OfflineAudioContext` sample ratios.
+- Surfaces the indicators needed to detect flag-gated strict Brave
+  fingerprinting mode (`shader_blocked`, `text_metrics_width` and negative
+  audio samples) while keeping the Gecko `resistFingerprinting` zero-prompt
+  canvas gate intact.
+- Runs synchronous browser getters and 2D canvas collection ahead of cold WebGL
+  GPU initialisation so newly launched browser profiles finish within budget.
+
 ## 0.5.2
 
 - The font sources run ahead of the slow ones. On a real HTTPS page

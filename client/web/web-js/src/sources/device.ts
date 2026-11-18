@@ -23,6 +23,7 @@ import { attempt, compact, requireWindow } from '../util.js'
 export const hardwareSource: Source<HardwareSignal> = {
   id: SOURCE.hardware,
   stage: 'collect',
+  identityCritical: true,
   run() {
     if (typeof navigator === 'undefined') throw new UnsupportedSignal('no-navigator')
     const nav = navigator as Navigator & { deviceMemory?: number }
@@ -37,6 +38,7 @@ export const hardwareSource: Source<HardwareSignal> = {
 export const touchSource: Source<TouchSignal> = {
   id: SOURCE.touch,
   stage: 'collect',
+  identityCritical: true,
   run() {
     const w = requireWindow()
 
@@ -79,6 +81,7 @@ export const mediaDevicesSource: Source<MediaDevicesSignal> = {
 export const networkSource: Source<NetworkSignal> = {
   id: SOURCE.network,
   stage: 'collect',
+  identityCritical: true,
   run() {
     const connection = (
       navigator as Navigator & {
@@ -99,6 +102,7 @@ export const networkSource: Source<NetworkSignal> = {
 export const intlSource: Source<IntlSignal> = {
   id: SOURCE.intl,
   stage: 'collect',
+  identityCritical: true,
   run() {
     if (typeof Intl === 'undefined') throw new UnsupportedSignal('no-intl')
 
@@ -190,7 +194,7 @@ export const codecsSource: Source<CodecsSignal> = {
   // browser's mode-invariant profile: it may run into the scheduler's grace
   // period on a cold start.
   identityCritical: true,
-  timeoutMs: 600,
+  timeoutMs: 750,
   async run() {
     const sender = (
       globalThis as unknown as {
@@ -247,6 +251,7 @@ interface ApplePayConstructor {
 export const applePaySource: Source<ApplePaySignal> = {
   id: SOURCE.applePay,
   stage: 'collect',
+  identityCritical: true,
   timeoutMs: 50,
   run() {
     const w = requireWindow()
@@ -285,6 +290,7 @@ export const applePaySource: Source<ApplePaySignal> = {
 export const timezoneSource: Source<TimezoneSignal> = {
   id: SOURCE.timezone,
   stage: 'collect',
+  identityCritical: true,
   run() {
     if (typeof Intl === 'undefined') throw new UnsupportedSignal('no-intl')
     return compact({

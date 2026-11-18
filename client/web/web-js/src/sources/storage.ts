@@ -179,6 +179,7 @@ function serviceWorkerAvailable(): boolean | undefined {
 export const storageSource: Source<StorageSignal> = {
   id: SOURCE.storage,
   stage: 'collect',
+  identityCritical: true,
   timeoutMs: 250,
   async run() {
     requireWindow()
@@ -247,6 +248,7 @@ export const storageSource: Source<StorageSignal> = {
 export const storageQuotaSource: Source<{ partitioned: boolean }> = {
   id: SOURCE.storageQuota,
   stage: 'collect',
+  identityCritical: true,
   run() {
     requireWindow()
     if (typeof document === 'undefined') throw new UnsupportedSignal('no-document')

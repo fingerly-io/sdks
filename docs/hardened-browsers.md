@@ -234,14 +234,34 @@ Brave reseeds farbling per session and per eTLD+1 across `hardwareConcurrency`,
 Two `v: 3` server mechanisms prevent both identity splitting and single-field
 bucket evasion (`server/domain/identity/`):
 
-1. **Component-level farbling strip (`shields.go`)**: On behaviorally verified
-   Brave reports at default Shields (where WebGL vendor/renderer remain
-   unmasked), farbled components (`canvas.*`, `audio.value`, `hardware.cores`,
-   `hardware.memory`) are stripped while preserving unmasked `webgl.vendor`,
-   `webgl.renderer`, `screen.*`, `platform`, and `audio.sample_rate`. If
-   aggressive Shields also masks WebGL/canvas into a correlated mask below 6
-   independent hard traits, `Identifiable()` returns `false` (`visitorId: ""`)
-   rather than minting unstable per-session IDs.
+1. **Component-level farbling strip & Brave invariant recovery (`shields.go`, `brave_invariant.go`)**:
+   On behaviorally verified Standard Brave reports (`BALANCED` mode), raw farbled
+   components (`canvas.geometry`, `canvas.text`, `audio.value`, `hardware.cores`,
+   `hardware.memory`) are stripped while recovering three unfarbled device
+   measurements into the Brave invariant profile (`brave_invariant.go`):
+   - **High-bit 2D Canvas (`canvas.geometry_high`, `canvas.text_high`)**: Masks
+     out bit 0 (`byte & 0xfe`) on every RGBA byte, exactly inverting
+     `BraveSessionCache::PerturbPixelsInternal`'s 1-bit LSB XOR, and renders text
+     strictly with generic CSS font families (`serif`, `sans-serif`, `monospace`)
+     exempt from Brave's session font farbling (`FamilyIsGeneric()`).
+   - **Offscreen WebGL 1 Scene Pixels (`webgl.render_hash`)**: Renders a shaded
+     64×64 WebGL 1 scene and hashes `readPixels` output, which Standard Brave
+     leaves untouched even when `UNMASKED_RENDERER_WEBGL` is masked.
+   - **Scale-Invariant Audio Ratios (`audio.crest_ratio`, `shape_ratio`, `decay_ratio`)**:
+     Divides `OfflineAudioContext` waveform statistics so Brave's per-session
+     constant `fudge_factor` (`[0.999, 1.0)`) cancels out algebraically.
+   - **Desktop Screen Quantization Tolerance**: Accounts for
+     `ChromeClientImpl::BraveGetScreenInfos` snapping `screen.width`/`height` to
+     7 desktop size buckets based on farbled `outerWidth`/`outerHeight` while
+     preserving display DPR and colour depth across resized or private windows.
+   - **Strict Brave (`MAXIMUM`, `BraveShowStrictFingerprintingMode`)**: When
+     Brave's flag-gated strict mode replaces audio with non-negative LFSR noise
+     (`negative_samples == 0`), blocks WebGL shaders (`shader_blocked: true`),
+     zeroes `measureText` (`text_metrics_width == 0`), replaces plugins with 2
+     synthetic entries, empties voices, and clamps `navigator.languages` to
+     `["en-US", "en"]`, identity is withheld (`identifiable: false`,
+     `visitorId: ""`) and the `identity_obfuscated` risk signal (`weight: 16`)
+     is emitted instead.
 2. **Dual coarse buckets (`00046_v3_identity_dual_buckets.sql`)**: Historically,
    including `hardware.cores` in a single candidate bucket caused Brave's
    farbled core count (or an anti-detect spoofer editing `hardwareConcurrency`)

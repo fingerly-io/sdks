@@ -1,6 +1,6 @@
 {
   "name": "@fingerly/web-js",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "publishConfig": { "access": "public" },
   "description": "Vanilla browser JavaScript SDK",
   "license": "Apache-2.0",
