@@ -101,12 +101,16 @@ Things worth stating plainly for privacy reviewers:
 - **`storage_durability` is off by default.** Default `identify()` performs zero
   IndexedDB durability `fsync` rounds; `storage_durability` runs only when the
   integrator explicitly passes `incognitoDetection: 'extended'`.
-- **Hardened and private browsers are not coerced into shared IDs.** When a
-  browser applies engine-consistent cohort masking (such as Safari 17+ Private
-  Browsing, verified Brave Shields farbling, or Tor Browser / Firefox RFP), the
-  server declines matching and minting (`identifiable: false`, `visitor_id: ""`,
-  `visitor_is_new: false`, `visitor_confidence: 0`), writes zero PostgreSQL
-  visitor rows, and exempts `fingerprint_suppressed`.
+- **Hardened and private browsers are not coerced into shared IDs.** Verified
+  Brave Shields farbling and Tor Browser / Firefox RFP are never matched or
+  minted: the server answers `identifiable: false`, `visitor_id: ""`,
+  `visitor_is_new: false`, `visitor_confidence: 0`, writes zero PostgreSQL
+  visitor rows, and exempts `fingerprint_suppressed`. A Safari private window
+  is recognised as the visitor seen in a normal window when the browser's
+  configuration is distinctive enough to tell it from other devices, and that
+  answer carries a `visitor_confidence` below `100`. Otherwise it is answered
+  the same way as the hardened browsers: `identifiable: false`, an empty
+  `visitor_id`, zero visitor rows, and no `fingerprint_suppressed`.
 
 ### 2.1 What the browser SDK writes
 
@@ -417,7 +421,7 @@ infrastructure with the same data minimization guarantees.
 | Data | Kept |
 |---|---|
 | Events in ClickHouse (`events`), including `ip_network` and coarse city location | 30 days |
-| IP network daily aggregates (`agg_ip_day`) | 90 days |
+| IP network daily aggregates (`agg_ip_network_day`) | 30 days |
 | Per-visitor daily aggregates (`agg_visitor_day`, filtered to `visitor_id != ''`) | 180 days |
 | Aggregate analytics (`agg_*_15m` / `_hour` hot tiers, `agg_*_day` cold tiers) | 45–100 days (hot), 800 days (daily totals) |
 | Short-term velocity HMAC state (Velocity Redis + ClickHouse 5m rollups) | 10 minutes in Redis, 8 days in ClickHouse |
@@ -425,7 +429,7 @@ infrastructure with the same data minimization guarantees.
 | Mobile hardware attestation key tables (`apple_app_attest_keys`, `android_attestation_keys`) | 24-hour active lease on Android (`expires_at`); rows swept 180 days after `last_seen_at` and purged immediately on organisation/project deletion (never linked to `visitor_id`) |
 | Sealed Apple DeviceCheck tokens (when `device_check_enabled: true`) | At most 1 hour in Redis (`att:dc:hold:*`), never archived |
 | Usage and billing ledger records | ~3 years (1,100 days in `agg_usage_day`) |
-| Full submission object archive (R2 / MinIO, allow-listed fields only on native) | 90 days (bucket lifecycle rule; see ADR 0022) |
+| Full submission object archive (R2 / MinIO, allow-listed fields only on native) | 30 days (bucket lifecycle rule; see ADR 0022) |
 
 ## 8. What we do not do
 
@@ -445,9 +449,9 @@ infrastructure with the same data minimization guarantees.
 - No fingerprinting inside in-app WebViews: device-fingerprinting collectors are
   skipped on the client and genuine WebViews stay on `state: "enriched"` with
   `visitor_id: ""` on the server (§3.3)
-- No shared fallback `visitor_id` collisions on masked privacy browsers (Safari
-  Private Browsing, Brave Shields, Tor Browser return `visitor_id: ""` with zero
-  PostgreSQL rows minted)
+- No shared fallback `visitor_id` collisions on masked privacy browsers (Brave
+  Shields, Tor Browser, and a Safari private window that cannot be told from
+  other devices return `visitor_id: ""` with zero PostgreSQL rows minted)
 - No tracking (`NSPrivacyTracking = false`), no precise GPS location, no
   cross-customer identity graph, no selling or sharing of visitor data, and no
   advertising or marketing use
