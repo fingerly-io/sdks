@@ -192,7 +192,10 @@ export const fontPreferencesSource: Source<FontPreferencesSignal> = {
 }
 
 const MAX_VOICES = 256
-const VOICES_WAIT_MS = 200
+// The first `getVoices()` after the browser starts can come back empty while
+// the system speech service starts; [warmVoices] asks early, and the source
+// waits out the rest of the default collection budget for the list.
+const VOICES_WAIT_MS = 320
 const VOICES_POLL_MS = 25
 
 function readVoiceSnapshot(synth: SpeechSynthesis): VoicesSignal {
@@ -221,6 +224,11 @@ function readVoiceSnapshot(synth: SpeechSynthesis): VoicesSignal {
   })
 }
 
+/** Asks for the voice list early, so it is loaded by collection. Reads only after consent. */
+export function warmVoices(): void {
+  attempt(() => (typeof speechSynthesis !== 'undefined' ? speechSynthesis.getVoices() : undefined))
+}
+
 /**
  * OS speech synthesis voices (`speechSynthesis.getVoices()`).
  *
@@ -232,7 +240,7 @@ function readVoiceSnapshot(synth: SpeechSynthesis): VoicesSignal {
 export const voicesSource: Source<VoicesSignal> = {
   id: SOURCE.voices,
   stage: 'collect',
-  timeoutMs: 240,
+  timeoutMs: 340,
   async run(ctx: SourceContext) {
     const synth = attempt(() =>
       typeof speechSynthesis !== 'undefined' ? speechSynthesis : undefined,

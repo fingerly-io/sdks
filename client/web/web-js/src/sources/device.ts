@@ -131,7 +131,37 @@ export const intlSource: Source<IntlSignal> = {
 
 const REPAIR_CODECS = new Set(['video/rtx', 'video/red', 'video/ulpfec', 'video/flexfec-03'])
 
-async function isPowerEfficientDecode(contentType: string): Promise<boolean | undefined> {
+/**
+ * One answer per content type for the life of the page. The first
+ * `decodingInfo` call on a cold media stack can take longer than the source's
+ * timeout, so the queries are started as soon as collection is permitted
+ * ([warmCodecs]) and the source then awaits the same promises.
+ */
+const decodeAnswers = new Map<string, Promise<boolean | undefined>>()
+
+/** The hardware-decode probes the codecs source reads. */
+const HW_DECODE_TYPES = [
+  'video/mp4; codecs="av01.0.08M.08"',
+  'video/mp4; codecs="hvc1.2.4.L120.B0"',
+  'video/webm; codecs="vp09.02.10.10"',
+] as const
+
+function isPowerEfficientDecode(contentType: string): Promise<boolean | undefined> {
+  let answer = decodeAnswers.get(contentType)
+  if (!answer) {
+    answer = queryPowerEfficientDecode(contentType)
+    decodeAnswers.set(contentType, answer)
+  }
+  return answer
+}
+
+/** Starts the hardware-decode queries early. Reads only after consent. */
+export function warmCodecs(): void {
+  if (typeof navigator === 'undefined' || typeof navigator.mediaCapabilities?.decodingInfo !== 'function') return
+  for (const type of HW_DECODE_TYPES) void isPowerEfficientDecode(type)
+}
+
+async function queryPowerEfficientDecode(contentType: string): Promise<boolean | undefined> {
   if (typeof navigator === 'undefined') return undefined
   const mc = navigator.mediaCapabilities
   if (typeof mc?.decodingInfo !== 'function') return undefined
@@ -156,7 +186,10 @@ async function isPowerEfficientDecode(contentType: string): Promise<boolean | un
 export const codecsSource: Source<CodecsSignal> = {
   id: SOURCE.codecs,
   stage: 'collect',
-  timeoutMs: 100,
+  // Inside the default collection budget, which the worker realm already
+  // fills: a cold media stack answers late, and a missing answer changes the
+  // browser's mode-invariant profile.
+  timeoutMs: 320,
   async run() {
     const sender = (
       globalThis as unknown as {
@@ -190,9 +223,9 @@ export const codecsSource: Source<CodecsSignal> = {
 
     const [hwAv1, hwHevc10, hwVp9P2] = hasMc
       ? await Promise.all([
-          isPowerEfficientDecode('video/mp4; codecs="av01.0.08M.08"'),
-          isPowerEfficientDecode('video/mp4; codecs="hvc1.2.4.L120.B0"'),
-          isPowerEfficientDecode('video/webm; codecs="vp09.02.10.10"'),
+          isPowerEfficientDecode(HW_DECODE_TYPES[0]),
+          isPowerEfficientDecode(HW_DECODE_TYPES[1]),
+          isPowerEfficientDecode(HW_DECODE_TYPES[2]),
         ])
       : [undefined, undefined, undefined]
 
