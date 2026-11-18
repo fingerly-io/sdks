@@ -12,7 +12,9 @@ Across all browser engines in `@fingerly/core` and `@fingerly/web-js` `0.3.0`:
   `engine` detection plus—on Gecko only—the bounded `<= 3ms` (`2.5ms–3.0ms`)
   single-tick `performance.now()` RFP timer probe (`0.0ms` overhead on WebKit
   and Blink). Stage 2 (`collect`) runs all active browser collectors
-  concurrently within `350ms` (retiring `deferred` and `/api/v1/ingest/supplement`).
+  concurrently within `350ms`, letting the identity-critical audio, voice and
+  codec sources run up to `400ms` longer on a cold browser under the default
+  budget (retiring `deferred` and `/api/v1/ingest/supplement`).
 - **Option B unidentifiable output (`visitorId: ""`)**: Whenever correlated
   cohort masking or RFP blocking leaves fewer than `6` independent Tier-A hard
   components (`identifiable: false`—such as Safari 17+ Private Browsing,

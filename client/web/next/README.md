@@ -155,7 +155,8 @@ act on its decision (see [Decide on your backend](#decide-on-your-backend)).
 `isSuspicious`, `suspectScore` and `suspectLevel` are a UI hint only; never gate
 an action on them in the page.
 
-`identify()` runs one collection pass (a 350 ms budget by default) and posts
+`identify()` runs one collection pass (a 350 ms budget by default, up to
+750 ms on a browser that has just started) and posts
 once, in a single round trip to `POST /api/v1/ingest`, resolving with the
 server's answer: `requestId`, `visitorId`, `identifiable`, and `suspectScore`
 and `suspectLevel` unless the key hides them. Each report carries a single-use

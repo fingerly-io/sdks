@@ -51,8 +51,10 @@ which are removed if the user uninstalls the app.
 
 Collection runs in a **single pass** (`1-RTT` submission to `POST /api/v1/ingest`
 with `v: 3`, retiring `/api/v1/ingest/supplement` and `deferred_token`) under a
-`<= 350ms` default Stage 2 collection ceiling (`< 80ms` typical p50/p95 before
-network RTT). Internally, the browser scheduler executes two stages before
+350 ms default Stage 2 collection budget (`< 80ms` typical p50/p95 before
+network RTT; on a browser that has just started, the identity-critical audio,
+voice and codec sources may run up to 400 ms past it, and a `budgetMs` the
+caller sets is a hard ceiling). Internally, the browser scheduler executes two stages before
 sending one request:
 
 1. **Stage 1 (`prerequisite`)**: Runs `engine` detection and, exclusively on
