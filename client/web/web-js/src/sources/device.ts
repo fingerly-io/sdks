@@ -186,10 +186,11 @@ async function queryPowerEfficientDecode(contentType: string): Promise<boolean |
 export const codecsSource: Source<CodecsSignal> = {
   id: SOURCE.codecs,
   stage: 'collect',
-  // Inside the default collection budget, which the worker realm already
-  // fills: a cold media stack answers late, and a missing answer changes the
-  // browser's mode-invariant profile.
-  timeoutMs: 320,
+  // A cold media stack answers late, and a missing answer changes the
+  // browser's mode-invariant profile: it may run into the scheduler's grace
+  // period on a cold start.
+  identityCritical: true,
+  timeoutMs: 600,
   async run() {
     const sender = (
       globalThis as unknown as {

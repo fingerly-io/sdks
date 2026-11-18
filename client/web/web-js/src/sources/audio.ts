@@ -114,8 +114,10 @@ export function warmAudio(): void {
 export const audioSource: Source<AudioSignal> = {
   id: SOURCE.audio,
   stage: 'collect',
-  // Inside the default collection budget, which the worker realm already fills.
-  timeoutMs: 340,
+  // A phone's one component that tells two identical models apart: it may
+  // run into the scheduler's grace period on a cold start.
+  identityCritical: true,
+  timeoutMs: 600,
   async run(ctx) {
     const first = await render(ctx)
 

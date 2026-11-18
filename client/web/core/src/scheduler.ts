@@ -23,11 +23,29 @@ const clock: () => number = () => Date.now()
 
 export const DEFAULT_BUDGET_MS = 350
 
+/**
+ * How long past the default budget an identity-critical source may still run.
+ *
+ * A browser that has just started answers its first audio render, voice list
+ * and decode queries slowly, and without them a phone has too few components
+ * to be identified. A warm browser finishes the whole run in a few tens of
+ * milliseconds and never reaches this; a cold or slow one waits at most this
+ * much longer for an answer that decides whether it is recognised at all.
+ */
+export const DEFAULT_GRACE_MS = 400
+
 export interface ScheduleOptions {
   /**
    * Total wall-clock ceiling for the two-stage single-pass run. Defaults to `350`ms.
    */
   budgetMs?: number
+  /**
+   * How long past `budgetMs` an `identityCritical` source may still run.
+   * Defaults to `DEFAULT_GRACE_MS` when `budgetMs` is left at its default and
+   * to `0` when the caller sets `budgetMs`: a budget the caller chose is a
+   * ceiling.
+   */
+  graceMs?: number
   /** Applied to any source that does not set its own `timeoutMs`. */
   defaultSourceTimeoutMs?: number
   /** Maximum number of sources in flight concurrently within one stage. */
@@ -81,6 +99,7 @@ interface NormalizedSource {
   readonly stage: SourceStage
   readonly optIn: Source['optIn']
   readonly timeoutMs: number | undefined
+  readonly critical: boolean
 }
 
 function normalizeSource(source: Source): NormalizedSource {
@@ -92,6 +111,7 @@ function normalizeSource(source: Source): NormalizedSource {
     stage: stage === 'prerequisite' ? 'prerequisite' : 'collect',
     optIn: own(source, 'optIn'),
     timeoutMs: typeof timeoutMs === 'number' && Number.isFinite(timeoutMs) ? timeoutMs : undefined,
+    critical: own(source, 'identityCritical') === true,
   }
 }
 
@@ -178,7 +198,10 @@ export async function collect(
 ): Promise<ScheduleResult> {
   // Own properties only (`WEB-09`): a polluted `Object.prototype.budgetMs` or
   // `stages` must not change what runs.
-  const budgetMs = finiteOr(own(options, 'budgetMs'), DEFAULTS.budgetMs)
+  const chosenBudget = own(options, 'budgetMs')
+  const budgetMs = finiteOr(chosenBudget, DEFAULTS.budgetMs)
+  const budgetChosen = typeof chosenBudget === 'number' && Number.isFinite(chosenBudget)
+  const graceMs = Math.max(0, finiteOr(own(options, 'graceMs'), budgetChosen ? 0 : DEFAULT_GRACE_MS))
   const defaultSourceTimeoutMs = finiteOr(
     own(options, 'defaultSourceTimeoutMs'),
     DEFAULTS.defaultSourceTimeoutMs,
@@ -192,6 +215,8 @@ export async function collect(
 
   const started = clock()
   const deadline = started + budgetMs
+  const graceDeadline = deadline + graceMs
+  const deadlineOf = (source: NormalizedSource) => (source.critical ? graceDeadline : deadline)
   const outcomes: Record<string, SignalOutcome> = {}
   const completed: Record<string, SignalOutcome> = { ...(own(options, 'completed') ?? {}) }
   const shared = new Map<string, unknown>()
@@ -200,9 +225,12 @@ export async function collect(
   let truncated = false
 
   for (const stage of stages) {
-    const queue = normalized.filter(
+    // Identity-critical sources first, so a slow stage does not leave them
+    // waiting in the queue until the budget is gone. Stable otherwise.
+    const enabled = normalized.filter(
       (source) => source.stage === stage && isEnabled(source, incognitoDetection, filter),
     )
+    const queue = [...enabled.filter((s) => s.critical), ...enabled.filter((s) => !s.critical)]
     if (queue.length === 0) continue
 
     // Snapshot completed outcomes before starting this stage so siblings in the
@@ -216,7 +244,7 @@ export async function collect(
         const source = queue[next++]
         if (!source) continue
 
-        if (clock() >= deadline || signal?.aborted) {
+        if (clock() >= deadlineOf(source) || signal?.aborted) {
           truncated = true
           stageOutcomes[source.id] = { status: 'timeout', ms: 0, reason: 'budget-exhausted' }
           continue
@@ -224,7 +252,7 @@ export async function collect(
 
         const outcome = await runSource(
           source,
-          deadline,
+          deadlineOf(source),
           defaultSourceTimeoutMs,
           signal,
           stageSnapshot,

@@ -8,7 +8,7 @@ export { DEFAULT_ENDPOINT } from './routing.js'
 export { ConsentError } from './consent.js'
 export { SEAL_STORAGE_KEY } from './continuity.js'
 
-export { collect, DEFAULT_BUDGET_MS } from './scheduler.js'
+export { collect, DEFAULT_BUDGET_MS, DEFAULT_GRACE_MS } from './scheduler.js'
 export type { ScheduleOptions, ScheduleResult } from './scheduler.js'
 
 export {

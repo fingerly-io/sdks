@@ -197,7 +197,17 @@ const MAX_VOICES = 256
 // The first `getVoices()` after the browser starts can come back empty while
 // the system speech service starts; [warmVoices] asks early, and the source
 // waits out the rest of the default collection budget for the list.
-const VOICES_WAIT_MS = 320
+const VOICES_WAIT_MS = 200
+// WebKit only: the voice list is what a Safari private window is recognised
+// by, so a cold WebKit waits into the grace period for it. Other engines do
+// not need it, and some never have voices: waiting there would only be slow.
+const WEBKIT_VOICES_WAIT_MS = 560
+
+function observedWebKit(ctx: SourceContext | undefined): boolean {
+  const engine = attempt(() => ctx?.completed?.(SOURCE.engine))
+  const value = engine?.status === 'ok' ? (engine.value as { observed?: unknown } | undefined) : undefined
+  return value?.observed === 'webkit'
+}
 const VOICES_POLL_MS = 25
 
 function readVoiceSnapshot(synth: SpeechSynthesis): VoicesSignal {
@@ -242,7 +252,10 @@ export function warmVoices(): void {
 export const voicesSource: Source<VoicesSignal> = {
   id: SOURCE.voices,
   stage: 'collect',
-  timeoutMs: 340,
+  // Mandatory for recognising a Safari private window: it may run into the
+  // scheduler's grace period on a cold start.
+  identityCritical: true,
+  timeoutMs: 600,
   async run(ctx: SourceContext) {
     const synth = attempt(() =>
       typeof speechSynthesis !== 'undefined' ? speechSynthesis : undefined,
@@ -254,7 +267,8 @@ export const voicesSource: Source<VoicesSignal> = {
     const immediate = readVoiceSnapshot(synth)
     if (immediate.voices && immediate.voices.length > 0) return immediate
 
-    const waitMs = Math.max(0, Math.min(VOICES_WAIT_MS, ctx?.budgetRemainingMs?.() ?? VOICES_WAIT_MS))
+    const wantMs = observedWebKit(ctx) ? WEBKIT_VOICES_WAIT_MS : VOICES_WAIT_MS
+    const waitMs = Math.max(0, Math.min(wantMs, ctx?.budgetRemainingMs?.() ?? wantMs))
     if (waitMs === 0) return {}
 
     // WebKit frequently populates speechSynthesis.getVoices() asynchronously

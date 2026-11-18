@@ -63,6 +63,13 @@ export interface Source<T = unknown> {
    */
   readonly embeddedSafe?: boolean
   readonly timeoutMs?: number
+  /**
+   * Whether a device may be left unidentifiable without this source's value.
+   * Such a source starts first in its stage and, under the default budget,
+   * may run into the grace period after the budget ends (see
+   * `ScheduleOptions.graceMs`).
+   */
+  readonly identityCritical?: boolean
   run(ctx: SourceContext): Promise<T> | T
 }
 
