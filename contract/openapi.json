@@ -632,6 +632,10 @@
             ],
             "type": "string"
           },
+          "continuity": {
+            "description": "Web only: session asks for next_seal with an identified answer, which the page keeps for the life of its tab and sends back as seal. Omitted, no seal is issued and the page keeps nothing",
+            "type": "string"
+          },
           "op": {
             "description": "Empty for a report. ticket asks for a web freshness ticket instead: a public key on the web only, with a body of v, op and sdk, answered 200 with ticket and expires_at, never charged",
             "type": "string"
@@ -639,6 +643,10 @@
           "sdk": {
             "$ref": "#/components/schemas/SDKInfo",
             "description": "Which SDK collected these signals"
+          },
+          "seal": {
+            "description": "Web only, with continuity session: the next_seal of the previous answer in this tab. Bound to the project, the page origin and the browser's profile, valid for 30 minutes and renewed by each answer for at most 12 hours. One that does not verify is ignored",
+            "type": "string"
           },
           "signals": {
             "additionalProperties": {},
@@ -699,6 +707,17 @@
               }
             ],
             "description": "Fresh attestation challenge ticket and dynamic offer flags for the next native submission"
+          },
+          "next_seal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WebSealOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Web only, when the report asked for continuity session and a private window was identified: the session seal to send as seal on the next report from this tab"
           },
           "next_ticket": {
             "anyOf": [
@@ -936,6 +955,10 @@
             ],
             "type": "string"
           },
+          "continuity": {
+            "description": "Web only: session asks for next_seal with an identified answer, which the page keeps for the life of its tab and sends back as seal. Omitted, no seal is issued and the page keeps nothing",
+            "type": "string"
+          },
           "op": {
             "description": "Empty for a report. ticket asks for a web freshness ticket instead: a public key on the web only, with a body of v, op and sdk, answered 200 with ticket and expires_at, never charged",
             "type": "string"
@@ -943,6 +966,10 @@
           "sdk": {
             "$ref": "#/components/schemas/SDKInfo",
             "description": "Which SDK collected these signals"
+          },
+          "seal": {
+            "description": "Web only, with continuity session: the next_seal of the previous answer in this tab. One that does not verify is ignored",
+            "type": "string"
           },
           "signals": {
             "additionalProperties": {},
@@ -2281,6 +2308,24 @@
         },
         "required": [
           "erasures"
+        ],
+        "type": "object"
+      },
+      "WebSealOut": {
+        "properties": {
+          "expires_at": {
+            "description": "When the seal stops being accepted, RFC 3339 UTC",
+            "format": "date-time",
+            "type": "string"
+          },
+          "seal": {
+            "description": "Unpadded base64url seal, sent as seal on the next report from this tab",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expires_at",
+          "seal"
         ],
         "type": "object"
       },
