@@ -40,7 +40,9 @@ What leaves the device is a single-pass `v: 3` envelope carrying raw signal
 measurements (plus a hardware signature on native mobile). What we add
 server-side is an IP-derived, approximate location and network classification,
 a visitor identifier (`visitor_id`, or `""` when unidentifiable) and a risk
-score. The browser SDK leaves nothing behind on the device; the mobile SDKs
+score. By default the browser SDK leaves nothing behind on the device; with
+session continuity turned on it keeps one value in `sessionStorage` for the
+life of the tab (§2.1). The mobile SDKs
 keep one container-scoped `install_id` and a local hardware attestation signing
 key (§3.1), both of which the app can atomically delete (§3.2) and both of
 which are removed if the user uninstalls the app.
@@ -108,8 +110,8 @@ Things worth stating plainly for privacy reviewers:
 
 ### 2.1 What the browser SDK writes
 
-Nothing that outlives the call. It writes no cookies, sends no cookies
-(`credentials: 'omit'`), and keeps no identifier on the device:
+By default, nothing that outlives the call. It writes no cookies, sends no
+cookies (`credentials: 'omit'`), and keeps no identifier on the device:
 
 - `storage` writes and immediately deletes a `__fingerly_probe__` key in
   `localStorage` and `sessionStorage` to test writability;
@@ -123,8 +125,33 @@ Nothing that outlives the call. It writes no cookies, sends no cookies
   IndexedDB database (`<= 4` pairs × `3` rounds, `<= 60ms`) and deletes it
   immediately.
 
+**Session continuity (`continuity: 'session'`, off by default).** A page that
+turns this option on keeps exactly one value in the browser:
+
+- **Where.** `sessionStorage`, under the single key `__fingerly_seal__`. Never
+  `localStorage`, a cookie, IndexedDB or `window.name`. `sessionStorage` is
+  scoped to one tab and one origin, and the browser discards it when the tab
+  closes.
+- **What.** A session seal: a token signed by Fingerly that names the visitor
+  the platform already answered this tab with, together with the time it stops
+  being accepted. It is not a device identifier chosen by the browser. The SDK
+  cannot create or alter one, and the server honours it only for the project,
+  the page origin and the browser profile it was issued to.
+- **When.** A seal is issued only for a private window that was identified. It
+  is accepted for 30 minutes, each answer that honours it carries the next
+  one, and a session ends 12 hours after its first seal at the latest. An
+  answer that carries no seal removes the stored one.
+- **Consent.** The value is read and written only while consent is `granted`.
+  `setConsent('denied')` removes it immediately, and it is never read while
+  consent is `pending`.
+
+With `continuity: 'none'` (the default) none of this happens: no storage is
+read or written for it and no seal is requested.
+
 Reading device characteristics remains in scope for ePrivacy Art. 5(3) whether
-or not persistent storage is written (§4).
+or not persistent storage is written (§4). Keeping the session seal is storage
+access under ePrivacy Art. 5(3) as well, and is covered by the same consent the
+SDK already requires before it reads anything.
 
 ## 3. Mobile (`ios`, `android` `0.4.0`, and the React Native, Flutter and Lynx bridges)
 
@@ -335,6 +362,8 @@ Every SDK and framework binding takes a `consent` option: `'granted'`,
 - Withdrawing consent mid-call aborts in-flight browser collectors and HTTP
   requests immediately; mobile SDKs re-check consent before each collector and
   before network transmission.
+- With session continuity turned on in a browser (§2.1), `setConsent('denied')`
+  also removes the session seal from `sessionStorage` at once.
 - **The server enforces it.** Every `v: 3` submission must carry
   `"consent": "granted"`, and the API rejects anything else with `422`
   (`consent_required`).
@@ -402,7 +431,10 @@ infrastructure with the same data minimization guarantees.
 
 - No user-visible permission prompts, biometric/PIN prompts, clipboard toasts,
   or Tor Browser / Firefox RFP canvas doorhangers (**Rule #1**)
-- No cookies, and no client-side storage outliving `identify()` in browsers;
+- No cookies in browsers, and by default no client-side storage outliving
+  `identify()`; with session continuity turned on, one signed value in
+  `sessionStorage` for the life of the tab, removed when consent is withdrawn
+  (§2.1);
   mobile SDKs store only a container-scoped `install_id` and local attestation
   key state, both wiped on uninstall or `deleteStoredIdentity()` (§3.1, §3.2)
 - No Keychain cross-uninstall persistence, no `UserDefaults`, and no
