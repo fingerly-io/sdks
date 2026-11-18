@@ -24,6 +24,8 @@ Both `POST /api/v1/ingest` and `POST /api/v1/identify` accept the same top-level
 | `op` | `string` | optional (Web) | Omitted for a report. `"ticket"` turns the request into a web freshness ticket request (section 1.6), whose body is `v`, `op` and `sdk` only. Any other value is refused with HTTP `400` (`code: "invalid_request"`). |
 | `ticket` | `string` | optional (Web) | The web freshness ticket from a ticket request or from the previous answer's `next_ticket` (section 1.6). A native report carrying one is refused with HTTP `400` (`code: "invalid_request"`). |
 | `ticket_pow` | `string` | optional (Web) | The proof of work for a ticket whose answer carried `pow_bits` (section 1.7). Refused on native reports like `ticket`. |
+| `continuity` | `string` | optional (Web) | `"session"` asks for `next_seal` with an identified answer (section 1.8). Omitted, no seal is issued and the page keeps nothing. Never sent on a ticket request. |
+| `seal` | `string` | optional (Web) | With `continuity: "session"`: the `next_seal` of the previous answer in this tab (section 1.8). Unpadded `base64url`, at most 256 characters. One that does not verify is ignored. Never sent on a ticket request. |
 
 ### 1.2 `AttestEnvelope` Fields
 
@@ -65,6 +67,7 @@ When `attest` is present, it is a JSON object with the following fields:
 | `attest_key_id` | `string` | whenever `attest` was sent | The `key_id` the server evaluated on this request, copied from `attest.key_id`. |
 | `next_attestation` | `AttestationChallengeOut` | native responses | Fresh stateless challenge offer piggybacked on mobile responses for `1-RTT` steady-state calls. Omitted on Web. |
 | `next_ticket` | `WebTicketOut` | Web responses | A fresh web freshness ticket for the next report from the same page, so it needs no ticket request (section 1.6). Left out when no ticket could be signed; the page then asks for one. Omitted on native. |
+| `next_seal` | `WebSealOut` | Web responses to `continuity: "session"` | The session seal to send as `seal` on the next report from this tab (section 1.8). Present only when a private window was identified and a seal could be signed. Omitted on native. |
 
 `AttestationChallengeOut` (returned both in `IdentifyOut.next_attestation` and by cold-start `POST /api/v1/attestation/challenge`):
 
@@ -189,6 +192,62 @@ has at least `pow_bits` leading zero bits, and sends it as top-level `ticket_pow
 - Budget: 1500 ms. When it runs out, send the report without `ticket_pow` (which fires `web_ticket_missing` with `ticket-pow-missing`).
 
 The server verifies with one hash. Vector: with ticket `abc` and 8 bits, checking every nonce from `"0"` upward, the first that passes is `"181"`. About 16 bits costs roughly 30 ms on a phone; above about 20 many devices run out of the budget and send no proof.
+
+### 1.8 Web Session Seal
+
+A private window keeps no state between visits, and what its answer was made on can change while the tab stays open. The session seal carries one identified private window across the reports of one tab: it is the platform's own earlier answer, signed, which the page shows again on its next report. It is not an identifier the browser chooses. It names one visitor, and it is honoured only for a report from the project, the page origin and the browser profile it was issued to.
+
+The seal is opt-in per page. A page that does not ask for it sends neither field, receives no seal and keeps nothing in the browser.
+
+**Request.** A web report on a public key (directly, through a first-party proxy or on a hosted domain) adds
+
+| Field | Type | Presence | Description |
+|---|---|---|---|
+| `continuity` | `string` | every report of a page that turned continuity on | `"session"`. Any other value, or none, means no seal is read or issued. |
+| `seal` | `string` | when the page holds an unexpired seal | The `seal` of the previous answer's `next_seal`. Unpadded `base64url`, at most 256 characters. |
+
+A `seal` without `continuity: "session"` is ignored. Neither field is part of a ticket request (section 1.6), whose body stays `v`, `op` and `sdk` only. A native report, or one a customer's backend relays with its secret key, is never answered with a seal, and a seal it carries is ignored.
+
+**Answer.** The `IdentifyOut` of a report that asked for `continuity: "session"` carries `next_seal`, a `WebSealOut`, when a private window was identified:
+
+| Field | Type | Presence | Description |
+|---|---|---|---|
+| `seal` | `string` | always | Unpadded `base64url` seal, sent as `seal` on the next report from this tab. Opaque to the client. |
+| `expires_at` | `string` | always | RFC 3339 UTC time the seal stops being accepted. |
+
+`next_seal` is left out when the window was not identified, when the report did not ask, or when no seal could be signed.
+
+**Lifetime.** A seal is accepted for 30 minutes from the answer that issued it (`issued + 1800s`). Every answer that honours a seal issues the next one, which keeps the birth time of the session's first seal, so the session slides forward in 30 minute steps and ends 12 hours after its first seal at the latest: the last seal of a session expires at `born + 43200s`. After that the window is identified afresh or not at all. A seal is not single use and nothing is claimed in a store for it.
+
+**Binding.** The seal is stateless and signed with the attestation keyring that signs challenge tickets and web tickets, under a key derived for seals only (`HMAC-SHA256(challengeKey, "fingerly:v3:web-seal\x00")`) and with its own leading byte, so a seal is never accepted as a ticket and a ticket never as a seal. Its binary layout before encoding (`127..159` bytes, `170..212` characters encoded):
+
+```text
+0x53                                   (1B: web seal type)
+|| key_id_len_u8                       (1B: 0..32)
+|| key_id_bytes                        (0..32B: UTF-8 keyring key identifier)
+|| confidence_u8                       (1B: 0..100, the confidence of the answer the session started with)
+|| born_unix_u32_be                    (4B: when the session's first seal was issued)
+|| exp_unix_u32_be                     (4B: min(issued + 1800, born + 43200))
+|| org_uuid_16B                        (16B)
+|| project_uuid_16B                    (16B)
+|| visitor_id_20B                      (20B: the visitor identifier the answer carried)
+|| profile_digest_16B                  (16B: the browser profile the seal is bound to, scoped to the project)
+|| origin_digest_16B                   (16B: SHA256(page origin)[0:16])
+|| HMAC_SHA256(sealKey, everything before it) (32B)
+```
+
+**Verification, never a refusal.** The server honours a seal when its signature verifies under a current keyring key, it has not expired, its session is younger than 12 hours, and its organization, project and origin digest are those of the request; it then checks that the report's browser profile is the one the seal is bound to. A seal that fails any of these (malformed, forged, expired, issued to another project or origin, or carried to a browser that reads differently) is ignored: the report is answered as one without a seal, and never with an error. A seal never raises the confidence the session started with.
+
+**Web SDK rules.**
+
+- Session continuity is off unless the page turns it on (`continuity: 'session'`). Off, the SDK sends neither field, reads and writes no storage for a seal, and ignores a `next_seal`.
+- On, send `continuity: "session"` on every report, and `seal` when a held seal has more than 10 seconds left before `expires_at`.
+- Keep the seal in `sessionStorage` only, under the single key `__fingerly_seal__`, as `{"seal":"...","expires_at":"..."}`. Never in `localStorage`, a cookie, IndexedDB or `window.name`. It lives and dies with the tab.
+- Read it only after consent is `granted`. Remove a stored value that is not a seal or has expired.
+- After an answer, store its `next_seal` in place of the held seal. When the answer carries none, remove the held seal.
+- Remove the seal at once when consent is set to `denied`.
+- Storage that is missing or throws means no seal is held. Never block, fail or log from `identify()` on it.
+- The rule of section 1.6 still holds for tickets: keep tickets in memory only; never write them to storage.
 
 ---
 
