@@ -4,8 +4,11 @@
  */
 
 import {
+  BlockedSignal,
   SOURCE,
   UnsupportedSignal,
+  type ApplePaySignal,
+  type CodecsSignal,
   type HardwareSignal,
   type IntlSignal,
   type MediaDevicesSignal,
@@ -100,6 +103,14 @@ export const intlSource: Source<IntlSignal> = {
     if (typeof Intl === 'undefined') throw new UnsupportedSignal('no-intl')
 
     const resolved = attempt(() => new Intl.DateTimeFormat().resolvedOptions())
+    const hourCycle = attempt(
+      () =>
+        (
+          new Intl.DateTimeFormat(undefined, { hour: 'numeric' }).resolvedOptions() as Intl.ResolvedDateTimeFormatOptions & {
+            hourCycle?: string
+          }
+        ).hourCycle,
+    )
 
     return compact<IntlSignal>({
       timezone: resolved?.timeZone,
@@ -107,12 +118,132 @@ export const intlSource: Source<IntlSignal> = {
       locale: resolved?.locale,
       calendar: resolved?.calendar,
       numbering_system: resolved?.numberingSystem,
+      hour_cycle: hourCycle,
       formatted: attempt(() =>
         new Intl.DateTimeFormat(undefined, {
           dateStyle: 'full',
           timeStyle: 'full',
         }).format(new Date(0)),
       ),
+    })
+  },
+}
+
+const REPAIR_CODECS = new Set(['video/rtx', 'video/red', 'video/ulpfec', 'video/flexfec-03'])
+
+async function isPowerEfficientDecode(contentType: string): Promise<boolean | undefined> {
+  if (typeof navigator === 'undefined') return undefined
+  const mc = navigator.mediaCapabilities
+  if (typeof mc?.decodingInfo !== 'function') return undefined
+  try {
+    const info = await mc.decodingInfo({
+      type: 'file',
+      video: {
+        contentType,
+        width: 1920,
+        height: 1080,
+        bitrate: 4_000_000,
+        framerate: 30,
+      },
+    })
+    if (typeof info?.supported !== 'boolean') return undefined
+    return info.supported && info.powerEfficient === true
+  } catch {
+    return undefined
+  }
+}
+
+export const codecsSource: Source<CodecsSignal> = {
+  id: SOURCE.codecs,
+  stage: 'collect',
+  timeoutMs: 100,
+  async run() {
+    const sender = (
+      globalThis as unknown as {
+        RTCRtpSender?: {
+          getCapabilities?: (kind: string) => {
+            codecs?: { mimeType?: string; sdpFmtpLine?: string }[]
+          } | null
+        }
+      }
+    ).RTCRtpSender
+
+    const hasRtc = typeof sender?.getCapabilities === 'function'
+    const hasMc = typeof navigator !== 'undefined' && typeof navigator.mediaCapabilities?.decodingInfo === 'function'
+    if (!hasRtc && !hasMc) {
+      throw new UnsupportedSignal('no-codec-capabilities')
+    }
+
+    let rtcVideo: string[] | undefined
+    if (hasRtc) {
+      const caps = attempt(() => sender.getCapabilities?.('video'))
+      if (Array.isArray(caps?.codecs)) {
+        const entries = new Set<string>()
+        for (const codec of caps.codecs) {
+          const mime = codec?.mimeType?.toLowerCase()
+          if (!mime || REPAIR_CODECS.has(mime)) continue
+          entries.add(codec.sdpFmtpLine ? `${mime}|${codec.sdpFmtpLine}` : mime)
+        }
+        if (entries.size > 0) rtcVideo = [...entries].sort()
+      }
+    }
+
+    const [hwAv1, hwHevc10, hwVp9P2] = hasMc
+      ? await Promise.all([
+          isPowerEfficientDecode('video/mp4; codecs="av01.0.08M.08"'),
+          isPowerEfficientDecode('video/mp4; codecs="hvc1.2.4.L120.B0"'),
+          isPowerEfficientDecode('video/webm; codecs="vp09.02.10.10"'),
+        ])
+      : [undefined, undefined, undefined]
+
+    return compact<CodecsSignal>({
+      rtc_video: rtcVideo,
+      hw_av1: hwAv1,
+      hw_hevc10: hwHevc10,
+      hw_vp9_p2: hwVp9P2,
+    })
+  },
+}
+
+interface ApplePayConstructor {
+  canMakePayments?: () => boolean
+  supportsVersion?: (version: number) => boolean
+}
+
+export const applePaySource: Source<ApplePaySignal> = {
+  id: SOURCE.applePay,
+  stage: 'collect',
+  timeoutMs: 50,
+  run() {
+    const w = requireWindow()
+    if (!w.isSecureContext) {
+      throw new UnsupportedSignal('insecure-context')
+    }
+    const ApplePay = (w as Window & { ApplePaySession?: ApplePayConstructor }).ApplePaySession
+    if (typeof ApplePay?.canMakePayments !== 'function') {
+      throw new UnsupportedSignal('no-apple-pay')
+    }
+
+    let canMakePayments: boolean
+    try {
+      canMakePayments = ApplePay.canMakePayments() === true
+    } catch {
+      throw new BlockedSignal('apple-pay-disallowed')
+    }
+
+    let maxVersion: number | undefined
+    if (typeof ApplePay.supportsVersion === 'function') {
+      for (let version = 20; version >= 1; version--) {
+        if (attempt(() => ApplePay.supportsVersion?.(version)) === true) {
+          maxVersion = version
+          break
+        }
+      }
+    }
+
+    return compact<ApplePaySignal>({
+      can_make_payments: canMakePayments,
+      max_version: maxVersion,
     })
   },
 }

@@ -8,6 +8,8 @@ import { detectEmbedding } from '../embedding.js'
 
 import { audioLatencySource, audioSource } from './audio.js'
 import {
+  applePaySource,
+  codecsSource,
   hardwareSource,
   intlSource,
   mediaDevicesSource,
@@ -24,11 +26,17 @@ import {
   userAgentDataSource,
   vendorSource,
 } from './navigator.js'
-import { canvasSource, webglExtensionsSource, webglSource } from './render.js'
+import {
+  canvasSource,
+  webgl2Source,
+  webglExtensionsSource,
+  webglSource,
+  webgpuSource,
+} from './render.js'
 import { automationSource, permissionsSource, timingSource } from './runtime.js'
 import { shieldsSource } from './shields.js'
 import { storageQuotaSource, storageSource } from './storage.js'
-import { fontPreferencesSource, fontsSource } from './text.js'
+import { fontPreferencesSource, fontsSource, voicesSource } from './text.js'
 import { workerRealmSource } from './worker_realm.js'
 
 /**
@@ -79,13 +87,18 @@ const allBrowserSources: readonly Source[] = [
   permissionsSource,
   automationSource,
   webglSource,
+  webgl2Source,
   webglExtensionsSource,
+  webgpuSource,
   mediaDevicesSource,
+  codecsSource,
+  applePaySource,
   canvasSource,
   audioSource,
   audioLatencySource,
   fontsSource,
   fontPreferencesSource,
+  voicesSource,
 ]
 
 export const browserSources: readonly Source[] = allBrowserSources.map(guarded)

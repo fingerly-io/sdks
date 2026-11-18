@@ -30,15 +30,18 @@ export const SOURCE = {
   // Rendering stack.
   canvas: 'canvas',
   webgl: 'webgl',
+  webgl2: 'webgl2',
   webglExtensions: 'webgl_extensions',
+  webgpu: 'webgpu',
 
   // Audio stack.
   audio: 'audio',
   audioLatency: 'audio_latency',
 
-  // Text rendering.
+  // Text & speech synthesis.
   fonts: 'fonts',
   fontPreferences: 'font_preferences',
+  voices: 'voices',
 
   // Locale and time.
   intl: 'intl',
@@ -53,6 +56,8 @@ export const SOURCE = {
   hardware: 'hardware',
   touch: 'touch',
   mediaDevices: 'media_devices',
+  codecs: 'codecs',
+  applePay: 'apple_pay',
   network: 'network',
 
   // Behaviour of the runtime itself.
@@ -251,6 +256,18 @@ export interface WebGLSignal {
   shader_precision_hash?: string
 }
 
+export interface WebGL2Signal {
+  limits?: Record<string, number | number[]>
+  extensions?: string[]
+}
+
+export interface WebGPUSignal {
+  features?: string[]
+  limits?: Record<string, number>
+  vendor?: string
+  architecture?: string
+}
+
 export interface CanvasSignal {
   geometry?: string
   text?: string
@@ -264,6 +281,7 @@ export interface AudioSignal {
   unstable?: boolean
   state?: string
   base_latency?: number
+  max_channels?: number
 }
 
 export interface FontsSignal {
@@ -275,12 +293,30 @@ export interface FontPreferencesSignal {
   widths?: Record<string, number>
 }
 
+export interface VoicesSignal {
+  voices?: string[]
+  default_voice?: string
+}
+
+export interface CodecsSignal {
+  rtc_video?: string[]
+  hw_av1?: boolean
+  hw_hevc10?: boolean
+  hw_vp9_p2?: boolean
+}
+
+export interface ApplePaySignal {
+  can_make_payments?: boolean
+  max_version?: number
+}
+
 export interface IntlSignal {
   timezone?: string
   timezone_offset?: number
   locale?: string
   calendar?: string
   numbering_system?: string
+  hour_cycle?: string
   formatted?: string
 }
 

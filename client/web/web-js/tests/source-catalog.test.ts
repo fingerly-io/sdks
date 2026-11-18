@@ -28,13 +28,18 @@ describe('browser source catalogue (single-pass v3)', () => {
       SOURCE.workerRealm,
       SOURCE.shields,
       SOURCE.webgl,
+      SOURCE.webgl2,
+      SOURCE.webgpu,
       SOURCE.mediaDevices,
+      SOURCE.codecs,
+      SOURCE.applePay,
       SOURCE.languages,
       SOURCE.vendor,
       SOURCE.screenFrame,
       SOURCE.colorGamut,
       SOURCE.timezone,
       SOURCE.fontPreferences,
+      SOURCE.voices,
     ]) {
       expect(stages.get(id), id).toBe('collect')
     }

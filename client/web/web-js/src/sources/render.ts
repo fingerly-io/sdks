@@ -15,7 +15,9 @@ import {
   type CanvasSignal,
   type Source,
   type SourceContext,
+  type WebGL2Signal,
   type WebGLSignal,
+  type WebGPUSignal,
 } from '@fingerly/core'
 
 import { asBlockedIfRefused, attempt, compact, requireWindow } from '../util.js'
@@ -254,5 +256,123 @@ export const webglExtensionsSource: Source<string[]> = {
     } finally {
       attempt(() => gl.getExtension('WEBGL_lose_context')?.loseContext())
     }
+  },
+}
+
+const WEBGL2_LIMIT_NAMES = [
+  'MAX_3D_TEXTURE_SIZE',
+  'MAX_ARRAY_TEXTURE_LAYERS',
+  'MAX_COLOR_ATTACHMENTS',
+  'MAX_COMBINED_UNIFORM_BLOCKS',
+  'MAX_DRAW_BUFFERS',
+  'MAX_ELEMENTS_INDICES',
+  'MAX_ELEMENTS_VERTICES',
+  'MAX_FRAGMENT_INPUT_COMPONENTS',
+  'MAX_FRAGMENT_UNIFORM_BLOCKS',
+  'MAX_FRAGMENT_UNIFORM_COMPONENTS',
+  'MAX_PROGRAM_TEXEL_OFFSET',
+  'MAX_SAMPLES',
+  'MAX_TEXTURE_LOD_BIAS',
+  'MAX_TRANSFORM_FEEDBACK_INTERLEAVED_COMPONENTS',
+  'MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS',
+  'MAX_UNIFORM_BLOCK_SIZE',
+  'MAX_UNIFORM_BUFFER_BINDINGS',
+  'MAX_VARYING_COMPONENTS',
+  'MAX_VERTEX_OUTPUT_COMPONENTS',
+  'MAX_VERTEX_UNIFORM_BLOCKS',
+  'MAX_VERTEX_UNIFORM_COMPONENTS',
+] as const
+
+export const webgl2Source: Source<WebGL2Signal> = {
+  id: SOURCE.webgl2,
+  stage: 'collect',
+  timeoutMs: 200,
+  run() {
+    if (typeof document === 'undefined') throw new UnsupportedSignal('no-document')
+    const canvas = document.createElement('canvas')
+    const gl2 = canvas.getContext('webgl2')
+    if (!gl2) throw new UnsupportedSignal('no-webgl2-context')
+
+    try {
+      const limits: Record<string, number | number[]> = {}
+      for (const name of WEBGL2_LIMIT_NAMES) {
+        const constant = (gl2 as unknown as Record<string, number>)[name]
+        if (typeof constant !== 'number') continue
+        const value = attempt(() => gl2.getParameter(constant))
+        if (typeof value === 'number' && Number.isFinite(value)) {
+          limits[name] = value
+        } else if (ArrayBuffer.isView(value)) {
+          limits[name] = Array.from(value as unknown as number[])
+        }
+      }
+      const rawExt = attempt(() => gl2.getSupportedExtensions())
+      const extensions = Array.isArray(rawExt) ? [...rawExt].sort() : undefined
+
+      return compact<WebGL2Signal>({
+        limits: Object.keys(limits).length > 0 ? limits : undefined,
+        extensions: extensions && extensions.length > 0 ? extensions : undefined,
+      })
+    } finally {
+      attempt(() => gl2.getExtension('WEBGL_lose_context')?.loseContext())
+    }
+  },
+}
+
+interface GPUAdapterLike {
+  features?: Iterable<string>
+  limits?: Record<string, unknown>
+  info?: { vendor?: string; architecture?: string }
+}
+
+const WEBGPU_LIMIT_KEYS = [
+  'maxTextureDimension2D',
+  'maxTextureDimension3D',
+  'maxTextureArrayLayers',
+  'maxBindGroups',
+  'maxBufferSize',
+  'maxStorageBufferBindingSize',
+  'maxUniformBufferBindingSize',
+  'maxComputeWorkgroupStorageSize',
+  'maxComputeInvocationsPerWorkgroup',
+  'maxComputeWorkgroupSizeX',
+  'maxColorAttachments',
+  'maxColorAttachmentBytesPerSample',
+] as const
+
+export const webgpuSource: Source<WebGPUSignal> = {
+  id: SOURCE.webgpu,
+  stage: 'collect',
+  timeoutMs: 120,
+  async run() {
+    if (typeof navigator === 'undefined') throw new UnsupportedSignal('no-navigator')
+    const gpu = (
+      navigator as Navigator & {
+        gpu?: { requestAdapter?: () => Promise<GPUAdapterLike | null> }
+      }
+    ).gpu
+    if (typeof gpu?.requestAdapter !== 'function') {
+      throw new UnsupportedSignal('no-webgpu')
+    }
+
+    const adapter = await gpu.requestAdapter()
+    if (!adapter) throw new UnsupportedSignal('no-webgpu-adapter')
+
+    const features = attempt(() => (adapter.features ? [...adapter.features].sort() : undefined))
+    const limits: Record<string, number> = {}
+    if (adapter.limits) {
+      for (const key of WEBGPU_LIMIT_KEYS) {
+        const val = attempt(() => (adapter.limits as Record<string, unknown>)[key])
+        if (typeof val === 'number' && Number.isFinite(val)) {
+          limits[key] = val
+        }
+      }
+    }
+
+    return compact<WebGPUSignal>({
+      features: features && features.length > 0 ? features : undefined,
+      limits: Object.keys(limits).length > 0 ? limits : undefined,
+      vendor: attempt(() => adapter.info?.vendor) || undefined,
+      architecture: attempt(() => adapter.info?.architecture) || undefined,
+    })
   },
 }

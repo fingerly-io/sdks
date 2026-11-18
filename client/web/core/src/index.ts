@@ -41,9 +41,11 @@ export {
   statusOf,
   valueOf,
   wasBlocked,
+  type ApplePaySignal,
   type AudioSignal,
   type AutomationSignal,
   type CanvasSignal,
+  type CodecsSignal,
   type ColorGamutSignal,
   type EmbeddingSignal,
   type EngineSignal,
@@ -69,7 +71,10 @@ export {
   type TimingSignal,
   type TouchSignal,
   type VendorSignal,
+  type VoicesSignal,
+  type WebGL2Signal,
   type WebGLSignal,
+  type WebGPUSignal,
   type WorkerRealmSignal,
 } from './signals.js'
 

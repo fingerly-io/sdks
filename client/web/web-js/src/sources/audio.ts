@@ -137,6 +137,7 @@ export const audioLatencySource: Source<AudioSignal> = {
       return compact<AudioSignal>({
         base_latency: attempt(() => context.baseLatency),
         sample_rate: attempt(() => context.sampleRate),
+        max_channels: attempt(() => context.destination?.maxChannelCount),
         state: attempt(() => context.state),
       })
     } finally {

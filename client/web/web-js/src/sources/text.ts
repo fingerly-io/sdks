@@ -18,9 +18,11 @@ import {
   type FontPreferencesSignal,
   type FontsSignal,
   type Source,
+  type SourceContext,
+  type VoicesSignal,
 } from '@fingerly/core'
 
-import { compact } from '../util.js'
+import { attempt, compact } from '../util.js'
 
 /**
  * The fallbacks. A candidate is present if it measures differently from *all*
@@ -175,9 +177,103 @@ export const fontPreferencesSource: Source<FontPreferencesSignal> = {
         doc.body.appendChild(span)
         widths[name] = Math.round(span.getBoundingClientRect().width * 1000) / 1000
       }
+      // A 1px probe detects Safari's "Never use font sizes smaller than N"
+      // accessibility setting, which clamps small sizes while leaving 72px untouched.
+      const tiny = doc.createElement('span')
+      tiny.textContent = text
+      tiny.style.cssText = 'font:1px sans-serif;white-space:nowrap;position:absolute'
+      doc.body.appendChild(tiny)
+      widths.tiny = Math.round(tiny.getBoundingClientRect().width * 1000) / 1000
       return { widths }
     } finally {
       frame.remove()
     }
+  },
+}
+
+const MAX_VOICES = 256
+const VOICES_WAIT_MS = 200
+const VOICES_POLL_MS = 25
+
+function readVoiceSnapshot(synth: SpeechSynthesis): VoicesSignal {
+  const raw = attempt(() => synth.getVoices())
+  if (!Array.isArray(raw) || raw.length === 0) return {}
+
+  const entries = new Set<string>()
+  let defaultVoice: string | undefined
+
+  for (const voice of raw) {
+    if (entries.size >= MAX_VOICES) break
+    const name = attempt(() => voice.name?.trim())
+    const lang = attempt(() => voice.lang?.trim())
+    if (!name || !lang) continue
+    const local = attempt(() => voice.localService) === true ? '1' : '0'
+    entries.add(`${name}|${lang}|${local}`)
+    if (defaultVoice === undefined && attempt(() => voice.default) === true) {
+      defaultVoice = `${name}|${lang}`
+    }
+  }
+
+  if (entries.size === 0) return {}
+  return compact<VoicesSignal>({
+    voices: [...entries].sort(),
+    default_voice: defaultVoice,
+  })
+}
+
+/**
+ * OS speech synthesis voices (`speechSynthesis.getVoices()`).
+ *
+ * Identical across Safari Normal and Private Browsing unless Safari's
+ * `ScriptTrackingPrivacyCategory::Speech` withholds the list (`[]`), in which
+ * case an empty object is returned so the server treats the voice family as
+ * absent rather than hashing emptiness.
+ */
+export const voicesSource: Source<VoicesSignal> = {
+  id: SOURCE.voices,
+  stage: 'collect',
+  timeoutMs: 240,
+  async run(ctx: SourceContext) {
+    const synth = attempt(() =>
+      typeof speechSynthesis !== 'undefined' ? speechSynthesis : undefined,
+    )
+    if (!synth || typeof synth.getVoices !== 'function') {
+      throw new UnsupportedSignal('no-speech-synthesis')
+    }
+
+    const immediate = readVoiceSnapshot(synth)
+    if (immediate.voices && immediate.voices.length > 0) return immediate
+
+    const waitMs = Math.max(0, Math.min(VOICES_WAIT_MS, ctx?.budgetRemainingMs?.() ?? VOICES_WAIT_MS))
+    if (waitMs === 0) return {}
+
+    // WebKit frequently populates speechSynthesis.getVoices() asynchronously
+    // after the first call without dispatching `voiceschanged`, so poll lightly
+    // alongside the event listener and settle as soon as voices appear.
+    let polled: VoicesSignal = {}
+    await new Promise<void>((resolve) => {
+      let settled = false
+      let pollTimer: ReturnType<typeof setInterval> | undefined
+      const finish = () => {
+        if (settled) return
+        settled = true
+        if (pollTimer !== undefined) clearInterval(pollTimer)
+        clearTimeout(timer)
+        attempt(() => synth.removeEventListener?.('voiceschanged', finish))
+        resolve()
+      }
+      const timer = setTimeout(finish, waitMs)
+      pollTimer = setInterval(() => {
+        const snap = readVoiceSnapshot(synth)
+        if (snap.voices && snap.voices.length > 0) {
+          polled = snap
+          finish()
+        }
+      }, VOICES_POLL_MS)
+      ctx?.signal?.addEventListener('abort', finish, { once: true })
+      attempt(() => synth.addEventListener?.('voiceschanged', finish, { once: true }))
+    })
+
+    return polled.voices && polled.voices.length > 0 ? polled : readVoiceSnapshot(synth)
   },
 }
