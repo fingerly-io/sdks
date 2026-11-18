@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5.0
+
+- Opt-in session continuity: `load({ continuity: 'session' })` carries an
+  identified private window across the reports of one tab with a signed
+  session seal in `sessionStorage`. Exports `Continuity` and
+  `SEAL_STORAGE_KEY`.
+- A browser that has just started identifies more reliably: the slow answers
+  (speech voices, media codecs, the audio engine) are warmed as soon as
+  consent allows collection, and the sources a device needs to be
+  identifiable may run up to 400 ms past the default budget.
+- New sources that read the same in a private window: WebGL 2 and WebGPU
+  limits, speech voices, media codecs and Apple Pay availability.
+- With `incognitoDetection: 'extended'`, the storage durability probe runs at
+  its calibrated size and starts as soon as consent allows collection, so
+  `identify()` reads its answer instead of waiting for it.
+- Uses @fingerly/core 0.5.0 and @fingerly/types 0.5.0.
+
 ## 0.4.0
 
 - Exports the runtime constants `Signal`, `SuspectLevel`, `Confidence`,

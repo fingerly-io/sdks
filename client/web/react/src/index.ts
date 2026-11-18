@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * @fingerly/react - React bindings for the Fingerly SDK (`0.4.0`, single-pass `v: 3`).
+ * @fingerly/react - React bindings for the Fingerly SDK (`0.5.0`, single-pass `v: 3`).
  */
 
 export { FingerlyContext, FingerlyProvider } from './context.js'

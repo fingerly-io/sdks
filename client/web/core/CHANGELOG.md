@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.5.0
+
+- Opt-in session continuity: `continuity: 'session'` (the `Continuity`
+  constant, `'none'` by default) keeps the signed session seal of the last
+  answer in `sessionStorage` under `SEAL_STORAGE_KEY` and sends it with the
+  next report of the tab. The seal is read and written only while consent is
+  granted, and removed when consent is denied.
+- Identity-critical sources (`Source.identityCritical`) start first in their
+  stage and, under the default budget, may run up to `DEFAULT_GRACE_MS`
+  (400 ms) past it (`ScheduleOptions.graceMs`).
+- New signal types for the sources that read the same in a private window:
+  `WebGL2Signal`, `WebGPUSignal`, `VoicesSignal`, `CodecsSignal` and
+  `ApplePaySignal`.
+- Re-exports the `Continuity` constant of `@fingerly/types` 0.5.0.
+
 ## 0.4.0
 
 - Re-exports the runtime constants of `@fingerly/types` 0.4.0: `Signal`,

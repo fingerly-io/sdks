@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0
+
+- Uses @fingerly/web-js 0.5.0: opt-in session continuity, more reliable
+  identification on a browser that has just started, and the extended
+  incognito probe started as soon as consent allows collection.
+- Takes the `continuity` option (`'none'` by default, or `'session'`) and
+  re-exports the `Continuity` constant.
+
 ## 0.4.0
 
 - Uses @fingerly/web-js 0.4.0, which exports runtime constants for the
