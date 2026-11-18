@@ -1,8 +1,8 @@
 /**
  * Consent, as the client sees it.
  *
- * A customer whose legal basis for identifying a visitor is consent has to be
- * able to load the SDK early - in the bundle, before the banner has been
+ * A customer that needs the visitor's consent before reading the device
+ * (ePrivacy Art. 5(3)) has to be able to load the SDK early - in the bundle, before the banner has been
  * answered - and have it do nothing observable until their consent tool says
  * otherwise. The state and its vocabulary live in `@fingerly/types`, beside
  * the other shapes the mobile SDKs share; the error lives here, because it is
