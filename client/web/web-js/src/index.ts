@@ -11,6 +11,7 @@ import { FingerlyClient, type FingerlyClientOptions } from '@fingerly/core'
 import { detectEmbedding } from './embedding.js'
 import { inspectIntegrity } from './lies/index.js'
 import { browserSources } from './sources/index.js'
+import { startDurabilityProbe } from './sources/durability.js'
 import { warmSlowSources } from './warm.js'
 
 export interface FingerlyOptions
@@ -38,8 +39,15 @@ export function load(options: FingerlyOptions): Promise<FingerlyClient> {
     // not before: a page loaded with consent pending reads nothing until it
     // is granted.
     if (options.sources === undefined) {
-      if (client.consent === 'granted') warmSlowSources()
-      else client.onConsentChange((state) => state === 'granted' && warmSlowSources())
+      // The durability probe takes about a second, so a page that opted into
+      // extended incognito detection starts it here, once collection is
+      // permitted, and identify() reads its answer.
+      const warm = () => {
+        warmSlowSources()
+        if (options.incognitoDetection === 'extended') startDurabilityProbe()
+      }
+      if (client.consent === 'granted') warm()
+      else client.onConsentChange((state) => state === 'granted' && warm())
     }
     resolve(client)
   })

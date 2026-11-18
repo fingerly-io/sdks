@@ -1,10 +1,23 @@
 /**
  * Opt-in Chromium IndexedDB durability probe (`incognitoDetection === 'extended'`).
  *
- * Capped at `4` writes per block × `5` rounds (`<= 150ms`), run alongside the
- * other sources inside the single-pass `350ms` collection budget. The server
- * reads the median ratio of at least three rounds; fewer rounds are reported
- * as they are and decide nothing.
+ * An incognito profile keeps IndexedDB in memory, so a `durability: 'strict'`
+ * commit costs what a `'relaxed'` one does; on disk the strict commit pays for
+ * an fsync. The probe reports the median ratio of a strict block to a relaxed
+ * one, which is about 1 in an incognito window and well above 1.3 in an
+ * ordinary one (Chrome 157 on one Mac: 1.04 and 2.60). A ratio measures the
+ * storage, not the machine, so it holds on slow hardware.
+ *
+ * The parameters are the ones the probe was calibrated with: 16 KB writes,
+ * 15 per block, at least 7 and at most 15 rounds, a soft cap of one second.
+ * That is too long to run inside `identify()`, so the probe starts as soon as
+ * collection is permitted on a page that asked for it ([startDurabilityProbe])
+ * and the source reports its result when `identify()` runs. A page that calls
+ * `identify()` before the probe has finished reports nothing for it that
+ * time, and the next call carries it.
+ *
+ * In an ordinary window the probe writes a few megabytes to disk once per
+ * page, which is why it runs only for callers who opt in.
  */
 
 import {
@@ -18,9 +31,10 @@ import {
 import { compact, requireWindow } from '../util.js'
 
 const PAYLOAD_BYTES = 16_384
-const WRITES_PER_BLOCK = 4
-const MAX_ROUNDS = 5
-const CAP_MS = 150
+const WRITES_PER_BLOCK = 15
+const MAX_ROUNDS = 15
+const MIN_ROUNDS = 7
+const CAP_MS = 1000
 
 interface DurableTransactionOptions {
   durability?: 'default' | 'strict' | 'relaxed'
@@ -79,11 +93,76 @@ function timeBlock(
   })
 }
 
+async function measureDurability(): Promise<StorageDurabilitySignal> {
+  const name = `__fingerly_durability_${Math.random().toString(36).slice(2)}`
+  const payload = new Uint8Array(PAYLOAD_BYTES)
+  let db: IDBDatabase | undefined
+
+  try {
+    const started = performance.now()
+    db = await openDatabase(name)
+    if (!durabilityHonored(db)) return { honored: false }
+
+    const ratios: number[] = []
+    while (ratios.length < MAX_ROUNDS) {
+      if (ratios.length >= MIN_ROUNDS && performance.now() - started > CAP_MS) break
+      const relaxed = await timeBlock(db, 'relaxed', payload)
+      const strict = await timeBlock(db, 'strict', payload)
+      if (relaxed > 0) ratios.push(strict / relaxed)
+      else break
+    }
+
+    if (ratios.length === 0) return { honored: true, rounds: 0 }
+
+    ratios.sort((a, b) => a - b)
+    return compact<StorageDurabilitySignal>({
+      ratio: ratios[ratios.length >> 1],
+      rounds: ratios.length,
+      honored: true,
+    })
+  } finally {
+    try {
+      db?.close()
+      indexedDB.deleteDatabase(name)
+    } catch {
+      /* ignore cleanup errors in ephemeral profiles */
+    }
+  }
+}
+
+/** The page's one measurement, started early or by the first `identify()`. */
+let measurement: Promise<StorageDurabilitySignal> | undefined
+
+/** Whether this looks like a Chromium page, the only engine the probe serves. */
+function looksChromium(): boolean {
+  return typeof (globalThis as { chrome?: unknown }).chrome === 'object'
+}
+
+function measurementOnce(): Promise<StorageDurabilitySignal> {
+  if (!measurement) {
+    measurement = measureDurability()
+    // A failure is the source's to report, not an unhandled rejection.
+    measurement.catch(() => undefined)
+  }
+  return measurement
+}
+
+/**
+ * Starts the probe on a Chromium page whose caller opted into extended
+ * incognito detection. Reads only after consent.
+ */
+export function startDurabilityProbe(): void {
+  if (typeof indexedDB !== 'object' || indexedDB === null || !looksChromium()) return
+  void measurementOnce()
+}
+
 export const storageDurabilitySource: Source<StorageDurabilitySignal> = {
   id: SOURCE.storageDurability,
   stage: 'collect',
   optIn: 'extended-incognito',
-  timeoutMs: 180,
+  // How long identify() waits for a probe still running. Most pages call it
+  // well after the probe started and find the answer ready.
+  timeoutMs: 200,
   async run(ctx) {
     requireWindow()
     if (typeof indexedDB !== 'object' || indexedDB === null) {
@@ -94,48 +173,6 @@ export const storageDurabilitySource: Source<StorageDurabilitySignal> = {
     const observed = engine?.status === 'ok' ? (engine.value as EngineSignal).observed : undefined
     if (observed !== 'chromium') throw new UnsupportedSignal('not-chromium')
 
-    const name = `__fingerly_durability_${Math.random().toString(36).slice(2)}`
-    const payload = new Uint8Array(PAYLOAD_BYTES)
-    let db: IDBDatabase | undefined
-
-    try {
-      const started = performance.now()
-      const deadline = started + Math.min(CAP_MS, Math.max(0, ctx.budgetRemainingMs()))
-
-      db = await openDatabase(name)
-      if (!durabilityHonored(db)) return { honored: false }
-
-      const ratios: number[] = []
-      while (ratios.length < MAX_ROUNDS) {
-        if (ctx.signal.aborted || performance.now() >= deadline) break
-        if (ratios.length > 0) {
-          const perRound = (performance.now() - started) / ratios.length
-          if (performance.now() + perRound > deadline) break
-        }
-
-        const relaxed = await timeBlock(db, 'relaxed', payload)
-        if (ctx.signal.aborted || performance.now() >= deadline) break
-        const strict = await timeBlock(db, 'strict', payload)
-
-        if (relaxed > 0) ratios.push(strict / relaxed)
-        else break
-      }
-
-      if (ratios.length === 0) return { honored: true, rounds: 0 }
-
-      ratios.sort((a, b) => a - b)
-      return compact<StorageDurabilitySignal>({
-        ratio: ratios[ratios.length >> 1],
-        rounds: ratios.length,
-        honored: true,
-      })
-    } finally {
-      try {
-        db?.close()
-        indexedDB.deleteDatabase(name)
-      } catch {
-        /* ignore cleanup errors in ephemeral profiles */
-      }
-    }
+    return measurementOnce()
   },
 }

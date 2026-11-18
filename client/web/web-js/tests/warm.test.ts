@@ -100,3 +100,48 @@ describe('warming the slow sources', () => {
     expect(decodingInfo).not.toHaveBeenCalled()
   })
 })
+
+describe('the early durability probe', () => {
+  function stubIndexedDb() {
+    const open = vi.fn(() => ({}) as IDBOpenDBRequest)
+    vi.stubGlobal('indexedDB', { open, deleteDatabase: vi.fn() })
+    vi.stubGlobal('chrome', {})
+    return open
+  }
+
+  it('starts at load on a Chromium page that opted in and has consent', async () => {
+    stubSlowApis()
+    const open = stubIndexedDb()
+    const { load } = await freshSdk()
+
+    await load({ apiKey: 'fly_pk_development_test', consent: 'granted', incognitoDetection: 'extended' })
+
+    expect(open).toHaveBeenCalledTimes(1)
+  })
+
+  it('waits for consent', async () => {
+    stubSlowApis()
+    const open = stubIndexedDb()
+    const { load } = await freshSdk()
+
+    const fingerly = await load({
+      apiKey: 'fly_pk_development_test', consent: 'pending', incognitoDetection: 'extended',
+    })
+    expect(open).not.toHaveBeenCalled()
+    fingerly.setConsent('granted')
+    expect(open).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not run for a page that did not opt in, or off Chromium', async () => {
+    stubSlowApis()
+    const open = stubIndexedDb()
+    const { load } = await freshSdk()
+    await load({ apiKey: 'fly_pk_development_test', consent: 'granted' })
+    expect(open).not.toHaveBeenCalled()
+
+    vi.stubGlobal('chrome', undefined)
+    const again = await freshSdk()
+    await again.load({ apiKey: 'fly_pk_development_test', consent: 'granted', incognitoDetection: 'extended' })
+    expect(open).not.toHaveBeenCalled()
+  })
+})
