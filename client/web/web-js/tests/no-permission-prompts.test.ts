@@ -418,6 +418,10 @@ describe('full runtime pipeline prompt & Gecko RFP pixel-readback spies', () => 
         const client = await load({
           apiKey: 'fly_pk_development_test',
           consent: 'granted',
+          // The stepped clock advances on every read, so how much budget the
+          // sources use depends on how often they read it, not on time. This
+          // test is about prompts and readbacks, so the budget stays out of it.
+          schedule: { budgetMs: 600_000 },
           transport: {
             submit: async (submission: IdentifySubmission) => {
               submitted.push(submission)
