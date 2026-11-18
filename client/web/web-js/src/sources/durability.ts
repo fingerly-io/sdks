@@ -1,8 +1,10 @@
 /**
  * Opt-in Chromium IndexedDB durability probe (`incognitoDetection === 'extended'`).
  *
- * Capped at `4` writes per block × `3` rounds (`<= 60ms`) so opt-in callers
- * stay comfortably within the single-pass `350ms` collection budget.
+ * Capped at `4` writes per block × `5` rounds (`<= 150ms`), run alongside the
+ * other sources inside the single-pass `350ms` collection budget. The server
+ * reads the median ratio of at least three rounds; fewer rounds are reported
+ * as they are and decide nothing.
  */
 
 import {
@@ -17,8 +19,8 @@ import { compact, requireWindow } from '../util.js'
 
 const PAYLOAD_BYTES = 16_384
 const WRITES_PER_BLOCK = 4
-const MAX_ROUNDS = 3
-const CAP_MS = 60
+const MAX_ROUNDS = 5
+const CAP_MS = 150
 
 interface DurableTransactionOptions {
   durability?: 'default' | 'strict' | 'relaxed'
@@ -81,7 +83,7 @@ export const storageDurabilitySource: Source<StorageDurabilitySignal> = {
   id: SOURCE.storageDurability,
   stage: 'collect',
   optIn: 'extended-incognito',
-  timeoutMs: 80,
+  timeoutMs: 180,
   async run(ctx) {
     requireWindow()
     if (typeof indexedDB !== 'object' || indexedDB === null) {
