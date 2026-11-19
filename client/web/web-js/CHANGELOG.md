@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- A browser that has just started is no longer sent unidentifiable because an
+  identity-critical source (fonts, voices, audio, codecs and the rest) was
+  slower than usual: `identify()` waits for those answers, up to 2.5 s from
+  the start of collection. A Safari private window's profile clears the
+  server's floor by about a bit, so one missing answer was enough to leave it
+  without a visitor ID. A cold WebKit now waits for the voice list for as long
+  as that lasts, not 560 ms.
+
 ## 0.5.3
 
 - Recognises standard Brave Shields across normal windows, private windows and

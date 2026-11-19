@@ -17,7 +17,11 @@ export interface SourceContext {
    * Aborted when the source's own timeout expires or the whole budget does.
    */
   readonly signal: AbortSignal
-  /** Milliseconds left in the overall budget, at the moment of the call. */
+  /**
+   * Milliseconds left before this source is stopped, at the moment of the
+   * call: the budget, or for an identity-critical source the end of the grace
+   * period.
+   */
   budgetRemainingMs(): number
   /**
    * The outcome of a source from an earlier stage (`prerequisite` -> `collect`),
@@ -66,8 +70,8 @@ export interface Source<T = unknown> {
   /**
    * Whether a device may be left unidentifiable without this source's value.
    * Such a source starts first in its stage and, under the default budget,
-   * may run into the grace period after the budget ends (see
-   * `ScheduleOptions.graceMs`).
+   * may run into the grace period after the budget ends, where its own
+   * `timeoutMs` no longer stops it (see `ScheduleOptions.graceMs`).
    */
   readonly identityCritical?: boolean
   run(ctx: SourceContext): Promise<T> | T

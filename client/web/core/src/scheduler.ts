@@ -26,13 +26,16 @@ export const DEFAULT_BUDGET_MS = 350
 /**
  * How long past the default budget an identity-critical source may still run.
  *
- * A browser that has just started answers its first audio render, voice list
- * and decode queries slowly, and without them a phone has too few components
- * to be identified. A warm browser finishes the whole run in a few tens of
- * milliseconds and never reaches this; a cold or slow one waits at most this
- * much longer for an answer that decides whether it is recognised at all.
+ * A browser that has just started answers its first audio render, voice list,
+ * font measurement and decode queries slowly, and without them a device has
+ * too few components to be identified: a Safari private window's profile
+ * clears the server's floor by about a bit, so one missing family is enough.
+ * A warm browser finishes the whole run in a few tens of milliseconds and
+ * never reaches this. A cold or slow one waits for the answer instead of
+ * sending a report that cannot be recognised, up to 2.5 s from the start of
+ * the run, which bounds a source that never answers at all.
  */
-export const DEFAULT_GRACE_MS = 400
+export const DEFAULT_GRACE_MS = 2150
 
 export interface ScheduleOptions {
   /**
@@ -44,6 +47,11 @@ export interface ScheduleOptions {
    * Defaults to `DEFAULT_GRACE_MS` when `budgetMs` is left at its default and
    * to `0` when the caller sets `budgetMs`: a budget the caller chose is a
    * ceiling.
+   *
+   * With a grace period, an identity-critical source is not stopped by its own
+   * `timeoutMs`: it runs until it answers or the grace period ends. Its
+   * timeout describes how long it normally takes, and cutting it there is how
+   * a cold browser ended up unidentifiable.
    */
   graceMs?: number
   /** Applied to any source that does not set its own `timeoutMs`. */
@@ -136,7 +144,8 @@ function isEnabled(
 async function runSource(
   normalized: NormalizedSource,
   deadline: number,
-  defaultTimeoutMs: number,
+  /** For a source that sets no `timeoutMs`; `undefined` means only `deadline` stops it. */
+  defaultTimeoutMs: number | undefined,
   outerSignal: AbortSignal | undefined,
   completed: Readonly<Record<string, SignalOutcome>>,
   shared: Map<string, unknown>,
@@ -149,7 +158,10 @@ async function runSource(
   }
 
   const { source } = normalized
-  const slice = Math.min(normalized.timeoutMs ?? defaultTimeoutMs, budgetLeft)
+  const slice =
+    defaultTimeoutMs === undefined
+      ? budgetLeft
+      : Math.min(normalized.timeoutMs ?? defaultTimeoutMs, budgetLeft)
   const controller = new AbortController()
 
   const abortOuter = () => controller.abort(new TimedOutSignal('aborted'))
@@ -250,10 +262,12 @@ export async function collect(
           continue
         }
 
+        // Under a grace period an identity-critical source answers or meets the
+        // end of it; its own timeout no longer applies.
         const outcome = await runSource(
           source,
           deadlineOf(source),
-          defaultSourceTimeoutMs,
+          source.critical && graceMs > 0 ? undefined : defaultSourceTimeoutMs,
           signal,
           stageSnapshot,
           shared,

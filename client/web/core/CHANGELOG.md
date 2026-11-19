@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Under the default budget an identity-critical source is no longer stopped
+  by its own `timeoutMs`: it runs until it answers or the grace period ends,
+  and `DEFAULT_GRACE_MS` is now 2150 ms, so the run ends at most 2.5 s after
+  it starts. `SourceContext.budgetRemainingMs()` reports the time left until
+  that end. A warm browser still finishes in tens of milliseconds; a budget
+  the caller chose is still a ceiling, and keeps each source's own timeout.
+
 ## 0.5.3
 
 - Adds `geometry_high`, `text_high` and `text_metrics_width` to `CanvasSignal`,

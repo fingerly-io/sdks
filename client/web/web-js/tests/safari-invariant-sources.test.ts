@@ -45,6 +45,30 @@ describe('Safari mode-invariant collectors', () => {
     expect(withheld).toEqual({})
   })
 
+  it('voicesSource waits out a cold WebKit voice list for as long as the source has, and no longer elsewhere', async () => {
+    // A cold Safari fills the list about a second after the first ask,
+    // without firing voiceschanged.
+    const coldAt = Date.now() + 900
+    vi.stubGlobal('speechSynthesis', {
+      getVoices: () =>
+        Date.now() >= coldAt ? [{ name: 'Yelda', lang: 'tr-TR', localService: true, default: true }] : [],
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })
+    const ctxFor = (observed: string) =>
+      ({
+        signal: new AbortController().signal,
+        budgetRemainingMs: () => 2000,
+        completed: () => ({ status: 'ok', ms: 0, value: { observed } }),
+      }) as never
+
+    const blink = await voicesSource.run(ctxFor('blink'))
+    expect(blink).toEqual({})
+
+    const webkit = await voicesSource.run(ctxFor('webkit'))
+    expect(webkit).toEqual({ voices: ['Yelda|tr-TR|1'], default_voice: 'Yelda|tr-TR' })
+  })
+
   it('applePaySource requires secureContext, captures version ceiling, and converts InvalidAccessError to BlockedSignal', () => {
     const win = window as unknown as Record<string, unknown>
     const prevSecure = window.isSecureContext

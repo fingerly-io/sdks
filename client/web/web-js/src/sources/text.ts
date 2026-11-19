@@ -206,9 +206,14 @@ const MAX_VOICES = 256
 // waits out the rest of the default collection budget for the list.
 const VOICES_WAIT_MS = 200
 // WebKit only: the voice list is what a Safari private window is recognised
-// by, so a cold WebKit waits into the grace period for it. Other engines do
-// not need it, and some never have voices: waiting there would only be slow.
-const WEBKIT_VOICES_WAIT_MS = 560
+// by, so a cold WebKit waits for it for as long as the scheduler's grace
+// period lasts (the wait is capped by `budgetRemainingMs`, so this is only an
+// upper bound). Other engines do not need it, and some never have voices:
+// waiting there would only be slow.
+const WEBKIT_VOICES_WAIT_MS = 2500
+// Left of the source's time when the wait ends, so the source answers with
+// what it has rather than being stopped by the scheduler.
+const VOICES_WAIT_MARGIN_MS = 25
 
 function observedWebKit(ctx: SourceContext | undefined): boolean {
   const engine = attempt(() => ctx?.completed?.(SOURCE.engine))
@@ -275,7 +280,11 @@ export const voicesSource: Source<VoicesSignal> = {
     if (immediate.voices && immediate.voices.length > 0) return immediate
 
     const wantMs = observedWebKit(ctx) ? WEBKIT_VOICES_WAIT_MS : VOICES_WAIT_MS
-    const waitMs = Math.max(0, Math.min(wantMs, ctx?.budgetRemainingMs?.() ?? wantMs))
+    const left = ctx?.budgetRemainingMs?.()
+    const waitMs = Math.max(
+      0,
+      Math.min(wantMs, typeof left === 'number' ? left - VOICES_WAIT_MARGIN_MS : wantMs),
+    )
     if (waitMs === 0) return {}
 
     // WebKit frequently populates speechSynthesis.getVoices() asynchronously
