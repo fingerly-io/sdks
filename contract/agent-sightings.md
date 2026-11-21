@@ -95,6 +95,19 @@ constant, and the customer's code must treat it as "serve as usual" (fail open).
 
 In every case, requests keep being served, and `lookup` keeps answering from the cache or `unknown`.
 
+### 6.1 Details every SDK keeps alike
+
+- `Retry-After` of `0`, negative, or unreadable: pause at least 1 second. Unreadable is treated as
+  missing (scope `daily`: until the next UTC midnight; otherwise 60 seconds).
+- `ttl` is clamped to at most 86400 seconds; `ttl <= 0` is never stored.
+- A connection closed or reset, or a body cut short, once the request was fully written is treated
+  like a timeout after sending: the batch is dropped, because the server may have counted it. Only
+  where the SDK cannot tell whether the request was written is it kept and retried with backoff.
+- An empty or whitespace-only `Signature`, `Signature-Input` or `Signature-Agent` header is absent,
+  for the item and for the cache key.
+- `flush()` waits at most 6 seconds for a flush already in flight (its 5-second deadline and a
+  second of margin), and never raises.
+
 ## 7. Runtimes
 
 - Long-lived processes run one background flusher: a timer that does not keep the process alive on
