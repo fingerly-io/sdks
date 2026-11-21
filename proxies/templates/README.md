@@ -46,7 +46,10 @@ to the container.
   both `Origin` and validated `x-fingerly-sdk-platform` are absent (never
   synthesizing `x-fingerly-origin` from `Host` or the request URL).
 - Sends only `content-type`, `x-api-key`, `idempotency-key`, `user-agent`,
-  `sec-fetch-*` and `sec-ch-ua*` when present, and nothing else the visitor
+  `sec-fetch-*`, `sec-ch-ua*` and the Web Bot Auth `signature`,
+  `signature-input` and `signature-agent` when present (the code templates
+  drop one over 4096 bytes, which the API would ignore; nginx and Caddy send
+  it as is), and nothing else the visitor
   sent (no `Referer`, `Origin`, forwarding or application headers), and
   sets `x-fingerly-proxy-key`,
   `x-fingerly-client-ip` (from the platform's trusted source, never the

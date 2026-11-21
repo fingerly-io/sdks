@@ -96,8 +96,9 @@ process.
 
 Upstream, to `https://api.fingerly.io/api/v1/ingest` only, on headers built
 from scratch: `content-type`, `x-api-key`, `idempotency-key`, `user-agent`,
-`sec-fetch-*` and `sec-ch-ua*` when present, validated lowercase
-`x-fingerly-sdk-platform` when matched and `Origin` is absent (one channel
+`sec-fetch-*` and `sec-ch-ua*` when present, the Web Bot Auth `signature`,
+`signature-input` and `signature-agent` when present and at most 4096 bytes
+each, validated lowercase `x-fingerly-sdk-platform` when matched and `Origin` is absent (one channel
 header goes upstream, never both), and the `x-fingerly-*` headers the
 service sets itself (the proxy key, the client address, `x-fingerly-origin`
 only when `Origin` is present, `x-fingerly-host`, the user agent and

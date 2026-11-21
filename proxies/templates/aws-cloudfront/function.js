@@ -37,9 +37,18 @@ var FORWARDED_HEADERS = {
   'sec-ch-ua': true,
   'sec-ch-ua-mobile': true,
   'sec-ch-ua-platform': true,
+  'signature': true,
+  'signature-input': true,
+  'signature-agent': true,
   // Read only by CloudFront; the origin request policy never sends it on.
   'host': true
 };
+
+// Web Bot Auth headers an AI agent's browser signs the request with, kept
+// only when at most 4096 bytes. The API ignores a longer one, so it is
+// dropped here rather than refused.
+var SIGNATURE_HEADERS = ['signature', 'signature-input', 'signature-agent'];
+var MAX_SIGNATURE_HEADER_BYTES = 4096;
 
 // Exact lowercase platform names accepted on the native SDK channel.
 var SDK_PLATFORM = /^(ios|android|react-native|react-native-ios|react-native-android|flutter|flutter-ios|flutter-android|lynx-ios|lynx-android|capacitor|kotlin-multiplatform)$/;
@@ -133,6 +142,14 @@ async function handler(event) {
     if (!FORWARDED_HEADERS[name]) delete headers[name];
   }
   for (var cookie in request.cookies) delete request.cookies[cookie];
+  for (var i = 0; i < SIGNATURE_HEADERS.length; i++) {
+    var signed = headers[SIGNATURE_HEADERS[i]];
+    if (!signed) continue;
+    var values = signed.multiValue || [signed];
+    var size = 0;
+    for (var j = 0; j < values.length; j++) size += values[j].value.length;
+    if (size === 0 || size > MAX_SIGNATURE_HEADER_BYTES) delete headers[SIGNATURE_HEADERS[i]];
+  }
 
   // 3. Restore validated x-fingerly-sdk-platform only when Origin is absent:
   // one channel only, as on the API, which refuses a request carrying both.

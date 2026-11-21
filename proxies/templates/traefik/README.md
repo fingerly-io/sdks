@@ -109,7 +109,8 @@ forge it. This is the default, with no trusted IPs configured.
 
 The container sends, to `https://api.fingerly.io/api/v1/ingest` only:
 `content-type`, `x-api-key`, `idempotency-key`, `user-agent`, `sec-fetch-*` and
-`sec-ch-ua*` when present, validated lowercase `x-fingerly-sdk-platform` when
+`sec-ch-ua*` when present, the Web Bot Auth `signature`, `signature-input` and
+`signature-agent` when present and at most 4096 bytes each, validated lowercase `x-fingerly-sdk-platform` when
 matched and `Origin` is absent (one channel header goes upstream, never both),
 and the `x-fingerly-*` headers it sets itself (the proxy key, the
 client address, `x-fingerly-origin` only when `Origin` is present,

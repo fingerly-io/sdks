@@ -91,7 +91,9 @@ sets it; should it ever not be one IPv4 or IPv6 address, the function answers
 Upstream, to `https://api.fingerly.io/api/v1/ingest` only: an allowlist of
 the viewer's headers (`Content-Type`, `X-Api-Key`, `Idempotency-Key`,
 `User-Agent`, `Sec-Fetch-Site`, `Sec-Fetch-Mode`, `Sec-Fetch-Dest`,
-`Sec-CH-UA`, `Sec-CH-UA-Mobile`, `Sec-CH-UA-Platform`); the function deletes
+`Sec-CH-UA`, `Sec-CH-UA-Mobile`, `Sec-CH-UA-Platform`, and the Web Bot Auth
+`Signature`, `Signature-Input` and `Signature-Agent` when at most 4096 bytes
+each); the function deletes
 every other viewer header, so cookies, `Authorization`, `Referer`, forwarding
 headers, application headers and any visitor-sent `x-fingerly-*` header never
 reach the API. Validated lowercase `x-fingerly-sdk-platform` is restored when

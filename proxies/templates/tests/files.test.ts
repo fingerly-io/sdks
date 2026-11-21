@@ -267,11 +267,17 @@ describe('shipped files', () => {
     expect(nginx).toContain('proxy_set_header Sec-Fetch-Mode $http_sec_fetch_mode;')
     expect(nginx).toContain('proxy_set_header Sec-Fetch-Dest $http_sec_fetch_dest;')
     expect(nginx).toContain('proxy_set_header Sec-CH-UA-Platform $http_sec_ch_ua_platform;')
+    expect(nginx).toContain('proxy_set_header Signature $http_signature;')
+    expect(nginx).toContain('proxy_set_header Signature-Input $http_signature_input;')
+    expect(nginx).toContain('proxy_set_header Signature-Agent $http_signature_agent;')
     expect(nginx).not.toContain('$scheme://$http_host')
 
     const caddy = readFileSync(join(ROOT, 'caddy/Caddyfile'), 'utf8')
     expect(caddy).toContain('reverse_proxy https://api.fingerly.io {')
     expect(caddy).toContain('missing_origin')
+    expect(caddy).toContain('request_header @sentsignature Signature {http.vars.fingerly_signature}')
+    expect(caddy).toContain('request_header @sentsignatureinput Signature-Input {http.vars.fingerly_signature_input}')
+    expect(caddy).toContain('request_header @sentsignatureagent Signature-Agent {http.vars.fingerly_signature_agent}')
     expect(caddy).not.toContain('{scheme}://{hostport}')
 
     expect(readFileSync(join(ROOT, 'aws-cloudfront/cloudformation.yaml'), 'utf8')).toContain('DomainName: api.fingerly.io')
