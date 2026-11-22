@@ -12,7 +12,11 @@ import { detectEmbedding } from './embedding.js'
 import { inspectIntegrity } from './lies/index.js'
 import { browserSources } from './sources/index.js'
 import { startDurabilityProbe } from './sources/durability.js'
-import { startInteractionObserver } from './sources/interaction.js'
+import {
+  startInteractionObserver,
+  withdrawInteractionObserver,
+  type InteractionHold,
+} from './sources/interaction.js'
 import { warmSlowSources } from './warm.js'
 
 export interface FingerlyOptions
@@ -46,17 +50,19 @@ export function load(options: FingerlyOptions): Promise<FingerlyClient> {
       // of a page that opted into agent detection starts at the same moment,
       // and stops, dropping what it counted, when consent is withdrawn.
       const observe = options.agentDetection === 'interaction'
-      let releaseObserver: (() => void) | undefined
+      let hold: InteractionHold | undefined
       const warm = () => {
         warmSlowSources()
         if (options.incognitoDetection === 'extended') startDurabilityProbe()
-        if (observe && releaseObserver === undefined && !detectEmbedding()) {
-          releaseObserver = startInteractionObserver()
+        if (observe && hold?.current !== true && !detectEmbedding()) {
+          hold = startInteractionObserver(client)
         }
       }
       const cool = () => {
-        releaseObserver?.()
-        releaseObserver = undefined
+        if (!observe) return
+        hold?.release()
+        hold = undefined
+        withdrawInteractionObserver()
       }
       if (client.consent === 'granted') warm()
       client.onConsentChange((state) => (state === 'granted' ? warm() : cool()))

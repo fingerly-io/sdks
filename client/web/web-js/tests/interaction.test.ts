@@ -581,6 +581,69 @@ describe('the interaction source in the SDK', () => {
     expect(value).toMatchObject({ clicks_mouse: 0, clicks_touch: 1 })
   })
 
+  it('stops for every client when any of them sees consent withdrawn', async () => {
+    // A framework binding that rebuilt its store (new options, a remounted
+    // provider) leaves the old client granted; withdrawing consent on the new
+    // one must still stop the observer.
+    const { load } = await freshSdk()
+    const options = {
+      apiKey: 'fly_pk_development_test',
+      consent: 'granted' as const,
+      agentDetection: 'interaction' as const,
+      schedule: onlyInteraction,
+    }
+    const old = await load(options)
+    const current = await load(options)
+    const removed = vi.spyOn(document, 'removeEventListener')
+
+    current.setConsent('denied')
+    expect(removed.mock.calls.some(([type]) => type === 'pointermove')).toBe(true)
+    dispatch(click('mouse'))
+    expect((await old.collect()).sources).not.toHaveProperty(SOURCE.interaction)
+
+    // Granted again on either client: observed afresh, from zero.
+    const added = vi.spyOn(document, 'addEventListener')
+    current.setConsent('granted')
+    expect(added.mock.calls.some(([type]) => type === 'pointermove')).toBe(true)
+    dispatch(click('touch'))
+    const value = (await current.collect()).sources.interaction?.value as InteractionSignal
+    expect(value).toMatchObject({ clicks_mouse: 0, clicks_touch: 1 })
+
+    // A withdrawal on the old client is the visitor's answer too.
+    old.setConsent('pending')
+    expect(removed.mock.calls.filter(([type]) => type === 'pointermove')).toHaveLength(2)
+    expect((await current.collect()).sources).not.toHaveProperty(SOURCE.interaction)
+  })
+
+  it('stops once the client holding it is garbage collected', async () => {
+    const cleanups: { target: object; held: { release(): void } }[] = []
+    vi.stubGlobal(
+      'FinalizationRegistry',
+      class {
+        constructor(readonly cleanup: (held: { release(): void }) => void) {}
+        register(target: object, held: { release(): void }) {
+          cleanups.push({ target, held })
+        }
+        unregister() {
+          return true
+        }
+      },
+    )
+    const { load } = await freshSdk()
+    const fingerly = await load({
+      apiKey: 'fly_pk_development_test',
+      consent: 'granted',
+      agentDetection: 'interaction',
+      schedule: onlyInteraction,
+    })
+    expect(cleanups.map((entry) => entry.target)).toEqual([fingerly])
+
+    const removed = vi.spyOn(document, 'removeEventListener')
+    cleanups[0]?.held.release()
+    expect(removed.mock.calls.some(([type]) => type === 'pointermove')).toBe(true)
+    expect((await fingerly.collect()).sources).not.toHaveProperty(SOURCE.interaction)
+  })
+
   it('is left out of the report when the caller replaces the sources', async () => {
     const { browserSources, load } = await freshSdk()
     const fingerly = await load({

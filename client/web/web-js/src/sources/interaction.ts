@@ -445,27 +445,81 @@ function atCentre(event: MouseEvent): boolean {
 /** The page's one observer, shared by every client that asked for it. */
 let pageObserver: InteractionObserver | undefined
 let holders = 0
+/** Moves on at every withdrawal, so a hold taken before one releases nothing. */
+let generation = 0
+
+/** One client's claim on the page observer. */
+export interface InteractionHold {
+  /** Lets go; the observer stops when no current hold is left. */
+  release(): void
+  /** Whether the hold still keeps the observer running (no withdrawal since). */
+  readonly current: boolean
+}
+
+interface HoldRegistry {
+  register(target: object, held: InteractionHold, token: object): void
+  unregister(token: object): boolean
+}
+type HoldRegistryConstructor = new (cleanup: (held: InteractionHold) => void) => HoldRegistry
 
 /**
- * Starts the page's interaction observer for a client built with
- * `agentDetection: 'interaction'`, once collection is permitted. Returns the
- * release: the observer stops, and its counts are dropped, when the last
- * client holding it lets go (consent no longer granted).
+ * Lets go of a client's hold once the client itself is gone: a framework
+ * binding that rebuilds its client (new options, a remounted provider, an
+ * unmounted app) drops the old one without withdrawing its consent, and the
+ * observer must not keep running for a client nobody can read.
  */
-export function startInteractionObserver(): () => void {
+const abandoned = ((): HoldRegistry | undefined => {
+  // Not in the ES2020 lib this package builds against, and absent before
+  // Safari 14.1; without it a dropped client keeps its hold until a withdrawal.
+  const Registry = (globalThis as { FinalizationRegistry?: HoldRegistryConstructor })
+    .FinalizationRegistry
+  return typeof Registry === 'function'
+    ? new Registry((hold: InteractionHold) => hold.release())
+    : undefined
+})()
+
+/**
+ * Starts the page's interaction observer for `owner`, a client built with
+ * `agentDetection: 'interaction'`, once collection is permitted. The observer
+ * stops, and its counts are dropped, when the last client holding it lets go
+ * or is garbage collected, and at once when any of them sees consent
+ * withdrawn ([[withdrawInteractionObserver]]).
+ */
+export function startInteractionObserver(owner?: object): InteractionHold {
   pageObserver ??= new InteractionObserver()
   holders += 1
   if (!pageObserver.running) pageObserver.start()
+  const taken = generation
   let released = false
-  return () => {
-    if (released) return
-    released = true
-    holders -= 1
-    if (holders <= 0) {
-      holders = 0
-      pageObserver?.stop()
-    }
+  const hold: InteractionHold = {
+    get current() {
+      return !released && taken === generation
+    },
+    release() {
+      if (released) return
+      released = true
+      abandoned?.unregister(hold)
+      if (taken !== generation) return
+      holders -= 1
+      if (holders <= 0) {
+        holders = 0
+        pageObserver?.stop()
+      }
+    },
   }
+  if (owner !== undefined) abandoned?.register(owner, hold, hold)
+  return hold
+}
+
+/**
+ * Consent withdrawn: the visitor's answer, so it holds for the whole page.
+ * The observer stops and drops its counts whoever else still holds it, and
+ * only a client that sees consent granted again starts it afresh.
+ */
+export function withdrawInteractionObserver(): void {
+  generation += 1
+  holders = 0
+  pageObserver?.stop()
 }
 
 export const interactionSource: Source<InteractionSignal> = {

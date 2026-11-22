@@ -258,7 +258,9 @@ start again from zero.
 - It never keeps or sends a coordinate, a key, a field value, page text, an
   element identifier, a URL or the time of any event.
 - Nothing is observed before consent is `granted`. When consent becomes
-  `pending` or `denied`, the listeners are removed and the counts dropped.
+  `pending` or `denied` on any client on the page, the listeners are removed
+  and the counts dropped; a client that is dropped without a withdrawal lets
+  go once it is garbage collected.
 - Not observed inside an app's web view, or when `sources` is replaced.
 - Anything other than `'interaction'` throws a `TypeError`.
 
