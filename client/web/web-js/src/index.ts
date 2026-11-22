@@ -12,6 +12,7 @@ import { detectEmbedding } from './embedding.js'
 import { inspectIntegrity } from './lies/index.js'
 import { browserSources } from './sources/index.js'
 import { startDurabilityProbe } from './sources/durability.js'
+import { startInteractionObserver } from './sources/interaction.js'
 import { warmSlowSources } from './warm.js'
 
 export interface FingerlyOptions
@@ -41,13 +42,24 @@ export function load(options: FingerlyOptions): Promise<FingerlyClient> {
     if (options.sources === undefined) {
       // The durability probe takes about a second, so a page that opted into
       // extended incognito detection starts it here, once collection is
-      // permitted, and identify() reads its answer.
+      // permitted, and identify() reads its answer. The interaction observer
+      // of a page that opted into agent detection starts at the same moment,
+      // and stops, dropping what it counted, when consent is withdrawn.
+      const observe = options.agentDetection === 'interaction'
+      let releaseObserver: (() => void) | undefined
       const warm = () => {
         warmSlowSources()
         if (options.incognitoDetection === 'extended') startDurabilityProbe()
+        if (observe && releaseObserver === undefined && !detectEmbedding()) {
+          releaseObserver = startInteractionObserver()
+        }
+      }
+      const cool = () => {
+        releaseObserver?.()
+        releaseObserver = undefined
       }
       if (client.consent === 'granted') warm()
-      else client.onConsentChange((state) => state === 'granted' && warm())
+      client.onConsentChange((state) => (state === 'granted' ? warm() : cool()))
     }
     resolve(client)
   })
@@ -64,6 +76,7 @@ export type {
   IdentifySubmission,
   IdentifyTrigger,
   IntegrityReport,
+  InteractionSignal,
   Lie,
   LieKind,
   RiskSignal,
@@ -75,6 +88,7 @@ export type {
   WorkerRealmSignal,
 } from '@fingerly/core'
 export {
+  AgentDetection,
   Confidence,
   ConsentError,
   ConsentState,

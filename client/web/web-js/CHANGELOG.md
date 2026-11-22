@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- `agentDetection: 'interaction'` (off by default) observes how the page is
+  operated once consent is granted, and reports integer counts of input
+  events, each capped at 10,000, and the seconds they cover as the
+  `interaction` source. No coordinate, key, field value, page text, element
+  identifier, URL or event time is kept or sent. The listeners stop and the
+  counts are dropped when consent is withdrawn.
+
 - A browser that has just started is no longer sent unidentifiable because an
   identity-critical source (fonts, voices, audio, codecs and the rest) was
   slower than usual: `identify()` waits for those answers, up to 2.5 s from
