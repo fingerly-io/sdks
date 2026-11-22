@@ -243,6 +243,42 @@ describe('collect', () => {
     expect(Object.keys(extended.outcomes).sort()).toEqual(['always', 'durability'])
   })
 
+  it('gates agent-interaction sources behind agentDetection === "interaction"', async () => {
+    const sources: Source[] = [
+      source('always', () => 'a'),
+      source('interaction', () => 'i', { optIn: 'agent-interaction' }),
+    ]
+
+    const off = await collect(sources)
+    expect(Object.keys(off.outcomes)).toEqual(['always'])
+
+    const incognitoOnly = await collect(sources, { incognitoDetection: 'extended' })
+    expect(Object.keys(incognitoOnly.outcomes)).toEqual(['always'])
+
+    const on = await collect(sources, { agentDetection: 'interaction' })
+    expect(Object.keys(on.outcomes).sort()).toEqual(['always', 'interaction'])
+  })
+
+  it('leaves out a source that is not active, or whose check throws, without running it', async () => {
+    let runs = 0
+    const counted = () => {
+      runs += 1
+      return 'x'
+    }
+    const { outcomes } = await collect([
+      source('active', counted, { active: () => true }),
+      source('idle', counted, { active: () => false }),
+      source('broken', counted, {
+        active: () => {
+          throw new Error('boom')
+        },
+      }),
+    ])
+
+    expect(Object.keys(outcomes)).toEqual(['active'])
+    expect(runs).toBe(1)
+  })
+
   it('honours an external abort', async () => {
     const controller = new AbortController()
     controller.abort()

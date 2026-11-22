@@ -126,6 +126,61 @@ describe('FingerlyClient single-pass v3 collection', () => {
     expect(transport.submit).toHaveBeenCalledTimes(1)
   })
 
+  it('runs opt-in interaction sources only on a client built with agentDetection interaction', async () => {
+    const sources: Source[] = [
+      { id: SOURCE.storage, stage: 'collect', run: () => ({ quota: 100 }) },
+      {
+        id: SOURCE.interaction,
+        stage: 'collect',
+        optIn: 'agent-interaction',
+        run: () => ({ span_s: 3, keydowns: 2 }),
+      },
+    ]
+    const transport: Transport = {
+      submit: vi.fn(async () => ({ request_id: 'request-3', visitor_id: 'visitor-3', identifiable: true })),
+    }
+
+    const off = new FingerlyClient({ apiKey: 'public', consent: 'granted', sources, transport })
+    expect((await off.collect()).sources.interaction).toBeUndefined()
+
+    const on = new FingerlyClient({
+      apiKey: 'public',
+      consent: 'granted',
+      sources,
+      transport,
+      agentDetection: 'interaction',
+    })
+    expect((await on.collect()).sources.interaction).toMatchObject({
+      status: 'ok',
+      value: { span_s: 3, keydowns: 2 },
+    })
+    await on.identify()
+    const sent = vi.mocked(transport.submit).mock.calls[0]?.[0]
+    expect(sent?.signals.sources.interaction?.status).toBe('ok')
+
+    // Never inside an app's web view.
+    const embedded = new FingerlyClient({
+      apiKey: 'public',
+      consent: 'granted',
+      sources: sources.map((source) => ({ ...source, embeddedSafe: true })),
+      transport,
+      agentDetection: 'interaction',
+      embedding: () => 'android-webview',
+    })
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    expect((await embedded.collect()).sources.interaction).toBeUndefined()
+  })
+
+  it('refuses an agentDetection mode it does not know', () => {
+    expect(
+      () =>
+        new FingerlyClient({
+          apiKey: 'public',
+          agentDetection: 'everything' as unknown as 'interaction',
+        }),
+    ).toThrow(TypeError)
+  })
+
   it('maps Option B unidentifiable visitor_id "" to visitorId "", visitorIsNew false, visitorConfidence 0', async () => {
     const transport: Transport = {
       submit: vi.fn(async () => ({

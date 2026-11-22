@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Adds the `agentDetection` client option (`AgentDetection`, `'interaction'`),
+  the `interaction` source id, `InteractionSignal` and `INTERACTION_CAP`. A
+  source with `optIn: 'agent-interaction'` runs only on a client built with
+  `agentDetection: 'interaction'`, never inside an app's web view. A source
+  may set `active()`; one that answers `false` is left out of the report.
+
 - Under the default budget an identity-critical source is no longer stopped
   by its own `timeoutMs`: it runs until it answers or the grace period ends,
   and `DEFAULT_GRACE_MS` is now 2150 ms, so the run ends at most 2.5 s after

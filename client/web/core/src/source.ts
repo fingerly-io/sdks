@@ -9,7 +9,7 @@
 import type { SignalOutcome, SourceStage } from './types.js'
 
 export type { SourceStage }
-export type SourceOptIn = 'extended-incognito'
+export type SourceOptIn = 'extended-incognito' | 'agent-interaction'
 
 /** What a source is handed when it runs. */
 export interface SourceContext {
@@ -58,9 +58,18 @@ export interface Source<T = unknown> {
   readonly stage?: SourceStage
   /**
    * Opt-in gate. `'extended-incognito'` runs only when the caller explicitly
-   * passes `incognitoDetection: 'extended'`.
+   * passes `incognitoDetection: 'extended'`, `'agent-interaction'` only when
+   * the client was built with `agentDetection: 'interaction'`.
    */
   readonly optIn?: SourceOptIn
+  /**
+   * Whether the source has anything to report right now. A source that
+   * answers `false` (or throws) is left out of the report entirely, the way an
+   * opt-in source nobody asked for is, rather than reported as unsupported.
+   * For a source that reports what an observer started earlier saw, and that
+   * has nothing to say while the observer is not running.
+   */
+  readonly active?: () => boolean
   /**
    * Whether this source is non-identifying and permitted inside detected
    * embedded mobile WebViews under Apple DPLA §3.3.3(B).

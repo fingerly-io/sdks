@@ -16,7 +16,13 @@ import {
   type SourceContext,
 } from './source.js'
 import { own } from './own.js'
-import type { IncognitoDetection, SignalOutcome, SignalStatus, SourceStage } from './types.js'
+import type {
+  AgentDetection,
+  IncognitoDetection,
+  SignalOutcome,
+  SignalStatus,
+  SourceStage,
+} from './types.js'
 
 /** Wall-clock millisecond source for budget accounting (immune to `performance.now` clamping/mocks). */
 const clock: () => number = () => Date.now()
@@ -62,6 +68,8 @@ export interface ScheduleOptions {
   stages?: readonly SourceStage[]
   /** Controls opt-in extended incognito sources (`optIn: 'extended-incognito'`). */
   incognitoDetection?: IncognitoDetection
+  /** Controls opt-in interaction sources (`optIn: 'agent-interaction'`). */
+  agentDetection?: AgentDetection
   /** Optional predicate to select a source subset (e.g. DPLA-safe embedded subset). */
   filter?: (source: Source) => boolean
   /** Cancels the whole run from outside. */
@@ -106,6 +114,7 @@ interface NormalizedSource {
   readonly id: string
   readonly stage: SourceStage
   readonly optIn: Source['optIn']
+  readonly active: Source['active']
   readonly timeoutMs: number | undefined
   readonly critical: boolean
 }
@@ -113,13 +122,25 @@ interface NormalizedSource {
 function normalizeSource(source: Source): NormalizedSource {
   const stage = own(source, 'stage')
   const timeoutMs = own(source, 'timeoutMs')
+  const active = own(source, 'active')
   return {
     source,
     id: String(own(source, 'id')),
     stage: stage === 'prerequisite' ? 'prerequisite' : 'collect',
     optIn: own(source, 'optIn'),
+    active: typeof active === 'function' ? active : undefined,
     timeoutMs: typeof timeoutMs === 'number' && Number.isFinite(timeoutMs) ? timeoutMs : undefined,
     critical: own(source, 'identityCritical') === true,
+  }
+}
+
+/** Whether a source's `active` check lets it run; one that throws does not. */
+function isActive(source: NormalizedSource): boolean {
+  if (source.active === undefined) return true
+  try {
+    return source.active.call(source.source) === true
+  } catch {
+    return false
   }
 }
 
@@ -130,15 +151,19 @@ function finiteOr(value: unknown, fallback: number): number {
 function isEnabled(
   source: NormalizedSource,
   incognitoDetection: IncognitoDetection | undefined,
+  agentDetection: AgentDetection | undefined,
   filter: ((source: Source) => boolean) | undefined,
 ): boolean {
   if (source.optIn === 'extended-incognito' && incognitoDetection !== 'extended') {
     return false
   }
+  if (source.optIn === 'agent-interaction' && agentDetection !== 'interaction') {
+    return false
+  }
   if (typeof filter === 'function' && !filter(source.source)) {
     return false
   }
-  return true
+  return isActive(source)
 }
 
 async function runSource(
@@ -222,6 +247,7 @@ export async function collect(
   const ownStages = own(options, 'stages')
   const stages = Array.isArray(ownStages) ? ownStages : ALL_STAGES
   const incognitoDetection = own(options, 'incognitoDetection')
+  const agentDetection = own(options, 'agentDetection')
   const filter = own(options, 'filter')
   const signal = own(options, 'signal')
 
@@ -240,7 +266,8 @@ export async function collect(
     // Identity-critical sources first, so a slow stage does not leave them
     // waiting in the queue until the budget is gone. Stable otherwise.
     const enabled = normalized.filter(
-      (source) => source.stage === stage && isEnabled(source, incognitoDetection, filter),
+      (source) =>
+        source.stage === stage && isEnabled(source, incognitoDetection, agentDetection, filter),
     )
     const queue = [...enabled.filter((s) => s.critical), ...enabled.filter((s) => !s.critical)]
     if (queue.length === 0) continue
