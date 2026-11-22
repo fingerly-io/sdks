@@ -262,7 +262,7 @@ start again from zero.
   and the counts dropped; a client that is dropped without a withdrawal lets
   go once it is garbage collected.
 - Not observed inside an app's web view, or when `sources` is replaced.
-- Anything other than `'interaction'` throws a `TypeError`.
+- Anything other than `'interaction'` makes `load()` reject with a `TypeError`.
 
 ## Session continuity
 
