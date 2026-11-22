@@ -1,9 +1,10 @@
 /**
- * The Vue plugin, and the state every composable shares (`0.5.3`, single-pass `v: 3`).
+ * The Vue plugin, and the state every composable shares (`0.6.0`, single-pass `v: 3`).
  */
 
 import {
   load,
+  type AgentDetection,
   type ConsentState,
   type Continuity,
   type FingerlyClient,
@@ -58,6 +59,12 @@ export interface FingerlyVueOptions {
    * keeps one signed value in `sessionStorage` for the life of the tab.
    */
   continuity?: Continuity
+  /**
+   * Observe how the page is operated, for recognising an assistant that
+   * drives the visitor's own browser. Off by default; `'interaction'` turns it
+   * on. Counts input events only once consent is `granted`.
+   */
+  agentDetection?: AgentDetection
   /** Whether the visitor has agreed to be identified. Defaults to `pending`. */
   consent?: ConsentState
 }
@@ -173,6 +180,9 @@ export function createFingerly(options: FingerlyVueOptions): Plugin {
           ? {}
           : { incognitoDetection: options.incognitoDetection }),
         ...(options.continuity === undefined ? {} : { continuity: options.continuity }),
+        ...(options.agentDetection === undefined
+          ? {}
+          : { agentDetection: options.agentDetection }),
         consent: state.consent.value,
       }).then((fingerly) => {
         if (fingerly.consent !== state.consent.value) fingerly.setConsent(state.consent.value)
@@ -184,9 +194,20 @@ export function createFingerly(options: FingerlyVueOptions): Plugin {
     return clientPromise
   }
 
+  // A page that opted into agent detection counts from the moment consent is
+  // granted. The client is built lazily, and building it is what starts the
+  // observer, so it is built then rather than at the first identify(), whose
+  // report would otherwise cover nothing the visitor did before it.
+  const observeFrom = (granted: ConsentState): void => {
+    if (granted !== 'granted' || options.agentDetection !== 'interaction') return
+    if (typeof window === 'undefined') return
+    void client().catch(() => undefined)
+  }
+
   const setConsent: FingerlyContext['setConsent'] = (consent) => {
     loaded?.setConsent(consent)
     mirrorConsent(consent)
+    observeFrom(consent)
   }
 
   const identify: FingerlyContext['identify'] = (identifyOptions = {}) => {
@@ -254,6 +275,7 @@ export function createFingerly(options: FingerlyVueOptions): Plugin {
     install(app: App) {
       app.provide(fingerlyKey, context)
       app.config.globalProperties.$fingerly = context
+      observeFrom(state.consent.value)
     },
   }
 }

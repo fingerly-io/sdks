@@ -6,6 +6,7 @@
 
 import {
   FingerlyProvider as ReactFingerlyProvider,
+  type AgentDetection,
   type ConsentState,
   type Continuity,
   type IncognitoDetection,
@@ -38,6 +39,12 @@ export interface FingerlyNextProviderProps {
    * keeps one signed value in `sessionStorage` for the life of the tab.
    */
   continuity?: Continuity
+  /**
+   * Observe how the page is operated, for recognising an assistant that
+   * drives the visitor's own browser. Off by default; `'interaction'` turns it
+   * on. Counts input events only once consent is `granted`.
+   */
+  agentDetection?: AgentDetection
   /**
    * Whether the visitor has agreed to be identified. Defaults to `pending`.
    *
@@ -163,6 +170,7 @@ export function FingerlyProvider(props: FingerlyNextProviderProps): ReactNode {
       {...(props.fallbackToDefaultEndpoint === undefined ? {} : { fallbackToDefaultEndpoint: props.fallbackToDefaultEndpoint })}
       {...(props.incognitoDetection === undefined ? {} : { incognitoDetection: props.incognitoDetection })}
       {...(props.continuity === undefined ? {} : { continuity: props.continuity })}
+      {...(props.agentDetection === undefined ? {} : { agentDetection: props.agentDetection })}
       {...(props.consent === undefined ? {} : { consent: props.consent })}
     >
       {props.children}

@@ -68,6 +68,9 @@ export const SOURCE = {
   // Countermeasures the browser itself applies to everything above.
   shields: 'shields',
 
+  // How the page was operated (opt-in, `agentDetection: 'interaction'`).
+  interaction: 'interaction',
+
   // Embedded in-app WebView marker.
   embedding: 'embedding',
 } as const
@@ -363,6 +366,71 @@ export interface StorageDurabilitySignal {
   rounds?: number
   honored?: boolean
 }
+
+/**
+ * How the page was operated between the moment collection was permitted (or
+ * the previous report) and this report: the `interaction` source, schema 1
+ * (ADR 0029). Sent only when the page passed `agentDetection: 'interaction'`.
+ *
+ * Integer counts only, each capped at {@link INTERACTION_CAP}, and the span
+ * they cover. Never a coordinate, a key, a field value, page text, an element
+ * identifier, a URL or a per-event time. Every count is raw: the server
+ * decides what it means.
+ */
+export interface InteractionSignal {
+  /** Whole seconds observed. */
+  span_s: number
+  /** `click` events by `pointerType`: `mouse`. */
+  clicks_mouse: number
+  /** `click` events by `pointerType`: `touch`. */
+  clicks_touch: number
+  /** `click` events by `pointerType`: `pen`. */
+  clicks_pen: number
+  /** `click` events with no pointer type and `detail` 0 (keyboard activation). */
+  clicks_keyboard: number
+  /** Mouse clicks with no `pointermove` in the 500 ms before their `pointerdown`. */
+  clicks_without_move: number
+  /** Mouse clicks within 2 px of the target's centre on both axes. */
+  clicks_at_centre: number
+  /** `pointermove` events. */
+  pointer_moves: number
+  /** `keydown` events. */
+  keydowns: number
+  /** `keydown` events under 15 ms after the previous one. */
+  keys_fast: number
+  /** `input` events of type `insertText` with a `keydown` in the previous 50 ms. */
+  inputs_typed: number
+  /** `input` events of type `insertFromPaste`. */
+  inputs_pasted: number
+  /** `input` events of type `insertText` with no `keydown` in the previous 50 ms. */
+  inputs_inserted: number
+  /** `input` events of type `insertReplacementText`. */
+  inputs_replaced: number
+  /** Every other `input` event. */
+  inputs_other: number
+  /** `paste` events. */
+  pastes: number
+  /** `wheel` events. */
+  wheels: number
+  /** `wheel` events in pixels whose deltas are whole nonzero multiples of 100. */
+  wheels_round: number
+  /** `scroll` events with no wheel, touch or scroll key in the previous 300 ms. */
+  scrolls_unprompted: number
+  /** `click`, `keydown` and `input` events with `isTrusted` false. */
+  untrusted: number
+  /** Trusted `click` and `keydown` events while the document had no focus or was hidden. */
+  trusted_unfocused: number
+  /** Drops of `innerHeight` by 24 to 64 px with `innerWidth` unchanged. */
+  viewport_steps: number
+  /**
+   * Added elements positioned `fixed` or `absolute` with a z-index of at
+   * least 2147483000 and `pointer-events: none`.
+   */
+  overlays: number
+}
+
+/** The most any one [[InteractionSignal]] count reports. */
+export const INTERACTION_CAP = 10_000
 
 export interface HardwareSignal {
   hardware_concurrency?: number

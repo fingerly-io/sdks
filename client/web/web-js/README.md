@@ -19,7 +19,7 @@
 
 ## What is this
 
-`@fingerly/web-js` is the Fingerly browser SDK (`0.5.3`, wire contract `v: 3`).
+`@fingerly/web-js` is the Fingerly browser SDK (`0.6.0`, wire contract `v: 3`).
 It reads the signals a browser exposes in a single pass (`350 ms` by default),
 sends them to Fingerly in one request, and returns the server's answer: a
 `requestId`, a stable `visitorId`, whether the visitor is `identifiable`, and
@@ -28,7 +28,7 @@ returning visitors and spot automation, tampering and abuse.
 [Fingerly](https://fingerly.io) helps you protect signups, logins and payments
 from fraud and abuse.
 
-Using a framework? The `0.5.3` bindings wrap this package and install it for you:
+Using a framework? The `0.6.0` bindings wrap this package and install it for you:
 [`@fingerly/react`](https://www.npmjs.com/package/@fingerly/react),
 [`@fingerly/vue`](https://www.npmjs.com/package/@fingerly/vue),
 [`@fingerly/next`](https://www.npmjs.com/package/@fingerly/next),
@@ -113,6 +113,7 @@ report is high-risk.
 - [Decide on your backend](#decide-on-your-backend)
 - [Consent](#consent)
 - [Incognito detection](#incognito-detection)
+- [Agent detection](#agent-detection)
 - [Session continuity](#session-continuity)
 - [Serve it from your own site](#serve-it-from-your-own-site)
 - [Options](#options)
@@ -226,6 +227,43 @@ In any mode the SDK never triggers a browser permission prompt, picker or
 dialog, including in Firefox and Tor Browser with their strictest privacy
 settings.
 
+## Agent detection
+
+`agentDetection` is off by default. Set it to `'interaction'` on `load()` to
+let the SDK observe how the page is operated, for recognising an AI assistant
+that drives the visitor's own browser.
+
+```ts
+import { AgentDetection, load } from '@fingerly/web-js'
+
+const fingerly = await load({
+  apiKey: 'fly_pk_production_…',
+  agentDetection: AgentDetection.Interaction,
+})
+```
+
+Once consent is `granted`, the SDK keeps passive listeners on the page and
+counts input events until the next `identify()`: clicks by pointer type (and
+mouse clicks with no pointer movement before them, or on the exact centre of
+what they hit), pointer moves, key presses (and those under 15 ms apart),
+input events by kind (typed, pasted, inserted with no key press, replaced,
+other), pastes, wheel events (and those in round steps of 100 px), scrolls
+with no wheel, touch or scroll key before them, click, key and input events
+the browser marks as not from the user, clicks and key presses while the page
+has no focus, viewport height steps, and full-page overlays drawn on top of
+the page. The report carries only those counts, each capped at 10,000, and
+the number of seconds they cover, as the `interaction` source; the counts then
+start again from zero.
+
+- It never keeps or sends a coordinate, a key, a field value, page text, an
+  element identifier, a URL or the time of any event.
+- Nothing is observed before consent is `granted`. When consent becomes
+  `pending` or `denied` on any client on the page, the listeners are removed
+  and the counts dropped; a client that is dropped without a withdrawal lets
+  go once it is garbage collected.
+- Not observed inside an app's web view, or when `sources` is replaced.
+- Anything other than `'interaction'` makes `load()` reject with a `TypeError`.
+
 ## Session continuity
 
 `continuity` takes `'none'` or `'session'`. Set it on `load()`.
@@ -304,6 +342,7 @@ server SDK pages for
 | `fallbackToDefaultEndpoint` | `boolean` | Try the Fingerly API after your custom endpoints fail, as a last resort. |
 | `consent` | `'pending' \| 'granted' \| 'denied'` | Defaults to `pending`. |
 | `incognitoDetection` | `'standard' \| 'extended'` | Defaults to `standard`. See [Incognito detection](#incognito-detection). |
+| `agentDetection` | `'interaction'` | Off by default. See [Agent detection](#agent-detection). |
 | `continuity` | `'none' \| 'session'` | Defaults to `none`, which keeps nothing in the browser. See [Session continuity](#session-continuity). |
 | `apiVersion` | `string` | API route version. Defaults to `v1`. |
 | `schedule` | object | Overrides for the collection scheduler: `budgetMs` (default `350`), `defaultSourceTimeoutMs`, `concurrency`, `filter`, `signal`. |
@@ -369,13 +408,13 @@ not an error.
 
 ## Without a bundler
 
-The package (`0.5.3`) includes a minified IIFE script-tag build,
+The package (`0.6.0`) includes a minified IIFE script-tag build,
 `dist/browser.global.js`, which defines a global `Fingerly`. Serve that file
 from your own origin under a neutral path (for example copied from
-`@fingerly/web-js@0.5.3/dist/browser.global.js`) and load it before your code:
+`@fingerly/web-js@0.6.0/dist/browser.global.js`) and load it before your code:
 
 ```html
-<script src="/assets/app-core-0.5.3.js"></script>
+<script src="/assets/app-core-0.6.0.js"></script>
 <script>
   Fingerly.load({ apiKey: 'fly_pk_production_…', consent: 'granted' })
     .then((fingerly) => fingerly.identify({ tag: 'login' }))

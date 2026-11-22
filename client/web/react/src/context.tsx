@@ -22,6 +22,7 @@ export type FingerlyProviderProps = { children?: ReactNode } & (
       fallbackToDefaultEndpoint?: never
       incognitoDetection?: never
       continuity?: never
+      agentDetection?: never
       consent?: never
     }
 )
@@ -36,6 +37,7 @@ export function FingerlyProvider(props: FingerlyProviderProps): ReactNode {
     fallbackToDefaultEndpoint,
     incognitoDetection,
     continuity,
+    agentDetection,
     consent,
   } = props as FingerlyProviderProps & FingerlyReactOptions
 
@@ -50,10 +52,19 @@ export function FingerlyProvider(props: FingerlyProviderProps): ReactNode {
         ...(fallbackToDefaultEndpoint === undefined ? {} : { fallbackToDefaultEndpoint }),
         ...(incognitoDetection === undefined ? {} : { incognitoDetection }),
         ...(continuity === undefined ? {} : { continuity }),
+        ...(agentDetection === undefined ? {} : { agentDetection }),
         ...(consent === undefined ? {} : { consent }),
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- endpointsKey stands for endpoints
-    [apiKey, apiVersion, endpointsKey, fallbackToDefaultEndpoint, incognitoDetection, continuity],
+    [
+      apiKey,
+      apiVersion,
+      endpointsKey,
+      fallbackToDefaultEndpoint,
+      incognitoDetection,
+      continuity,
+      agentDetection,
+    ],
   )
 
   useEffect(() => {

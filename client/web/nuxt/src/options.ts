@@ -2,7 +2,7 @@
  * What the module is configured with, and what ends up in `runtimeConfig.public.fingerly`.
  */
 
-import type { ConsentState, Continuity, IncognitoDetection } from '@fingerly/vue'
+import type { AgentDetection, ConsentState, Continuity, IncognitoDetection } from '@fingerly/vue'
 
 /** The `fingerly` block in `nuxt.config.ts`. */
 export interface ModuleOptions {
@@ -24,6 +24,12 @@ export interface ModuleOptions {
    * keeps one signed value in `sessionStorage` for the life of the tab.
    */
   continuity?: Continuity
+  /**
+   * Observe how the page is operated, for recognising an assistant that
+   * drives the visitor's own browser. Off by default; `'interaction'` turns it
+   * on. Counts input events only once consent is `granted`.
+   */
+  agentDetection?: AgentDetection
   /**
    * Not a setting. Consent is the visitor's answer, so it is never read from
    * `nuxt.config.ts` or the environment: the client always starts `pending`
@@ -49,6 +55,8 @@ export interface FingerlyPublicConfig {
   fallbackToDefaultEndpoint: boolean
   incognitoDetection: IncognitoDetection
   continuity: Continuity
+  /** `''` (the default) leaves agent detection off. */
+  agentDetection: AgentDetection | ''
 }
 
 /** The build-time warning for a `consent` value in the module options. */
@@ -72,5 +80,6 @@ export function resolvePublicConfig(
     incognitoDetection:
       pick(existing?.incognitoDetection, options.incognitoDetection) ?? 'standard',
     continuity: pick(existing?.continuity, options.continuity) ?? 'none',
+    agentDetection: pick(existing?.agentDetection, options.agentDetection) ?? '',
   }
 }

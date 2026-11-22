@@ -147,6 +147,44 @@ describe('setupFingerly', () => {
 
     expect(loadMock).toHaveBeenCalledWith({ apiKey: 'fly_pk_development_test', continuity: 'session', consent: 'granted' })
   })
+
+  it('builds the client once consent is granted when agentDetection is on, so counting starts then', async () => {
+    // The observer starts when the client is built; built at the first
+    // identify(), that report would cover nothing the visitor did before it.
+    const page = render({ options: { apiKey: 'fly_pk_development_test', agentDetection: 'interaction' } })
+    await Promise.resolve()
+    expect(loadMock).not.toHaveBeenCalled()
+
+    page.state.setConsent('granted')
+    await Promise.resolve()
+    expect(loadMock).toHaveBeenCalledTimes(1)
+    expect(identifyMock).not.toHaveBeenCalled()
+  })
+
+  it('builds the client at setup for agentDetection with consent granted, and lazily without it', async () => {
+    render({ options: { apiKey: 'fly_pk_development_test', consent: 'granted', agentDetection: 'interaction' } })
+    await Promise.resolve()
+    expect(loadMock).toHaveBeenCalledTimes(1)
+
+    loadMock.mockClear()
+    const plain = render({ options: { apiKey: 'fly_pk_development_test' } })
+    plain.state.setConsent('granted')
+    await Promise.resolve()
+    expect(loadMock).not.toHaveBeenCalled()
+  })
+
+  it('passes agentDetection through to the client', async () => {
+    const page = render({
+      options: { apiKey: 'fly_pk_development_test', consent: 'granted', agentDetection: 'interaction' },
+    })
+    await page.state.identify()
+
+    expect(loadMock).toHaveBeenCalledWith({
+      apiKey: 'fly_pk_development_test',
+      agentDetection: 'interaction',
+      consent: 'granted',
+    })
+  })
 })
 
 describe('useFingerly', () => {

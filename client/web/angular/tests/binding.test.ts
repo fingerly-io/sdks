@@ -122,6 +122,48 @@ describe('provideFingerly', () => {
     expect(loadMock).toHaveBeenCalledWith({ apiKey: 'fly_pk_development_test', continuity: 'session', consent: 'granted' })
   })
 
+  it('builds the client once consent is granted when agentDetection is on, so counting starts then', async () => {
+    // The observer starts when the client is built; built at the first
+    // identify(), that report would cover nothing the visitor did before it.
+    application({ apiKey: 'fly_pk_development_test', agentDetection: 'interaction' })
+    const fingerly = TestBed.runInInjectionContext(() => injectFingerly())
+    await render()
+    expect(loadMock).not.toHaveBeenCalled()
+
+    fingerly.setConsent('granted')
+    await render()
+    expect(loadMock).toHaveBeenCalledTimes(1)
+    expect(identifyMock).not.toHaveBeenCalled()
+  })
+
+  it('builds the client at creation for agentDetection with consent granted', async () => {
+    application({ apiKey: 'fly_pk_development_test', consent: 'granted', agentDetection: 'interaction' })
+    TestBed.runInInjectionContext(() => injectFingerly())
+    await render()
+    expect(loadMock).toHaveBeenCalledTimes(1)
+    expect(identifyMock).not.toHaveBeenCalled()
+  })
+
+  it('keeps building the client lazily when agentDetection is off', async () => {
+    application({ apiKey: 'fly_pk_development_test' })
+    TestBed.runInInjectionContext(() => injectFingerly()).setConsent('granted')
+    await render()
+    expect(loadMock).not.toHaveBeenCalled()
+  })
+
+  it('passes agentDetection through to the client', async () => {
+    application({ apiKey: 'fly_pk_development_test', consent: 'granted', agentDetection: 'interaction' })
+    const fingerly = TestBed.runInInjectionContext(() => injectFingerly())
+
+    await fingerly.identify()
+
+    expect(loadMock).toHaveBeenCalledWith({
+      apiKey: 'fly_pk_development_test',
+      agentDetection: 'interaction',
+      consent: 'granted',
+    })
+  })
+
   it('builds the state once for the whole application', async () => {
     application({ apiKey: 'fly_pk_development_test', consent: 'granted' })
 

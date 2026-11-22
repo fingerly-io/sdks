@@ -4,6 +4,7 @@
 
 import {
   load,
+  type AgentDetection,
   type ConsentState,
   type Continuity,
   type FingerlyClient,
@@ -49,6 +50,12 @@ export interface FingerlyReactOptions {
    * keeps one signed value in `sessionStorage` for the life of the tab.
    */
   continuity?: Continuity
+  /**
+   * Observe how the page is operated, for recognising an assistant that
+   * drives the visitor's own browser. Off by default; `'interaction'` turns it
+   * on. Counts input events only once consent is `granted`.
+   */
+  agentDetection?: AgentDetection
   /**
    * Whether the visitor has agreed to be identified. Defaults to `pending`.
    */
@@ -173,6 +180,9 @@ export function createFingerlyStore(options: FingerlyReactOptions): FingerlyStor
           ? {}
           : { incognitoDetection: options.incognitoDetection }),
         ...(options.continuity === undefined ? {} : { continuity: options.continuity }),
+        ...(options.agentDetection === undefined
+          ? {}
+          : { agentDetection: options.agentDetection }),
         consent: state.consent,
       }).then((fingerly) => {
         if (fingerly.consent !== state.consent) fingerly.setConsent(state.consent)
@@ -184,9 +194,20 @@ export function createFingerlyStore(options: FingerlyReactOptions): FingerlyStor
     return clientPromise
   }
 
+  // A page that opted into agent detection counts from the moment consent is
+  // granted. The client is built lazily, and building it is what starts the
+  // observer, so it is built then rather than at the first identify(), whose
+  // report would otherwise cover nothing the visitor did before it.
+  const observeFrom = (granted: ConsentState): void => {
+    if (granted !== 'granted' || options.agentDetection !== 'interaction') return
+    if (typeof window === 'undefined') return
+    void client().catch(() => undefined)
+  }
+
   const setConsent: FingerlyStore['setConsent'] = (consent) => {
     loaded?.setConsent(consent)
     mirrorConsent(consent)
+    observeFrom(consent)
   }
 
   const identify: FingerlyStore['identify'] = (identifyOptions = {}) => {

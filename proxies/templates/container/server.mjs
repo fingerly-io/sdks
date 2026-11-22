@@ -1,5 +1,5 @@
 /**
- * Fingerly first-party proxy as a small Node service, version 1.0.0.
+ * Fingerly first-party proxy as a small Node service, version 1.1.0.
  *
  * Your front proxy or load balancer routes the one path the Fingerly dashboard
  * issued (such as `/k7x2qm4a`) to this service, which forwards single-pass
@@ -29,7 +29,7 @@ import { pathToFileURL } from 'node:url'
 /** This copy's kind, reported upstream, and its default client address source. */
 const PRESET = { kind: 'container', clientIpSource: 'remote' }
 
-const VERSION = '1.0.0'
+const VERSION = '1.1.0'
 const MAX_BODY_BYTES = 1_048_576
 const UPSTREAM_TIMEOUT_MS = 5_000
 /**
@@ -54,6 +54,14 @@ const FORWARDED_CLIENT_HEADERS = [
   'sec-ch-ua-mobile',
   'sec-ch-ua-platform',
 ]
+
+/**
+ * Web Bot Auth headers an AI agent's browser signs the request with, forwarded
+ * when present and at most 4096 bytes. The API ignores a longer one, so it is
+ * dropped here rather than refused.
+ */
+const SIGNATURE_HEADERS = ['signature', 'signature-input', 'signature-agent']
+const MAX_SIGNATURE_HEADER_BYTES = 4096
 
 /**
  * The response headers relayed to the caller, and nothing else. A blocker can
@@ -254,6 +262,11 @@ export function createRelay(env = process.env) {
       for (const name of FORWARDED_CLIENT_HEADERS) {
         const value = header(req, name)
         if (value) headers.set(name, value)
+      }
+      for (const name of SIGNATURE_HEADERS) {
+        const value = header(req, name)
+        // Node reads header values as latin1: one character per byte.
+        if (value && value.length <= MAX_SIGNATURE_HEADER_BYTES) headers.set(name, value)
       }
 
       // One deadline for the whole exchange, ended early if the visitor goes away.

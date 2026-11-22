@@ -80,6 +80,7 @@ sending one request:
 | Text | `fonts`, `font_preferences` | Installed standard font availability (inferred from text width measurements, never `queryLocalFonts()`) and default font family widths |
 | Device & locale | `hardware`, `touch`, `media_devices`, `network`, `intl`, `timezone` | Cores and memory, touch/pointer capability, the **count** of audio/video input and output devices via `enumerateDevices()` (never requesting access, so labels remain hidden), connection speed estimates, time zone, locale, calendar and number formatting |
 | Storage | `storage`, `storage_quota`, `storage_durability` | Whether `localStorage`, `sessionStorage`, IndexedDB, service workers and OPFS are available, storage quota/usage estimates, and—**strictly opt-in** when `incognitoDetection: 'extended'` is passed on Chromium `>= 152`—IndexedDB relaxed-vs-strict commit timing (`<= 60ms`) |
+| Interaction | `interaction` | **Strictly opt-in** when `agentDetection: 'interaction'` is passed: integer counts, each capped at 10,000, of the input events seen since consent or the previous report (clicks by pointer type, pointer moves, key presses, input events by kind, pastes, wheel and scroll events, untrusted events, viewport steps, full-page overlays) and the seconds they cover. No coordinate, key, field value, page text, element identifier, URL or event time |
 | Runtime & embedding | `timing`, `permissions`, `automation`, `embedding` | Clock resolution, read-only `Notification` and `geolocation` permission **states** (never prompting), WebDriver/CDP/Playwright/Selenium automation globals, and in-app WebView environment markers |
 
 Retired browser sources (`speech`, `sensors`, `battery`, and `dom_blockers`)
@@ -103,6 +104,12 @@ Things worth stating plainly for privacy reviewers:
 - **`storage_durability` is off by default.** Default `identify()` performs zero
   IndexedDB durability `fsync` rounds; `storage_durability` runs only when the
   integrator explicitly passes `incognitoDetection: 'extended'`.
+- **`interaction` is off by default.** Without `agentDetection: 'interaction'`
+  the SDK adds no input listener. With it, passive listeners start only once
+  consent is `granted`, keep counts in memory only, and are removed (and the
+  counts dropped) when consent is withdrawn. No keystroke timing profile is
+  kept: the one timing fact about keys is a count of presses under 15 ms
+  apart.
 - **Hardened and private browsers are not coerced into shared IDs.** Verified
   Brave Shields farbling and Tor Browser / Firefox RFP are never matched or
   minted: the server answers `identifiable: false`, `visitor_id: ""`,

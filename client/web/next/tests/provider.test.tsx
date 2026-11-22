@@ -131,6 +131,22 @@ describe('FingerlyProvider', () => {
     })
   })
 
+  it('passes agentDetection through to the client', async () => {
+    await act(async () => {
+      render(
+        <FingerlyProvider apiKey="pk_from_prop" consent="granted" agentDetection="interaction">
+          <FingerlyRequestId />
+        </FingerlyProvider>,
+      )
+    })
+
+    expect(loadMock).toHaveBeenCalledWith({
+      apiKey: 'pk_from_prop',
+      agentDetection: 'interaction',
+      consent: 'granted',
+    })
+  })
+
   it('says which variable to set when there is no key, and keeps the page up', async () => {
     delete environment.NEXT_PUBLIC_FINGERLY_API_KEY
     const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)

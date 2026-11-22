@@ -1,5 +1,5 @@
 /**
- * Fingerly first-party proxy as Vercel Routing Middleware, version 1.0.0.
+ * Fingerly first-party proxy as Vercel Routing Middleware, version 1.1.0.
  *
  * Put this file at the root of your project, beside package.json. It answers
  * the one path the Fingerly dashboard issued (`/k7x2qm4a` below; the matcher and
@@ -12,7 +12,7 @@ export const config = { matcher: '/k7x2qm4a' }
 
 /** The path the dashboard issued. Keep it equal to the matcher above. */
 const PATH = '/k7x2qm4a'
-const VERSION = '1.0.0'
+const VERSION = '1.1.0'
 const MAX_BODY_BYTES = 1_048_576
 const UPSTREAM_TIMEOUT_MS = 5_000
 /**
@@ -37,6 +37,15 @@ const FORWARDED_CLIENT_HEADERS = [
   'sec-ch-ua-mobile',
   'sec-ch-ua-platform',
 ]
+
+/**
+ * Web Bot Auth headers an AI agent's browser signs the request with, forwarded
+ * when present and at most 4096 bytes. The API ignores a longer one, so it is
+ * dropped here rather than refused.
+ */
+const SIGNATURE_HEADERS = ['signature', 'signature-input', 'signature-agent']
+const MAX_SIGNATURE_HEADER_BYTES = 4096
+const utf8 = new TextEncoder()
 
 /**
  * The response headers relayed to the caller, and nothing else. A blocker can
@@ -191,6 +200,12 @@ export default async function middleware(request: Request): Promise<Response> {
   for (const name of FORWARDED_CLIENT_HEADERS) {
     const value = request.headers.get(name)
     if (value) headers.set(name, value)
+  }
+  for (const name of SIGNATURE_HEADERS) {
+    const value = request.headers.get(name)
+    // Counted in UTF-8 bytes: never fewer than the bytes sent, whether the
+    // runtime reads header bytes as Latin-1 or as UTF-8.
+    if (value && utf8.encode(value).byteLength <= MAX_SIGNATURE_HEADER_BYTES) headers.set(name, value)
   }
 
   // One deadline for the whole exchange, ended early if the visitor goes away.

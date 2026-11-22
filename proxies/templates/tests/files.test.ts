@@ -243,14 +243,14 @@ describe('shipped files', () => {
     }
   })
 
-  it('all report version 1.0.0 under their own kind', () => {
+  it('all report version 1.1.0 under their own kind', () => {
     const version = (path: string) => readFileSync(join(ROOT, path), 'utf8')
-    expect(version('nginx/fingerly.conf')).toContain('"nginx/1.0.0"')
-    expect(version('caddy/Caddyfile')).toContain('caddy/1.0.0')
+    expect(version('nginx/fingerly.conf')).toContain('"nginx/1.1.0"')
+    expect(version('caddy/Caddyfile')).toContain('caddy/1.1.0')
     for (const path of ['vercel/middleware.ts', 'netlify/edge-functions/relay.ts', 'container/server.mjs', 'gcp-cloud-run/server.mjs', 'aws-cloudfront/function.js']) {
-      expect(version(path), path).toMatch(/VERSION = '1\.0\.0'/)
+      expect(version(path), path).toMatch(/VERSION = '1\.1\.0'/)
     }
-    expect(JSON.parse(version('gcp-cloud-run/package.json')).version).toBe('1.0.0')
+    expect(JSON.parse(version('gcp-cloud-run/package.json')).version).toBe('1.1.0')
   })
 
   it('keep the one upstream and enforce missing_origin without synthesizing x-fingerly-origin', () => {
@@ -267,11 +267,17 @@ describe('shipped files', () => {
     expect(nginx).toContain('proxy_set_header Sec-Fetch-Mode $http_sec_fetch_mode;')
     expect(nginx).toContain('proxy_set_header Sec-Fetch-Dest $http_sec_fetch_dest;')
     expect(nginx).toContain('proxy_set_header Sec-CH-UA-Platform $http_sec_ch_ua_platform;')
+    expect(nginx).toContain('proxy_set_header Signature $http_signature;')
+    expect(nginx).toContain('proxy_set_header Signature-Input $http_signature_input;')
+    expect(nginx).toContain('proxy_set_header Signature-Agent $http_signature_agent;')
     expect(nginx).not.toContain('$scheme://$http_host')
 
     const caddy = readFileSync(join(ROOT, 'caddy/Caddyfile'), 'utf8')
     expect(caddy).toContain('reverse_proxy https://api.fingerly.io {')
     expect(caddy).toContain('missing_origin')
+    expect(caddy).toContain('request_header @sentsignature Signature {http.vars.fingerly_signature}')
+    expect(caddy).toContain('request_header @sentsignatureinput Signature-Input {http.vars.fingerly_signature_input}')
+    expect(caddy).toContain('request_header @sentsignatureagent Signature-Agent {http.vars.fingerly_signature_agent}')
     expect(caddy).not.toContain('{scheme}://{hostport}')
 
     expect(readFileSync(join(ROOT, 'aws-cloudfront/cloudformation.yaml'), 'utf8')).toContain('DomainName: api.fingerly.io')

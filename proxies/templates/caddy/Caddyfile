@@ -1,4 +1,4 @@
-# Fingerly first-party proxy for Caddy, version 1.0.0.
+# Fingerly first-party proxy for Caddy, version 1.1.0.
 #
 # Put the `@fingerly` matcher and the `handle` block first in the site block
 # that serves your pages, so SDKs post to your own host.
@@ -75,7 +75,13 @@ www.example.com {
 				fingerly_sec_ch_ua {http.request.header.Sec-CH-UA}
 				fingerly_sec_ch_ua_mobile {http.request.header.Sec-CH-UA-Mobile}
 				fingerly_sec_ch_ua_platform {http.request.header.Sec-CH-UA-Platform}
+				fingerly_signature {http.request.header.Signature}
+				fingerly_signature_input {http.request.header.Signature-Input}
+				fingerly_signature_agent {http.request.header.Signature-Agent}
 				fingerly_origin {http.request.header.Origin}
+				# Kept aside too: removing every header below clears the request's
+				# host as well.
+				fingerly_host {http.request.hostport}
 			}
 			@sentcontenttype header_regexp Content-Type .
 			vars @sentcontenttype fingerly_content_type {http.request.header.Content-Type}
@@ -100,6 +106,13 @@ www.example.com {
 			request_header @sentsecchuamobile Sec-CH-UA-Mobile {http.vars.fingerly_sec_ch_ua_mobile}
 			@sentsecchuaplatform not vars {http.vars.fingerly_sec_ch_ua_platform} ""
 			request_header @sentsecchuaplatform Sec-CH-UA-Platform {http.vars.fingerly_sec_ch_ua_platform}
+			# Web Bot Auth: the signature an AI agent's browser adds to the request.
+			@sentsignature not vars {http.vars.fingerly_signature} ""
+			request_header @sentsignature Signature {http.vars.fingerly_signature}
+			@sentsignatureinput not vars {http.vars.fingerly_signature_input} ""
+			request_header @sentsignatureinput Signature-Input {http.vars.fingerly_signature_input}
+			@sentsignatureagent not vars {http.vars.fingerly_signature_agent} ""
+			request_header @sentsignatureagent Signature-Agent {http.vars.fingerly_signature_agent}
 			# X-Fingerly-Origin only when Origin was sent; never synthesized from Host.
 			@sentorigin not vars {http.vars.fingerly_origin} ""
 			request_header @sentorigin X-Fingerly-Origin {http.vars.fingerly_origin}
@@ -110,6 +123,10 @@ www.example.com {
 				vars {http.vars.fingerly_origin} ""
 			}
 			request_header @hasplatform X-Fingerly-SDK-Platform {http.vars.fingerly_platform}
+			# The host the visitor sent the request to, which the API checks a
+			# Web Bot Auth signature against.
+			@senthost not vars {http.vars.fingerly_host} ""
+			request_header @senthost X-Fingerly-Host {http.vars.fingerly_host}
 
 			# The one URL this block can reach. Single-pass browser and native SDK
 			# submissions go here as raw bytes.
@@ -127,8 +144,7 @@ www.example.com {
 				# (and trusted_proxies_strict) so this is the visitor, not the load
 				# balancer. See the README.
 				header_up X-Fingerly-Client-Ip {client_ip}
-				header_up X-Fingerly-Host {hostport}
-				header_up X-Fingerly-Proxy-Version caddy/1.0.0
+				header_up X-Fingerly-Proxy-Version caddy/1.1.0
 
 				transport http {
 					dial_timeout 5s

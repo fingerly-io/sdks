@@ -37,6 +37,7 @@ export {
 
 export {
   EMBEDDED_SAFE_SOURCES,
+  INTERACTION_CAP,
   outcomeOf,
   SOURCE,
   statusOf,
@@ -54,6 +55,7 @@ export {
   type FontsSignal,
   type FontPreferencesSignal,
   type HardwareSignal,
+  type InteractionSignal,
   type IntlSignal,
   type LanguagesSignal,
   type MathSignal,
@@ -87,6 +89,7 @@ export type { NativeIdentifyResult } from './types.js'
 export type * from './types.js'
 // Runtime constants for the closed string sets in the contract.
 export {
+  AgentDetection,
   Confidence,
   ConsentState,
   Continuity,

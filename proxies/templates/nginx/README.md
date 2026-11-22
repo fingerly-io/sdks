@@ -100,13 +100,14 @@ on the left are ignored. Never trust `0.0.0.0/0`.
 ## What it sends and relays
 
 Upstream, to `https://api.fingerly.io/api/v1/ingest` only: `content-type`,
-`x-api-key`, `idempotency-key`, `user-agent`, `sec-fetch-*` and `sec-ch-ua*`
-when present, plus the `x-fingerly-*` headers the proxy sets itself (the proxy
+`x-api-key`, `idempotency-key`, `user-agent`, `sec-fetch-*`, `sec-ch-ua*` and
+the Web Bot Auth `signature`, `signature-input` and `signature-agent` when
+present (as sent: the API ignores one over 4096 bytes), plus the `x-fingerly-*` headers the proxy sets itself (the proxy
 key, the client address, `x-fingerly-origin` from `Origin` when present,
 `x-fingerly-sdk-platform` when matched by the lowercase `$fingerly_platform`
 map, which keeps it only for a request without `Origin` (one channel header
 goes upstream, never both), `x-fingerly-host`, the user agent and
-`x-fingerly-proxy-version: nginx/1.0.0`, which the dashboard shows per proxy).
+`x-fingerly-proxy-version: nginx/1.1.0`, which the dashboard shows per proxy).
 Requests missing both `Origin` and a valid `X-Fingerly-SDK-Platform` answer
 `400` (`missing_origin`) without synthesizing `x-fingerly-origin`.
 `proxy_pass_request_headers off` makes this an allowlist: cookies,

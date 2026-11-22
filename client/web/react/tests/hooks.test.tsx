@@ -248,6 +248,66 @@ describe('FingerlyProvider', () => {
     })
   })
 
+  it('passes agentDetection through from the provider props', async () => {
+    const { latest, element } = probe(() => useIdentify())
+    render(
+      <FingerlyProvider apiKey="pk_observed" consent="granted" agentDetection="interaction">
+        {element}
+      </FingerlyProvider>,
+    )
+
+    await act(() => latest().identify())
+
+    expect(loadMock).toHaveBeenCalledWith({
+      apiKey: 'pk_observed',
+      agentDetection: 'interaction',
+      consent: 'granted',
+    })
+  })
+
+  it('builds the client once consent is granted when agentDetection is on, so counting starts then', async () => {
+    // The observer starts when the client is built; built at the first
+    // identify(), that report would cover nothing the visitor did before it.
+    const { latest, element } = probe(() => useFingerly())
+    render(
+      <FingerlyProvider apiKey="pk_observed" agentDetection="interaction">
+        {element}
+      </FingerlyProvider>,
+    )
+    await act(async () => {})
+    expect(loadMock).not.toHaveBeenCalled()
+
+    await act(async () => latest().setConsent('granted'))
+    expect(loadMock).toHaveBeenCalledTimes(1)
+    expect(loadMock).toHaveBeenCalledWith({
+      apiKey: 'pk_observed',
+      agentDetection: 'interaction',
+      consent: 'granted',
+    })
+    expect(identifyMock).not.toHaveBeenCalled()
+  })
+
+  it('builds the client at mount for agentDetection with consent granted as a prop, once under StrictMode', async () => {
+    const { element } = probe(() => useFingerly())
+    render(
+      <StrictMode>
+        <FingerlyProvider apiKey="pk_observed" consent="granted" agentDetection="interaction">
+          {element}
+        </FingerlyProvider>
+      </StrictMode>,
+    )
+    await act(async () => {})
+    expect(loadMock).toHaveBeenCalledTimes(1)
+    expect(identifyMock).not.toHaveBeenCalled()
+  })
+
+  it('keeps building the client lazily when agentDetection is off', async () => {
+    const { latest, element } = probe(() => useFingerly())
+    render(<FingerlyProvider apiKey="pk_observed">{element}</FingerlyProvider>)
+    await act(async () => latest().setConsent('granted'))
+    expect(loadMock).not.toHaveBeenCalled()
+  })
+
   it('keeps no signal report in the store and hands none back, on the first call or a reused one', async () => {
     const { createFingerlyStore } = await import('../src/store.js')
     const store = createFingerlyStore({ apiKey: 'pk_request', consent: 'granted' })

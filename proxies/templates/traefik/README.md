@@ -109,11 +109,12 @@ forge it. This is the default, with no trusted IPs configured.
 
 The container sends, to `https://api.fingerly.io/api/v1/ingest` only:
 `content-type`, `x-api-key`, `idempotency-key`, `user-agent`, `sec-fetch-*` and
-`sec-ch-ua*` when present, validated lowercase `x-fingerly-sdk-platform` when
+`sec-ch-ua*` when present, the Web Bot Auth `signature`, `signature-input` and
+`signature-agent` when present and at most 4096 bytes each, validated lowercase `x-fingerly-sdk-platform` when
 matched and `Origin` is absent (one channel header goes upstream, never both),
 and the `x-fingerly-*` headers it sets itself (the proxy key, the
 client address, `x-fingerly-origin` only when `Origin` is present,
-`x-fingerly-host`, the user agent and `x-fingerly-proxy-version: container/1.0.0`,
+`x-fingerly-host`, the user agent and `x-fingerly-proxy-version: container/1.1.0`,
 which the dashboard shows per proxy). Requests missing both `Origin` and a
 valid `x-fingerly-sdk-platform` answer `400` (`missing_origin`) without
 synthesizing `x-fingerly-origin`. Cookies, `Authorization` and any

@@ -1,5 +1,5 @@
 /**
- * @fingerly/svelte - Svelte 5 bindings for the Fingerly SDK (`0.5.3`, single-pass `v: 3`).
+ * @fingerly/svelte - Svelte 5 bindings for the Fingerly SDK (`0.6.0`, single-pass `v: 3`).
  */
 
 export { FINGERLY_KEY, setupFingerly, useFingerly } from './context.js'
@@ -11,6 +11,7 @@ export { useIdentify } from './hooks.svelte.js'
 export type { UseIdentifyOptions } from './hooks.svelte.js'
 
 export type {
+  AgentDetection,
   CollectOptions,
   Confidence,
   ConsentState,

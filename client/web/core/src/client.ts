@@ -20,6 +20,7 @@ import {
   type Transport,
 } from './transport.js'
 import type {
+  AgentDetection,
   ConsentState,
   Continuity,
   FreshnessTicket,
@@ -74,6 +75,30 @@ export interface FingerlyClientOptions {
   continuity?: Continuity
   /** Default incognito detection mode (`'standard'` or `'extended'`). */
   incognitoDetection?: IncognitoDetection
+  /**
+   * Observe how the page is operated, for recognising an assistant that
+   * drives the visitor's own browser. Off by default; `'interaction'` turns it
+   * on.
+   *
+   * Once consent is `granted`, the browser SDK keeps passive listeners on the
+   * page and counts, until the next `identify()` or `collect()`: clicks by
+   * pointer type (and mouse clicks with no pointer movement before them or
+   * landing on the target's exact centre), pointer moves, key presses (and
+   * those under 15 ms apart), input events by kind (typed, pasted, inserted
+   * without a key press, replaced, other), pastes, wheel events (and those
+   * in round steps of 100 px), scrolls with no wheel, touch or scroll key
+   * before them, untrusted click, key and input events, trusted ones while
+   * the page has no focus, viewport height steps, and full-page overlays
+   * added on top of the page. The report carries those counts, each capped at
+   * 10,000, and the number of seconds they cover (the `interaction` source),
+   * and the counts start again from zero.
+   *
+   * It never keeps or sends a coordinate, a key, a field value, page text, an
+   * element identifier, a URL or the time of any event. The listeners stop
+   * and the counts are dropped when consent is no longer `granted`. Not read
+   * inside an app's web view, and not when `sources` is replaced.
+   */
+  agentDetection?: AgentDetection
 }
 
 export interface CollectOptions {
@@ -95,6 +120,15 @@ function consentRefusal(error: unknown): unknown {
   return error instanceof TransportError && error.code === 'consent_required'
     ? new ConsentError('pending')
     : error
+}
+
+/** Refuses an `agentDetection` other than absent or `'interaction'`. */
+function assertAgentDetection(mode: unknown): asserts mode is AgentDetection | undefined {
+  if (mode !== undefined && mode !== 'interaction') {
+    throw new TypeError(
+      `Fingerly agentDetection must be 'interaction' or left out (received ${JSON.stringify(mode)})`,
+    )
+  }
 }
 
 function isSuspectLevel(value: unknown): value is SuspectLevel {
@@ -248,6 +282,7 @@ export class FingerlyClient {
     this.consentState = consent
     const continuity = options.continuity ?? 'none'
     assertContinuity(continuity)
+    assertAgentDetection(options.agentDetection)
     this.#options = options
     this.platform = options.platform ?? 'web'
     this.sealed = continuity === 'session' && this.platform === 'web'
@@ -524,10 +559,13 @@ export class FingerlyClient {
       : outerFilter
 
     const effectiveIncognito: IncognitoDetection = embeddedKind ? 'standard' : incognitoDetection
+    // Set on the client only: the observer it reads starts with the client.
+    const agentDetection = embeddedKind ? undefined : this.#options.agentDetection
 
     const schedule: ScheduleOptions = {
       ...ownCopy(this.#options.schedule),
       incognitoDetection: effectiveIncognito,
+      ...(agentDetection === undefined ? {} : { agentDetection }),
       ...(filter === undefined ? {} : { filter }),
       ...(signal === undefined ? {} : { signal }),
     }

@@ -26,8 +26,8 @@ driven by Turborepo) for the browser SDK and its framework bindings, and it moun
 SDKs, the server SDKs and the Cloudflare Worker proxy as git submodules, each of them an
 independently versioned repository.
 
-The browser SDK and its bindings are at `0.5.3`, the mobile SDKs and bridges are at `0.4.0`, every
-server SDK is at `0.4.1`, and the Cloudflare Worker proxy is at `0.3.0`. All of them speak wire
+The browser SDK and its bindings are at `0.6.0`, the mobile SDKs and bridges are at `0.4.0`, every
+server SDK is at `0.4.1`, and the Cloudflare Worker proxy is at `0.4.0`. All of them speak wire
 contract `v: 3`.
 
 Pick the SDK for your platform below. Each one has its own README and a page on
@@ -116,20 +116,20 @@ proxy in the dashboard, then deploy one of these. The guide is
 | Proxy | Version or kind | Source | Docs |
 | --- | --- | --- | --- |
 | Cloudflare Worker | ![release](https://img.shields.io/github/v/release/fingerly-io/cloudflare-worker-proxy?style=flat-square) | [`proxies/cloudflare`](https://github.com/fingerly-io/cloudflare-worker-proxy) (submodule) | [Cloudflare Worker](https://docs.fingerly.io/docs/sdks/cloudflare-worker) |
-| nginx | `nginx/1.0.0` | [`proxies/templates/nginx`](proxies/templates/nginx) | [nginx](https://docs.fingerly.io/docs/proxies/nginx) |
-| Caddy | `caddy/1.0.0` | [`proxies/templates/caddy`](proxies/templates/caddy) | [Caddy](https://docs.fingerly.io/docs/proxies/caddy) |
-| Vercel | `vercel/1.0.0` | [`proxies/templates/vercel`](proxies/templates/vercel) | [Vercel](https://docs.fingerly.io/docs/proxies/vercel) |
-| Netlify | `netlify/1.0.0` | [`proxies/templates/netlify`](proxies/templates/netlify) | [Netlify](https://docs.fingerly.io/docs/proxies/netlify) |
-| AWS CloudFront | `aws-cloudfront/1.0.0` | [`proxies/templates/aws-cloudfront`](proxies/templates/aws-cloudfront) | [AWS CloudFront](https://docs.fingerly.io/docs/proxies/aws-cloudfront) |
-| Google Cloud Run | `gcp-cloud-run/1.0.0` | [`proxies/templates/gcp-cloud-run`](proxies/templates/gcp-cloud-run) | [Google Cloud Run](https://docs.fingerly.io/docs/proxies/google-cloud-run) |
-| Container | `container/1.0.0` | [`proxies/templates/container`](proxies/templates/container) | [Container](https://docs.fingerly.io/docs/proxies/container) |
-| Traefik | `container/1.0.0` (it runs the container) | [`proxies/templates/traefik`](proxies/templates/traefik) | [Traefik](https://docs.fingerly.io/docs/proxies/traefik) |
+| nginx | `nginx/1.1.0` | [`proxies/templates/nginx`](proxies/templates/nginx) | [nginx](https://docs.fingerly.io/docs/proxies/nginx) |
+| Caddy | `caddy/1.1.0` | [`proxies/templates/caddy`](proxies/templates/caddy) | [Caddy](https://docs.fingerly.io/docs/proxies/caddy) |
+| Vercel | `vercel/1.1.0` | [`proxies/templates/vercel`](proxies/templates/vercel) | [Vercel](https://docs.fingerly.io/docs/proxies/vercel) |
+| Netlify | `netlify/1.1.0` | [`proxies/templates/netlify`](proxies/templates/netlify) | [Netlify](https://docs.fingerly.io/docs/proxies/netlify) |
+| AWS CloudFront | `aws-cloudfront/1.1.0` | [`proxies/templates/aws-cloudfront`](proxies/templates/aws-cloudfront) | [AWS CloudFront](https://docs.fingerly.io/docs/proxies/aws-cloudfront) |
+| Google Cloud Run | `gcp-cloud-run/1.1.0` | [`proxies/templates/gcp-cloud-run`](proxies/templates/gcp-cloud-run) | [Google Cloud Run](https://docs.fingerly.io/docs/proxies/google-cloud-run) |
+| Container | `container/1.1.0` | [`proxies/templates/container`](proxies/templates/container) | [Container](https://docs.fingerly.io/docs/proxies/container) |
+| Traefik | `container/1.1.0` (it runs the container) | [`proxies/templates/traefik`](proxies/templates/traefik) | [Traefik](https://docs.fingerly.io/docs/proxies/traefik) |
 
 The templates are not published to a registry: copy the files for your platform (see the
 [template README](proxies/templates/README.md)). The kind is what each template sends as
 `x-fingerly-proxy-version`, which the dashboard shows per proxy.
 
-The Cloudflare Worker (`0.3.0`) forwards the SDK's `POST /api/v1/ingest` submissions byte for
+The Cloudflare Worker (`0.4.0`) forwards the SDK's `POST /api/v1/ingest` submissions byte for
 byte, along with the edge's TLS metadata.
 
 ## Getting started

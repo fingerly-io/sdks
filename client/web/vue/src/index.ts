@@ -1,5 +1,5 @@
 /**
- * @fingerly/vue - Vue 3 bindings for the Fingerly SDK (`0.5.3`, single-pass `v: 3`).
+ * @fingerly/vue - Vue 3 bindings for the Fingerly SDK (`0.6.0`, single-pass `v: 3`).
  */
 
 export { createFingerly, fingerlyKey, FingerlyServerError } from './plugin.js'
@@ -16,6 +16,7 @@ export { useIdentify } from './useIdentify.js'
 export type { UseIdentifyOptions, UseIdentifyReturn } from './useIdentify.js'
 
 export type {
+  AgentDetection,
   CollectOptions,
   Confidence,
   ConsentState,

@@ -20,6 +20,7 @@ import {
 import { colorGamutSource, mediaQueriesSource, screenFrameSource, screenSource } from './display.js'
 import { storageDurabilitySource } from './durability.js'
 import { engineSource, errorsSource, mathSource } from './engine.js'
+import { interactionSource } from './interaction.js'
 import {
   languagesSource,
   navigatorSource,
@@ -83,6 +84,9 @@ const allBrowserSources: readonly Source[] = [
   storageQuotaSource,
   automationSource,
   applePaySource,
+  // Opt-in (`agentDetection: 'interaction'`): hands over what the observer
+  // started at consent has counted, so it costs nothing here.
+  interactionSource,
 
   // 2. Five async IPC critical sources dispatch background browser work across
   //    5 of the 6 worker slots and yield immediately, leaving slot 6 free.
@@ -120,6 +124,7 @@ export * from './device.js'
 export * from './display.js'
 export * from './durability.js'
 export * from './engine.js'
+export * from './interaction.js'
 export * from './navigator.js'
 export * from './render.js'
 export * from './runtime.js'

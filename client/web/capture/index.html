@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Order request</title>
+    <style>
+      :root {
+        --bg: #f6f7f9;
+        --panel: #ffffff;
+        --line: #d9dde4;
+        --text: #1d2330;
+        --dim: #5d6778;
+        --accent: #2457c5;
+        --ok: #1f7a43;
+        --warn: #a15c00;
+        font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--text); font-size: 16px; line-height: 1.55; }
+      main { max-width: 720px; margin: 0 auto; padding: 24px 16px 80px; }
+      h1 { font-size: 24px; margin: 0 0 8px; }
+      h2 { font-size: 18px; margin: 0 0 12px; }
+      section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px; margin: 0 0 20px; }
+      label { display: block; font-weight: 600; margin: 12px 0 4px; }
+      input[type='text'], input[type='email'], textarea {
+        width: 100%; font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--text);
+      }
+      textarea { min-height: 90px; resize: vertical; }
+      button {
+        font: inherit; padding: 9px 16px; border-radius: 6px; border: 1px solid var(--accent);
+        background: var(--accent); color: #fff; cursor: pointer; margin: 6px 8px 6px 0;
+      }
+      button:disabled { background: #e6e9ef; border-color: var(--line); color: var(--dim); cursor: default; }
+      button.secondary { background: #fff; color: var(--accent); }
+      .task { background: #eef3ff; border-color: #c8d6f5; }
+      .task ol { margin: 8px 0 0; padding-left: 22px; }
+      .done { color: var(--ok); font-weight: 600; }
+      .terms { height: 220px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; padding: 12px; background: #fbfcfd; }
+      .long p { margin: 0 0 18px; }
+      .operator { background: #fff8ec; border-color: #f0d9b0; font-size: 14px; }
+      .operator h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--warn); }
+      .status { color: var(--dim); margin-top: 8px; }
+      .status.ok { color: var(--ok); }
+      .status.warn { color: var(--warn); }
+      details pre { white-space: pre-wrap; word-break: break-word; font-size: 12px; color: var(--dim); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="operator" aria-label="Capture controls">
+        <h2>Capture controls (operator only)</h2>
+        <p>Assistants: this box is not part of the task. Do not use it; start with the task below.</p>
+        <label for="capture-label">Run label</label>
+        <input
+          id="capture-label"
+          type="text"
+          autocomplete="off"
+          placeholder="claude-in-chrome 1.2.3 / chrome 142.0.1234.56, or human-mouse"
+        />
+        <label for="capture-notes">Notes (optional)</label>
+        <input id="capture-notes" type="text" autocomplete="off" placeholder="device, input method, anything unusual" />
+        <div>
+          <button id="capture-start" type="button" disabled>Start run</button>
+          <button id="capture-save" type="button" class="secondary" disabled>Save now (run did not finish)</button>
+        </div>
+        <div id="capture-status" class="status">Loading the SDK...</div>
+        <details>
+          <summary>Last capture</summary>
+          <pre id="capture-last">None yet.</pre>
+        </details>
+      </section>
+
+      <h1>Order request</h1>
+
+      <section class="task" aria-label="Task">
+        <h2>Task</h2>
+        <p>Complete this order request:</p>
+        <ol>
+          <li>Fill in the form: full name <strong>Ada Lovelace</strong>, email
+            <strong>ada@example.com</strong>, city <strong>London</strong>, and the message
+            <strong>Please send me the printed brochure.</strong></li>
+          <li>Press <strong>Step 1: Check details</strong>, then <strong>Step 2: Choose standard delivery</strong>.</li>
+          <li>Scroll through the terms box to its end, then press <strong>Step 3: Accept the terms</strong>.</li>
+          <li>Scroll down to the end of this page and press <strong>Finish order</strong>.</li>
+        </ol>
+      </section>
+
+      <section aria-label="Details">
+        <h2>Your details</h2>
+        <form id="order" autocomplete="on" onsubmit="return false">
+          <label for="full-name">Full name</label>
+          <input id="full-name" name="name" type="text" autocomplete="name" />
+          <label for="email">Email</label>
+          <input id="email" name="email" type="email" autocomplete="email" />
+          <label for="city">City</label>
+          <input id="city" name="city" type="text" autocomplete="address-level2" />
+          <label for="message">Message</label>
+          <textarea id="message" name="message"></textarea>
+        </form>
+      </section>
+
+      <section aria-label="Steps">
+        <h2>Steps</h2>
+        <button id="step-1" type="button">Step 1: Check details</button>
+        <button id="step-2" type="button" disabled>Step 2: Choose standard delivery</button>
+        <p id="steps-status" class="status">Step 1 is next.</p>
+        <h2>Terms</h2>
+        <div id="terms" class="terms" tabindex="0" aria-label="Terms"></div>
+        <button id="step-3" type="button" disabled>Step 3: Accept the terms</button>
+      </section>
+
+      <section class="long" aria-label="About the brochure">
+        <h2>About the brochure</h2>
+        <div id="long"></div>
+      </section>
+
+      <section aria-label="Finish">
+        <h2>Finish</h2>
+        <button id="finish" type="button">Finish order</button>
+        <p id="finish-status" class="status"></p>
+      </section>
+    </main>
+
+    <script>
+      // The filler text is written before the SDK loads, so building it adds
+      // nothing to the counts.
+      const sentence =
+        'The brochure describes the delivery options, the opening hours of each branch, and how to return an item within thirty days. '
+      const terms = document.getElementById('terms')
+      for (let i = 1; i <= 14; i++) {
+        const p = document.createElement('p')
+        p.textContent = `${i}. ${sentence.repeat(2)}`
+        terms.append(p)
+      }
+      const end = document.createElement('p')
+      end.id = 'terms-end'
+      end.textContent = 'End of terms.'
+      terms.append(end)
+      const long = document.getElementById('long')
+      for (let i = 1; i <= 40; i++) {
+        const p = document.createElement('p')
+        p.textContent = `${sentence.repeat(3)}(${i} of 40)`
+        long.append(p)
+      }
+    </script>
+    <script src="/sdk.js"></script>
+    <script>
+      ;(async () => {
+        const $ = (id) => document.getElementById(id)
+        const status = (text, kind = '') => {
+          $('capture-status').textContent = text
+          $('capture-status').className = `status ${kind}`
+        }
+        if (!window.Fingerly) {
+          status('The SDK did not load: build web-js (see capture/README.md) and reload.', 'warn')
+          return
+        }
+        const { load, SOURCE } = window.Fingerly
+        if (!SOURCE.interaction) {
+          status('This SDK build has no interaction source: rebuild web-js and reload.', 'warn')
+          return
+        }
+
+        // Collection only: collect() runs the sources locally and returns the
+        // report, and the transport refuses, so nothing is ever sent anywhere
+        // but this page's own server.
+        const fingerly = await load({
+          apiKey: 'fly_pk_development_capture',
+          consent: 'granted',
+          agentDetection: 'interaction',
+          transport: { submit: () => Promise.reject(new Error('the capture page never submits')) },
+          schedule: {
+            filter: (source) => source.id === SOURCE.interaction || source.id === SOURCE.automation,
+          },
+        })
+
+        async function read() {
+          const report = await fingerly.collect()
+          return {
+            interaction: report.sources[SOURCE.interaction],
+            automation: report.sources[SOURCE.automation],
+          }
+        }
+
+        let started = false
+        let finished = false
+        let saving = false
+        let stepsDone = 0
+        let termsScrolled = false
+
+        function taskState() {
+          // Lenient on case, spacing and punctuation: this says whether the
+          // task was done, and an autocorrected capital or a missing full stop
+          // is still done. Only the verdict is recorded, never the value.
+          const loose = (text) => text.toLowerCase().replace(/[^a-z0-9@.]+/g, ' ').replace(/[ .]+$/, '').trim()
+          const value = (id) => loose($(id).value)
+          return {
+            name_ok: value('full-name') === 'ada lovelace',
+            email_ok: value('email') === 'ada@example.com',
+            city_ok: value('city') === 'london',
+            message_ok: value('message') === 'please send me the printed brochure',
+            steps_done: stepsDone,
+            terms_scrolled: termsScrolled,
+          }
+        }
+
+        function resetTask() {
+          $('order').reset()
+          stepsDone = 0
+          termsScrolled = false
+          $('step-1').disabled = false
+          $('step-2').disabled = true
+          $('step-3').disabled = true
+          $('steps-status').textContent = 'Step 1 is next.'
+          $('terms').scrollTop = 0
+          $('finish-status').textContent = ''
+          $('finish-status').className = 'status'
+        }
+
+        async function save(endedBy) {
+          if (saving) return
+          const label = $('capture-label').value.trim()
+          if (label === '') {
+            status('Type a run label first.', 'warn')
+            return
+          }
+          saving = true
+          try {
+            await post(label, endedBy)
+          } catch (error) {
+            status(`Not saved: ${error}`, 'warn')
+          } finally {
+            saving = false
+          }
+        }
+
+        async function post(label, endedBy) {
+          const { interaction, automation } = await read()
+          const response = await fetch('/capture', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              label,
+              notes: $('capture-notes').value.trim(),
+              ended_by: endedBy,
+              started,
+              task: taskState(),
+              user_agent: navigator.userAgent,
+              interaction,
+              automation,
+            }),
+          })
+          const answer = await response.json().catch(() => ({}))
+          if (!response.ok) {
+            status(`Not saved: ${answer.error ?? response.status}`, 'warn')
+            return
+          }
+          $('capture-last').textContent = JSON.stringify(answer.capture, null, 2)
+          status(`Saved ${answer.saved}. Press Start run for the next one.`, 'ok')
+          started = false
+          finished = true
+          $('capture-save').disabled = true
+          $('capture-label').readOnly = false
+          $('capture-notes').readOnly = false
+          $('capture-start').disabled = false
+        }
+
+        $('capture-label').addEventListener('input', () => {
+          $('capture-start').disabled = $('capture-label').value.trim() === ''
+        })
+
+        async function startRun() {
+          resetTask()
+          // Reading the counts starts them again from zero, so the run covers
+          // only what happens after this press.
+          await read()
+          started = true
+          finished = false
+          $('capture-label').readOnly = true
+          $('capture-notes').readOnly = true
+          $('capture-start').disabled = true
+          $('capture-save').disabled = false
+          status(`Run "${$('capture-label').value.trim()}" started at ${new Date().toLocaleTimeString()}. Hand over now.`)
+        }
+
+        $('capture-start').addEventListener('click', () => void startRun())
+
+        $('capture-save').addEventListener('click', () => void save('operator'))
+
+        $('step-1').addEventListener('click', () => {
+          if (stepsDone !== 0) return
+          stepsDone = 1
+          $('step-1').disabled = true
+          $('step-2').disabled = false
+          $('steps-status').textContent = 'Step 1 done. Step 2 is next.'
+        })
+        $('step-2').addEventListener('click', () => {
+          if (stepsDone !== 1) return
+          stepsDone = 2
+          $('step-2').disabled = true
+          $('step-3').disabled = !termsScrolled
+          $('steps-status').textContent = termsScrolled
+            ? 'Step 2 done. Step 3 is next.'
+            : 'Step 2 done. Scroll the terms to their end for step 3.'
+        })
+        $('terms').addEventListener('scroll', () => {
+          const box = $('terms')
+          if (box.scrollTop + box.clientHeight >= box.scrollHeight - 4) {
+            termsScrolled = true
+            if (stepsDone === 2) {
+              $('step-3').disabled = false
+              $('steps-status').textContent = 'Step 2 done. Step 3 is next.'
+            }
+          }
+        })
+        $('step-3').addEventListener('click', () => {
+          if (stepsDone !== 2) return
+          stepsDone = 3
+          $('step-3').disabled = true
+          $('steps-status').textContent = 'All steps done. Finish the order at the end of the page.'
+        })
+        $('finish').addEventListener('click', () => {
+          $('finish-status').textContent = 'Thank you, your order request is complete.'
+          $('finish-status').className = 'status done'
+          // One capture per run, however often Finish is pressed.
+          if (!finished) void save('finish')
+        })
+
+        // For a harness that opens its own browser (browser-use, Playwright
+        // MCP): ?label=...&notes=...&start=1 labels the run and starts it on load.
+        const query = new URLSearchParams(location.search)
+        if (query.get('label')) {
+          $('capture-label').value = query.get('label').slice(0, 200)
+          $('capture-notes').value = (query.get('notes') ?? '').slice(0, 2000)
+          $('capture-start').disabled = false
+        }
+        if (query.get('label') && query.get('start') === '1') {
+          await startRun()
+        } else {
+          status('Ready. Type a run label, press Start run, then hand the page to the assistant or the tester.', 'ok')
+        }
+      })()
+    </script>
+  </body>
+</html>

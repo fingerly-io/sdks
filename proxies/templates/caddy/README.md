@@ -89,7 +89,9 @@ visitor can write anything.
 Upstream, to `https://api.fingerly.io/api/v1/ingest` only: an allowlist of
 the visitor's headers (`Content-Type`, `X-Api-Key`, `Idempotency-Key`,
 `User-Agent`, `Sec-Fetch-Site`, `Sec-Fetch-Mode`, `Sec-Fetch-Dest`,
-`Sec-CH-UA`, `Sec-CH-UA-Mobile`, `Sec-CH-UA-Platform`, each only when sent).
+`Sec-CH-UA`, `Sec-CH-UA-Mobile`, `Sec-CH-UA-Platform` and the Web Bot Auth
+`Signature`, `Signature-Input` and `Signature-Agent`, each only when sent; the
+signature headers go as sent, and the API ignores one over 4096 bytes).
 Every other incoming header is removed first, so cookies, `Authorization`,
 `Referer`, forwarding headers, application headers and any visitor-sent
 `X-Fingerly-*` header never reach the API, and Caddy's own
@@ -98,7 +100,7 @@ Every other incoming header is removed first, so cookies, `Authorization`,
 (one channel header goes upstream, never both), plus the `x-fingerly-*`
 headers the proxy sets itself (the proxy key, the client address,
 `X-Fingerly-Origin` only when `Origin` was sent, `X-Fingerly-Host`, the user
-agent and `x-fingerly-proxy-version: caddy/1.0.0`, which the dashboard shows
+agent and `x-fingerly-proxy-version: caddy/1.1.0`, which the dashboard shows
 per proxy). Requests missing both `Origin` and a valid
 `X-Fingerly-SDK-Platform` answer `400` (`missing_origin`) without synthesizing
 `X-Fingerly-Origin`. A request whose `X-Api-Key` is missing or is not a

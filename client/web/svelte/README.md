@@ -343,6 +343,7 @@ language on the [server SDK pages](https://docs.fingerly.io/docs/sdks).
 | `consent` | `'pending' \| 'granted' \| 'denied'` | Defaults to `pending`. |
 | `incognitoDetection` | `'standard' \| 'extended'` | Defaults to `standard` (see below). |
 | `continuity` | `'none' \| 'session'` | Defaults to `none`, which keeps nothing in the browser; `session` keeps one signed value in `sessionStorage` for the life of the tab, so an identified private window is carried across its reports. |
+| `agentDetection` | `'interaction'` | Off by default. `'interaction'` counts how the page is operated once consent is `granted` (clicks by pointer type, key presses, input events by kind and the like, never a coordinate, key, field value or page text), for recognising an assistant that drives the visitor's own browser. The client is built as soon as consent is `granted`, so the counting starts then rather than at the first identification. |
 | `apiVersion` | `string` | API route version. Defaults to `v1`. |
 
 `useIdentify()` options: `immediate`, `tag` and `incognitoDetection` (each of
@@ -496,7 +497,7 @@ compiles, and `$state is not defined` at runtime.
 Types ship with the package. `Fingerly`, `FingerlyOptions`, `IdentifyAnswer`
 and `UseIdentifyOptions` are exported, together with the types you receive and
 pass (`IdentifyResult`, `IdentifyOptions`, `CollectOptions`, `ConsentState`,
-`IncognitoDetection`, `SuspectLevel`, `SignalReport`, `SignalOutcome`,
+`IncognitoDetection`, `AgentDetection`, `SuspectLevel`, `SignalReport`, `SignalOutcome`,
 `SignalStatus`, `IntegrityReport`, `Lie` and `Confidence`). The values
 `ConsentError`, `TransportError`, `FingerlyServerError` and `FINGERLY_KEY` (the
 context key, for an advanced `getContext()`) are exported too. The package is

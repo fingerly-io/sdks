@@ -23,7 +23,7 @@ vi.mock('@fingerly/web-js', async (importActual) => ({
 const Server = (await import('./fixtures/Server.svelte')).default
 
 const globals = globalThis as Record<string, unknown>
-const { FingerlyServerError } = await import('../src/state.svelte.js')
+const { createFingerly, FingerlyServerError } = await import('../src/state.svelte.js')
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -49,6 +49,13 @@ describe('under SSR', () => {
     expect(body).not.toContain('suspicious:false')
     expect(loadMock).not.toHaveBeenCalled()
     expect(identifyMock).not.toHaveBeenCalled()
+  })
+
+  it('builds no client on the server for agentDetection with consent granted', async () => {
+    const fingerly = createFingerly({ apiKey: 'fly_pk_development_test', consent: 'granted', agentDetection: 'interaction' })
+    fingerly.setConsent('granted')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(loadMock).not.toHaveBeenCalled()
   })
 
   it('rejects a direct identify() with a message that says what to do', async () => {

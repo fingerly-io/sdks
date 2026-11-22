@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.1.0
+
+- Every template forwards the Web Bot Auth headers `Signature`,
+  `Signature-Input` and `Signature-Agent` under their own names when present,
+  so the API can verify an AI agent's signature over `x-fingerly-host`. The
+  code templates drop one over 4096 bytes, which the API ignores, and still
+  forward the request; Vercel counts the bytes in UTF-8, so it never sends a
+  longer one whichever way its runtime reads headers. nginx and Caddy send
+  them as is. None of them is in a CORS allow list: the agent's browser adds
+  them itself and never preflights them.
+- Caddy now sends `X-Fingerly-Host`: it was set after every incoming header
+  was removed, which had cleared the request's host, so it never carried
+  the host the visitor reached.
+
 ## 1.0.0
 
 - Every template answers exactly the issued path: no trailing slash, nothing

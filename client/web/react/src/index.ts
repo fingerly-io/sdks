@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * @fingerly/react - React bindings for the Fingerly SDK (`0.5.3`, single-pass `v: 3`).
+ * @fingerly/react - React bindings for the Fingerly SDK (`0.6.0`, single-pass `v: 3`).
  */
 
 export { FingerlyContext, FingerlyProvider } from './context.js'
@@ -15,6 +15,7 @@ export { useIdentify } from './useIdentify.js'
 export type { UseIdentifyOptions, UseIdentifyReturn } from './useIdentify.js'
 
 export type {
+  AgentDetection,
   CollectOptions,
   Confidence,
   ConsentState,

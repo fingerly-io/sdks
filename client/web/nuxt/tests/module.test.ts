@@ -52,6 +52,7 @@ describe('the module', () => {
       fallbackToDefaultEndpoint: false,
       incognitoDetection: 'extended',
       continuity: 'none',
+      agentDetection: '',
     })
   })
 
@@ -69,6 +70,20 @@ describe('the module', () => {
     expect(fingerlyConfig(empty)).toMatchObject({ continuity: 'session' })
   })
 
+  it('publishes agent detection from the options, and lets the environment turn it on', () => {
+    const configured = nuxtWith()
+    module_.setup({ apiKey: 'pk', agentDetection: 'interaction' }, configured)
+    expect(fingerlyConfig(configured)).toMatchObject({ agentDetection: 'interaction' })
+
+    const environment = nuxtWith({ fingerly: { agentDetection: 'interaction' } })
+    module_.setup({ apiKey: 'pk' }, environment)
+    expect(fingerlyConfig(environment)).toMatchObject({ agentDetection: 'interaction' })
+
+    const empty = nuxtWith({ fingerly: { agentDetection: '' } })
+    module_.setup({ apiKey: 'pk', agentDetection: 'interaction' }, empty)
+    expect(fingerlyConfig(empty)).toMatchObject({ agentDetection: 'interaction' })
+  })
+
   it('survives a runtime config with no public block at all', () => {
     const nuxt = nuxtWith()
     expect(() => module_.setup({ apiKey: 'pk' }, nuxt)).not.toThrow()
@@ -79,6 +94,7 @@ describe('the module', () => {
       fallbackToDefaultEndpoint: false,
       incognitoDetection: 'standard',
       continuity: 'none',
+      agentDetection: '',
     })
   })
 
@@ -93,6 +109,7 @@ describe('the module', () => {
       fallbackToDefaultEndpoint: false,
       incognitoDetection: 'standard',
       continuity: 'none',
+      agentDetection: '',
     })
   })
 
@@ -107,6 +124,7 @@ describe('the module', () => {
       fallbackToDefaultEndpoint: false,
       incognitoDetection: 'standard',
       continuity: 'none',
+      agentDetection: '',
     })
   })
 
@@ -115,6 +133,7 @@ describe('the module', () => {
     module_.setup({ apiKey: 'pk' }, nuxt)
 
     expect(Object.keys(fingerlyConfig(nuxt) as object).sort()).toEqual([
+      'agentDetection',
       'apiKey',
       'apiVersion',
       'continuity',
@@ -165,6 +184,7 @@ describe('the module', () => {
       fallbackToDefaultEndpoint: false,
       incognitoDetection: 'standard',
       continuity: 'none',
+      agentDetection: '',
     })
   })
 

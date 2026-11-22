@@ -350,6 +350,9 @@ const visitor = {
   'sec-ch-ua': '"Chromium";v="130"',
   'sec-ch-ua-mobile': '?0',
   'sec-ch-ua-platform': '"macOS"',
+  signature: 'sig1=:dGVzdC1zaWduYXR1cmU=:',
+  'signature-input': 'sig1=("@authority" "signature-agent");created=1735689600;keyid="k1";alg="ed25519";tag="web-bot-auth"',
+  'signature-agent': '"https://chatgpt.com"',
   cookie: 'session=1; other=2',
   authorization: 'Bearer secret',
   'x-forwarded-for': '6.6.6.6',
@@ -372,7 +375,7 @@ const unlisted = {
   'x-requested-with': 'wrapper',
 }
 /** Names the contract (sdks/contract/proxy.md section 3) lets a proxy send upstream. */
-const CONTRACT_REQUEST = /^(x-api-key|content-type|idempotency-key|user-agent|sec-fetch-(site|mode|dest)|sec-ch-ua(-mobile|-platform)?|x-fingerly-[a-z-]+)$/
+const CONTRACT_REQUEST = /^(x-api-key|content-type|idempotency-key|user-agent|sec-fetch-(site|mode|dest)|sec-ch-ua(-mobile|-platform)?|signature(-input|-agent)?|x-fingerly-[a-z-]+)$/
 /** Keys a proxy holding a production proxy key must refuse locally. */
 const FOREIGN_PUBLIC_KEYS = ['fly_pk_development_x', 'fly_pk_staging_x', 'not-a-key', 'fly_sk_production_x', 'fly_pk_production_', 'fly_pk_production_a b', 'fly_px_production_x']
 
@@ -443,8 +446,28 @@ describe.each(targets)('$kind template', (target) => {
     expect(sent.headers.get('sec-ch-ua')).toBe('"Chromium";v="130"')
     expect(sent.headers.get('sec-ch-ua-mobile')).toBe('?0')
     expect(sent.headers.get('sec-ch-ua-platform')).toBe('"macOS"')
+    expect(sent.headers.get('signature')).toBe(visitor.signature)
+    expect(sent.headers.get('signature-input')).toBe(visitor['signature-input'])
+    expect(sent.headers.get('signature-agent')).toBe(visitor['signature-agent'])
     expect(sent.headers.get('x-fingerly-origin')).toBe('https://shop.example')
+    expect(sent.headers.get('x-fingerly-host')).toBeTruthy()
     expect(sent.headers.get('x-fingerly-user-agent')).toBe('Mozilla/5.0 (conformance)')
+  })
+
+  it('drops a Web Bot Auth header over 4096 bytes and still forwards the request', async () => {
+    const oversized = `sig1=:${'A'.repeat(4097)}:`
+    const atCap = `"https://${'a'.repeat(4096 - 10)}"`
+    expect(atCap).toHaveLength(4096)
+    const result = await target.call({
+      headers: { ...visitor, signature: oversized, 'signature-agent': atCap },
+      ip: TRUSTED_IP,
+    })
+    expect(result.status).toBe(200)
+    expect(upstreamCalls).toHaveLength(1)
+    const sent = upstreamCalls[0]!.headers
+    expect(sent.get('signature')).toBeNull()
+    expect(sent.get('signature-input')).toBe(visitor['signature-input'])
+    expect(sent.get('signature-agent')).toBe(atCap)
   })
 
   it('strips every incoming x-fingerly-* header and discards invalid x-fingerly-sdk-platform', async () => {
@@ -453,7 +476,7 @@ describe.each(targets)('$kind template', (target) => {
     expect(sent.get('x-fingerly-proxy-key')).toBe(KEY)
     expect(sent.get('x-fingerly-client-ip')).toBe(TRUSTED_IP)
     expect(sent.get('x-fingerly-origin')).toBe('https://shop.example')
-    expect(sent.get('x-fingerly-proxy-version')).toBe(`${target.kind}/1.0.0`)
+    expect(sent.get('x-fingerly-proxy-version')).toBe(`${target.kind}/1.1.0`)
     expect(sent.get('x-fingerly-sdk-platform')).toBeNull()
     expect(sent.get('x-fingerly-edge-tls-version')).toBeNull()
     expect(sent.get('x-fingerly-other')).toBeNull()
@@ -559,6 +582,8 @@ describe.each(targets)('$kind template', (target) => {
     // CloudFront reads Host itself; the origin request policy never sends it on.
     const outside = [...sent.keys()].filter((name) => !CONTRACT_REQUEST.test(name) && !(target.kind === 'aws-cloudfront' && name === 'host'))
     expect(outside).toEqual([])
+    expect(sent.get('x-custom-token')).toBeNull()
+    expect(sent.get('signature')).toBe(visitor.signature)
     expect(sent.get('x-fingerly-origin')).toBe('https://shop.example')
     expect(sent.get('x-fingerly-client-ip')).toBe(TRUSTED_IP)
   })
@@ -729,6 +754,23 @@ describe('platform specifics', () => {
     expect(alone.status).toBe(500)
   })
 
+  it('vercel: counts a Web Bot Auth header in UTF-8 bytes, so a runtime reading UTF-8 never forwards more than 4096', async () => {
+    vercelTarget.setKey(KEY)
+    // A runtime that reads header bytes as UTF-8 turns 4098 bytes into 1366
+    // characters; Node's Headers cannot hold such a value, so it is read here.
+    const wide = '€'.repeat(1366)
+    expect(new TextEncoder().encode(wide).byteLength).toBe(4098)
+    const request = webRequest({ headers: visitor, ip: TRUSTED_IP }, { 'x-real-ip': TRUSTED_IP })
+    const read = request.headers.get.bind(request.headers)
+    Object.defineProperty(request, 'headers', {
+      value: { get: (name: string) => (name.toLowerCase() === 'signature' ? wide : read(name)) },
+    })
+    expect((await vercel(request)).status).toBe(200)
+    expect(upstreamCalls).toHaveLength(1)
+    expect(upstreamCalls[0]!.headers.get('signature')).toBeNull()
+    expect(upstreamCalls[0]!.headers.get('signature-input')).toBe(visitor['signature-input'])
+  })
+
   it('gcp-cloud-run: takes the second-to-last x-forwarded-for entry and nothing a visitor can forge', async () => {
     cloudRunTarget.setKey(KEY)
     const post = (xff: string) => realFetch(`${cloudRunTarget.base}/k7x2qm4a`, {
@@ -792,7 +834,7 @@ describe('platform specifics', () => {
     })
     await new Promise<void>((resolve) => server.close(() => resolve()))
     expect(upstreamCalls[0]!.headers.get('x-fingerly-client-ip')).toBe('127.0.0.1')
-    expect(upstreamCalls[0]!.headers.get('x-fingerly-proxy-version')).toBe('container/1.0.0')
+    expect(upstreamCalls[0]!.headers.get('x-fingerly-proxy-version')).toBe('container/1.1.0')
   })
 
   it('aws-cloudfront: rejects multi-valued x-fingerly-sdk-platform when Origin is absent', async () => {

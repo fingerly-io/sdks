@@ -147,6 +147,60 @@ describe('createFingerly', () => {
     })
   })
 
+  it('passes agentDetection through to the client', async () => {
+    const { result } = withSetup(
+      () => useIdentify(),
+      createFingerly({
+        apiKey: 'fly_pk_development_test',
+        consent: 'granted',
+        agentDetection: 'interaction',
+      }),
+    )
+    await result.identify()
+
+    expect(loadMock).toHaveBeenCalledWith({
+      apiKey: 'fly_pk_development_test',
+      agentDetection: 'interaction',
+      consent: 'granted',
+    })
+  })
+
+  it('builds the client once consent is granted when agentDetection is on, so counting starts then', async () => {
+    // The observer starts when the client is built; built at the first
+    // identify(), that report would cover nothing the visitor did before it.
+    const { result } = withSetup(
+      () => useFingerly(),
+      createFingerly({ apiKey: 'fly_pk_development_test', agentDetection: 'interaction' }),
+    )
+    await flush()
+    expect(loadMock).not.toHaveBeenCalled()
+
+    result.setConsent('granted')
+    await flush()
+    expect(loadMock).toHaveBeenCalledTimes(1)
+    expect(loadMock).toHaveBeenCalledWith({
+      apiKey: 'fly_pk_development_test',
+      agentDetection: 'interaction',
+      consent: 'granted',
+    })
+    expect(identifyMock).not.toHaveBeenCalled()
+  })
+
+  it('builds the client at install for agentDetection with consent granted, and lazily without it', async () => {
+    withSetup(
+      () => useFingerly(),
+      createFingerly({ apiKey: 'fly_pk_development_test', consent: 'granted', agentDetection: 'interaction' }),
+    )
+    await flush()
+    expect(loadMock).toHaveBeenCalledTimes(1)
+
+    loadMock.mockClear()
+    const { result } = withSetup(() => useFingerly(), createFingerly({ apiKey: 'fly_pk_development_test' }))
+    result.setConsent('granted')
+    await flush()
+    expect(loadMock).not.toHaveBeenCalled()
+  })
+
   it('works from an Options-API component via this.$fingerly', async () => {
     // The README documents this path, so it is tested as written rather than
     // by poking at globalProperties: not every Vue 3 component is

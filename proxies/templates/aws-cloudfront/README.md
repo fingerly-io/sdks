@@ -91,14 +91,16 @@ sets it; should it ever not be one IPv4 or IPv6 address, the function answers
 Upstream, to `https://api.fingerly.io/api/v1/ingest` only: an allowlist of
 the viewer's headers (`Content-Type`, `X-Api-Key`, `Idempotency-Key`,
 `User-Agent`, `Sec-Fetch-Site`, `Sec-Fetch-Mode`, `Sec-Fetch-Dest`,
-`Sec-CH-UA`, `Sec-CH-UA-Mobile`, `Sec-CH-UA-Platform`); the function deletes
+`Sec-CH-UA`, `Sec-CH-UA-Mobile`, `Sec-CH-UA-Platform`, and the Web Bot Auth
+`Signature`, `Signature-Input` and `Signature-Agent` when at most 4096 bytes
+each); the function deletes
 every other viewer header, so cookies, `Authorization`, `Referer`, forwarding
 headers, application headers and any visitor-sent `x-fingerly-*` header never
 reach the API. Validated lowercase `x-fingerly-sdk-platform` is restored when
 matched and `Origin` is absent (one channel header goes upstream, never both),
 plus the `x-fingerly-*` headers the function sets (the client
 address, `x-fingerly-origin` only when `Origin` is present, `x-fingerly-host`,
-the user agent and `x-fingerly-proxy-version: aws-cloudfront/1.0.0`, which the
+the user agent and `x-fingerly-proxy-version: aws-cloudfront/1.1.0`, which the
 dashboard shows per proxy) and the proxy key from the origin's custom header.
 CloudFront itself adds its own `X-Forwarded-For`, `Via` and `X-Amz-Cf-Id` to
 every origin request; the API does not read them. Requests missing both

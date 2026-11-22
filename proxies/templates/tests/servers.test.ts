@@ -316,7 +316,7 @@ interface Template {
 const templates: Template[] = [
   {
     kind: 'nginx',
-    version: 'nginx/1.0.0',
+    version: 'nginx/1.1.0',
     keyless: true,
     deploy(stubPort, dir, key) {
       const shipped = readFileSync(join(ROOT, 'nginx/fingerly.conf'), 'utf8')
@@ -353,7 +353,7 @@ const templates: Template[] = [
   },
   {
     kind: 'caddy',
-    version: 'caddy/1.0.0',
+    version: 'caddy/1.1.0',
     keyless: true,
     deploy(stubPort, dir, key) {
       const shipped = readFileSync(join(ROOT, 'caddy/Caddyfile'), 'utf8')
@@ -373,7 +373,7 @@ const templates: Template[] = [
   },
   {
     kind: 'container',
-    version: 'container/1.0.0',
+    version: 'container/1.1.0',
     keyless: true,
     // Reached directly, so the default source, the connection itself.
     deploy: (stubPort, dir, key) => new Stack([{ args: [...relayEnv(dir, key), relayImage(dir, stubPort)] }], 8080, relayReady),
@@ -382,7 +382,7 @@ const templates: Template[] = [
   },
   {
     kind: 'traefik (file provider)',
-    version: 'container/1.0.0',
+    version: 'container/1.1.0',
     keyless: false,
     deploy(stubPort, dir, key) {
       const dynamic = join(dir, `dynamic-${id()}`)
@@ -419,7 +419,7 @@ const templates: Template[] = [
   },
   {
     kind: 'traefik (docker-compose labels)',
-    version: 'container/1.0.0',
+    version: 'container/1.1.0',
     keyless: false,
     deploy(stubPort, dir, key) {
       const project = join(dir, `compose-${id()}`)
@@ -462,6 +462,9 @@ const visitorHeaders = {
   'sec-ch-ua': '"Chromium";v="130"',
   'sec-ch-ua-mobile': '?0',
   'sec-ch-ua-platform': '"macOS"',
+  signature: 'sig1=:dGVzdC1zaWduYXR1cmU=:',
+  'signature-input': 'sig1=("@authority" "signature-agent");created=1735689600;keyid="k1";alg="ed25519";tag="web-bot-auth"',
+  'signature-agent': '"https://chatgpt.com"',
   cookie: 'session=1',
   authorization: 'Bearer secret',
   'x-forwarded-for': '6.6.6.6',
@@ -485,7 +488,7 @@ const UNLISTED_REQUEST = {
   'x-requested-with': 'wrapper',
 }
 /** Names the contract (sdks/contract/proxy.md section 3) lets a proxy send upstream. */
-const CONTRACT_REQUEST = /^(x-api-key|content-type|idempotency-key|user-agent|sec-fetch-(site|mode|dest)|sec-ch-ua(-mobile|-platform)?|x-fingerly-[a-z-]+)$/
+const CONTRACT_REQUEST = /^(x-api-key|content-type|idempotency-key|user-agent|sec-fetch-(site|mode|dest)|sec-ch-ua(-mobile|-platform)?|signature(-input|-agent)?|x-fingerly-[a-z-]+)$/
 /** Framing headers, which are not a forwarding decision. */
 const TRANSPORT_REQUEST = /^(host|content-length|connection|accept-encoding|transfer-encoding)$/
 /** The response headers the contract relays (section 4), plus the pinned Cache-Control. */
@@ -574,6 +577,10 @@ describe.skipIf(!docker).each(templates)('$kind template', (template) => {
     expect(seen.headers['sec-ch-ua']).toBe('"Chromium";v="130"')
     expect(seen.headers['sec-ch-ua-mobile']).toBe('?0')
     expect(seen.headers['sec-ch-ua-platform']).toBe('"macOS"')
+    expect(seen.headers.signature).toBe(visitorHeaders.signature)
+    expect(seen.headers['signature-input']).toBe(visitorHeaders['signature-input'])
+    expect(seen.headers['signature-agent']).toBe(visitorHeaders['signature-agent'])
+    expect(seen.headers['x-fingerly-host']).toBe(new URL(proxy!.base).host)
     expect(seen.headers['x-fingerly-proxy-key']).toBe(KEY)
     expect(seen.headers['x-fingerly-proxy-version']).toBe(template.version)
     expect(seen.headers['x-fingerly-origin']).toBe('https://shop.example')
@@ -586,6 +593,18 @@ describe.skipIf(!docker).each(templates)('$kind template', (template) => {
     expect(seen.headers['x-fingerly-other']).toBeUndefined()
     expect(seen.headers.cookie).toBeUndefined()
     expect(seen.headers.authorization).toBeUndefined()
+  })
+
+  it('drops a Web Bot Auth header over 4096 bytes in code, while nginx and Caddy send it as is', async () => {
+    stub.seen = []
+    const oversized = `sig1=:${'A'.repeat(4097)}:`
+    const response = await fetch(`${proxy!.base}/k7x2qm4a`, { method: 'POST', headers: { ...visitorHeaders, signature: oversized }, body: '{}' })
+    expect(response.status, proxy!.logs()).toBe(200)
+    const seen = stub.seen[0]!
+    const asSent = template.kind === 'nginx' || template.kind === 'caddy'
+    expect(seen.headers.signature).toBe(asSent ? oversized : undefined)
+    expect(seen.headers['signature-input']).toBe(visitorHeaders['signature-input'])
+    expect(seen.headers['signature-agent']).toBe(visitorHeaders['signature-agent'])
   })
 
   it('relays the request id, rate limits and retry-after, drops cookies and internal headers, and pins no-store', async () => {
@@ -612,6 +631,8 @@ describe.skipIf(!docker).each(templates)('$kind template', (template) => {
     const runtime = template.kind === 'nginx' || template.kind === 'caddy' ? [] : ['accept', 'accept-language']
     expect(outside.filter((name) => !runtime.includes(name)), JSON.stringify(seen.headers)).toEqual([])
     expect(seen.headers['accept-language']).not.toBe(UNLISTED_REQUEST['accept-language'])
+    expect(seen.headers['x-custom-token']).toBeUndefined()
+    expect(seen.headers.signature).toBe(visitorHeaders.signature)
     expect(seen.headers.origin).toBeUndefined()
     expect(seen.headers['x-fingerly-origin']).toBe('https://shop.example')
     expect(seen.headers['x-fingerly-client-ip']).not.toBe('6.6.6.6')

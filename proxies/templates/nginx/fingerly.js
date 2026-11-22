@@ -1,4 +1,4 @@
-// Fingerly first-party proxy for nginx, version 1.0.0: the response header
+// Fingerly first-party proxy for nginx, version 1.1.0: the response header
 // allowlist, run by the njs module as a header filter of the proxy location.
 //
 // Core nginx can only hide named upstream headers. A blocker can match a

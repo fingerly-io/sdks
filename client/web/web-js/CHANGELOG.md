@@ -1,6 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.6.0
+
+- `agentDetection: 'interaction'` (off by default) observes how the page is
+  operated once consent is granted, and reports integer counts of input
+  events, each capped at 10,000, and the seconds they cover as the
+  `interaction` source. No coordinate, key, field value, page text, element
+  identifier, URL or event time is kept or sent. The listeners stop and the
+  counts are dropped when consent is withdrawn on any client on the page, and
+  a client that is dropped without a withdrawal lets go once it is garbage
+  collected.
 
 - A browser that has just started is no longer sent unidentifiable because an
   identity-critical source (fonts, voices, audio, codecs and the rest) was

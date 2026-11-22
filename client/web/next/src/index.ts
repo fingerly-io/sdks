@@ -32,6 +32,7 @@ export type {
   FingerlyState,
   FingerlyStore,
   IdentifyAnswer,
+  AgentDetection,
   Confidence,
   ConsentState,
   Continuity,
