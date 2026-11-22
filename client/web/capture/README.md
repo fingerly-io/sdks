@@ -134,3 +134,17 @@ These are the false-positive list the server rule has to stay quiet on.
 calibration. `task` says whether the run actually did the task, so a failed
 run is not mistaken for a successful one. Nothing else is recorded: no
 screenshots, no field values, no timings.
+
+## Reading the captures
+
+From the `server` repository, run every capture through the rule the server
+runs in shadow:
+
+```sh
+go run ./cmd/cli agent-captures ../sdks/client/web/capture/captures
+```
+
+It prints one line per run (whether it read as agent-driven, the confidence
+and the families of evidence that agreed) and a tally per label, ending with
+how many assistant runs were missed and how many human runs read as driven.
+A label starting with `human` is a person; anything else is an assistant.
