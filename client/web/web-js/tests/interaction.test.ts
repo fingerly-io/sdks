@@ -473,6 +473,26 @@ describe('the interaction observer: span, caps and reads', () => {
     expect(fresh.take().clicks_mouse).toBe(0)
     fresh.stop()
   })
+
+  it('lets nothing seen before a stop shape what it counts after a restart', () => {
+    // A move, then consent withdrawn and granted again 100 ms later: the
+    // move belongs to the withdrawn span, so the first click after is a
+    // click without move, and a key before the stop makes no typed input.
+    dispatch(pointer('pointermove', { pointerType: 'mouse' }))
+    dispatch(key('a'))
+    observer.stop()
+    clock.advance(10)
+    observer.start()
+    dispatch(pointer('pointerdown', { pointerType: 'mouse' }))
+    dispatch(click('mouse'))
+    dispatch(input('insertText'))
+
+    const counts = observer.take()
+    expect(counts.clicks_without_move).toBe(1)
+    expect(counts.keys_fast).toBe(0)
+    expect(counts.inputs_typed).toBe(0)
+    expect(counts.inputs_inserted).toBe(1)
+  })
 })
 
 describe('the interaction source in the SDK', () => {

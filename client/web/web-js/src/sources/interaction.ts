@@ -183,8 +183,14 @@ export class InteractionObserver {
     this.#overlayTimer = undefined
     this.#pendingOverlays = []
     this.#counts = zeroCounts()
+    // Nothing seen before a withdrawal may shape what is counted after it.
+    this.#lastMove = Number.NEGATIVE_INFINITY
+    this.#lastKey = Number.NEGATIVE_INFINITY
+    this.#lastScrollPrompt = Number.NEGATIVE_INFINITY
     this.#pressKind = undefined
     this.#pressWithoutMove = undefined
+    this.#width = undefined
+    this.#height = undefined
   }
 
   /**
