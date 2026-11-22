@@ -42,7 +42,8 @@ const dirs = [
 // A literal the code reports at runtime, which has to match the manifest.
 const constants = [
   { dir: 'client/web/core', file: 'src/version.ts', pattern: /SDK_VERSION = '([^']+)'/ },
-  { dir: 'server/node', file: 'src/proxy.ts', pattern: /PROXY_VERSION = "node\/([^"]+)"/ },
+  // The proxy version and the API User-Agent are both built from it.
+  { dir: 'server/node', file: 'src/config.ts', pattern: /SDK_VERSION = "([^"]+)"/ },
 ]
 
 const fail = (message) => {

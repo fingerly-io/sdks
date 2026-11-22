@@ -92,6 +92,9 @@ Only these caller headers are forwarded, under the same name, when present:
 | `User-Agent` | Edge proxies forward the visitor's `User-Agent` as `User-Agent` too. SDK proxies send it only as `X-Fingerly-User-Agent`; their own `User-Agent` names the SDK's HTTP client. |
 | `Sec-Fetch-Site`, `Sec-Fetch-Mode`, `Sec-Fetch-Dest` | Verbatim, for browser fetch-metadata and embedded-WebView checks. |
 | `Sec-CH-UA`, `Sec-CH-UA-Mobile`, `Sec-CH-UA-Platform` | Verbatim, for client-hint engine checks. |
+| `Signature`, `Signature-Input`, `Signature-Agent` | Verbatim, for Web Bot Auth (HTTP Message Signatures, RFC 9421). Each is sent only when present, non-empty and at most `4096` bytes; a longer value is dropped, not refused, and the request is still forwarded. nginx and Caddy cannot measure a header value in configuration, so they forward these as sent. |
+
+The three Web Bot Auth headers carry the signature an AI agent's browser adds to its requests. The API verifies it against the operator's published key over the host the request was sent to, which for a proxied request is `X-Fingerly-Host` (section 3.1), so a proxy must forward the three under their own names and keep `X-Fingerly-Host` exactly as observed. The API ignores a value over `4096` bytes, which is why a proxy may drop one rather than refuse the request. The three are not in `Access-Control-Allow-Headers` (section 4.4): a page's script never sets them, the agent's browser stack adds them itself, and a browser does not preflight a header it adds on its own.
 
 ---
 

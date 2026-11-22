@@ -869,8 +869,6 @@ Source `root`. If `sources.root.status == "blocked"`: single tell `root-probe-bl
 | `writable_system` non-empty | 1.3 | `system-writable-<n>` |
 | `mountAnomalies > 0` | 1.0 | `mount-anomaly-<n>` |
 | `selinux_enforcing == false` | 1.2 | `selinux-permissive` |
-| `verified_boot_state == "orange"` | 0.9 | `bootloader-unlocked` |
-| `verified_boot_state == "yellow"` | 0.9 | `boot-image-self-signed` |
 | `verified_boot_state == "red"` | 1.2 | `boot-verification-failed` |
 | `system.build_tags` contains `test-keys`, and not `emulatorHard` [proposed P6] | 0.8 | `build-signed-with-test-keys` |
 | `ro_debuggable == "1"` or `ro_secure == "0"`, once, and not `emulatorHard` [proposed P6] | 0.4 | `dangerous-prop-<first>` |
@@ -882,6 +880,23 @@ Source `root`. If `sources.root.status == "blocked"`: single tell `root-probe-bl
 | `su_on_path` and `su_paths` empty | 1.2 | `su-on-path-but-not-stattable` |
 
 `emulatorHard`: `emulator` ok and (`qemu_props` or `qemu_devices` non-empty, or a virtual board matched).
+
+### 8.1a Android: bootloader_unlocked
+
+Source `root`. An unlocked bootloader makes root possible without being it, so the boot state is its own signal and
+no longer root evidence (only a failed verification, `red`, stays in 8.1).
+
+| Condition | Weight | Reason |
+|---|---|---|
+| `verified_boot_state == "orange"` | 1.3 | `bootloader-unlocked` |
+| `verified_boot_state == "yellow"` | 1.0 | `boot-image-self-signed` |
+| `boot_locked == false` | 1.0 | `bootloader-reports-unlocked` |
+
+The attested root of trust says the same with high confidence when the report carries a verified key attestation:
+an unlocked bootloader or an `unverified` boot is `attested-bootloader-unlocked` / `attested-verified-boot-unverified`
+(high), a `self-signed` boot `attested-verified-boot-self-signed` (low), and a `failed` boot is `root_apps`. A report
+that claims a stronger boot than the hardware attested (`green` or `boot_locked: true` on an unlocked or unverified
+boot) is `device_inconsistent`, `keystore-boot-state-mismatch`; one that says `orange` truthfully is not.
 
 ### 8.2 Android: emulator
 
