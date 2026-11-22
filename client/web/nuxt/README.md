@@ -207,7 +207,7 @@ whenever a request carries an `Origin`.
 
 The module publishes `fingerly.apiKey`, `fingerly.apiVersion`,
 `fingerly.endpoints`, `fingerly.fallbackToDefaultEndpoint`,
-`fingerly.incognitoDetection` and `fingerly.continuity`, each overridable at server startup with its
+`fingerly.incognitoDetection`, `fingerly.continuity` and `fingerly.agentDetection`, each overridable at server startup with its
 environment variable (see [Options](#options)). There is no consent variable: a
 deployment-wide value would apply to every visitor before any of them answered.
 
@@ -295,6 +295,7 @@ The `fingerly` block in `nuxt.config.ts`, published at
 | `fallbackToDefaultEndpoint` | `NUXT_PUBLIC_FINGERLY_FALLBACK_TO_DEFAULT_ENDPOINT` | Try the Fingerly API only after the custom endpoints fail. Defaults to `false`. |
 | `incognitoDetection` | `NUXT_PUBLIC_FINGERLY_INCOGNITO_DETECTION` | `'standard'` (the default) checks for private browsing without writing to the visitor's storage; `'extended'` adds a further check on Chromium browsers inside the same budget. |
 | `continuity` | `NUXT_PUBLIC_FINGERLY_CONTINUITY` | `'none'` (the default) keeps nothing in the browser; `'session'` keeps one signed value in `sessionStorage` for the life of the tab, so an identified private window is carried across its reports. |
+| `agentDetection` | `NUXT_PUBLIC_FINGERLY_AGENT_DETECTION` | Off by default. `'interaction'` counts how the page is operated once consent is `granted` (clicks by pointer type, key presses, input events by kind and the like, never a coordinate, key, field value or page text), for recognising an assistant that drives the visitor's own browser. |
 | `apiVersion` | `NUXT_PUBLIC_FINGERLY_API_VERSION` | API route version. Defaults to `v1`. |
 
 Every key is present in the runtime config even when nothing set it, which is

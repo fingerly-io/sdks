@@ -6,6 +6,7 @@ import { computed, signal, type Signal } from '@angular/core'
 import {
   isSuspiciousLevel,
   load,
+  type AgentDetection,
   type ConsentState,
   type Continuity,
   type FingerlyClient,
@@ -50,6 +51,12 @@ export interface FingerlyOptions {
    * keeps one signed value in `sessionStorage` for the life of the tab.
    */
   continuity?: Continuity
+  /**
+   * Observe how the page is operated, for recognising an assistant that
+   * drives the visitor's own browser. Off by default; `'interaction'` turns it
+   * on. Counts input events only once consent is `granted`.
+   */
+  agentDetection?: AgentDetection
   /** Whether the visitor has agreed to be identified. Defaults to `pending`. */
   consent?: ConsentState
 }
@@ -160,6 +167,9 @@ export function createFingerly(options: FingerlyOptions): Fingerly {
           ? {}
           : { incognitoDetection: options.incognitoDetection }),
         ...(options.continuity === undefined ? {} : { continuity: options.continuity }),
+        ...(options.agentDetection === undefined
+          ? {}
+          : { agentDetection: options.agentDetection }),
         consent: consent(),
       }).then((fingerly) => {
         if (fingerly.consent !== consent()) fingerly.setConsent(consent())

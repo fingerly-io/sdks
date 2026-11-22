@@ -147,6 +147,19 @@ describe('setupFingerly', () => {
 
     expect(loadMock).toHaveBeenCalledWith({ apiKey: 'fly_pk_development_test', continuity: 'session', consent: 'granted' })
   })
+
+  it('passes agentDetection through to the client', async () => {
+    const page = render({
+      options: { apiKey: 'fly_pk_development_test', consent: 'granted', agentDetection: 'interaction' },
+    })
+    await page.state.identify()
+
+    expect(loadMock).toHaveBeenCalledWith({
+      apiKey: 'fly_pk_development_test',
+      agentDetection: 'interaction',
+      consent: 'granted',
+    })
+  })
 })
 
 describe('useFingerly', () => {

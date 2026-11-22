@@ -151,6 +151,24 @@ describe('the runtime plugin', () => {
     expect(loadMock).toHaveBeenLastCalledWith({ apiKey: 'pk_runtime', consent: 'granted' })
   })
 
+  it('passes agentDetection through to the client, and leaves it out when it is not set', async () => {
+    __setRuntimeConfig({ fingerly: { apiKey: 'pk_runtime', agentDetection: 'interaction' } })
+    const observed = mountWithPlugin(() => ({ ...useIdentify(), setConsent: useFingerly().setConsent }))
+    observed.setConsent('granted')
+    await observed.identify()
+    expect(loadMock).toHaveBeenLastCalledWith({
+      apiKey: 'pk_runtime',
+      agentDetection: 'interaction',
+      consent: 'granted',
+    })
+
+    __setRuntimeConfig({ fingerly: { apiKey: 'pk_runtime', agentDetection: '' } })
+    const plain = mountWithPlugin(() => ({ ...useIdentify(), setConsent: useFingerly().setConsent }))
+    plain.setConsent('granted')
+    await plain.identify()
+    expect(loadMock).toHaveBeenLastCalledWith({ apiKey: 'pk_runtime', consent: 'granted' })
+  })
+
   it('passes incognitoDetection through and preserves visitorId "" on Option B answers', async () => {
     __setRuntimeConfig({
       fingerly: { apiKey: 'pk_runtime', incognitoDetection: 'extended' },

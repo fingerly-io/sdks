@@ -32,6 +32,9 @@ export function toVueOptions(config: Partial<FingerlyPublicConfig> | undefined):
     ...(config?.continuity === undefined || (config.continuity as string) === ''
       ? {}
       : { continuity: config.continuity }),
+    ...(config?.agentDetection === undefined || config.agentDetection === ''
+      ? {}
+      : { agentDetection: config.agentDetection }),
     // No `consent`: the client starts `pending` whatever the runtime config
     // holds, and only a runtime `setConsent()` after a visitor answer moves it.
   }

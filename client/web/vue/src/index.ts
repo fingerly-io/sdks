@@ -16,6 +16,7 @@ export { useIdentify } from './useIdentify.js'
 export type { UseIdentifyOptions, UseIdentifyReturn } from './useIdentify.js'
 
 export type {
+  AgentDetection,
   CollectOptions,
   Confidence,
   ConsentState,

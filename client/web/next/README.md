@@ -257,6 +257,7 @@ as `createFingerlyProxy` (with its `FingerlyProxyOptions` type). See
 | `consent` | `'pending' \| 'granted' \| 'denied'` | Defaults to `pending`. Never read from the environment. |
 | `incognitoDetection` | `'standard' \| 'extended'` | Defaults to `standard`, which checks for private browsing without writing to the visitor's storage; `extended` adds a further check on Chromium browsers inside the same budget. |
 | `continuity` | `'none' \| 'session'` | Defaults to `none`, which keeps nothing in the browser; `session` keeps one signed value in `sessionStorage` for the life of the tab, so an identified private window is carried across its reports. |
+| `agentDetection` | `'interaction'` | Off by default. `'interaction'` counts how the page is operated once consent is `granted` (clicks by pointer type, key presses, input events by kind and the like, never a coordinate, key, field value or page text), for recognising an assistant that drives the visitor's own browser. |
 | `apiVersion` | `string` | API route version. Defaults to `v1`. |
 
 `<FingerlyRequestId />` takes `name` (the field name), `tag` and `immediate`
@@ -439,7 +440,7 @@ Types ship with the package, for both entries. The main entry exports
 `FingerlyNextProviderProps`, `FingerlyRequestIdProps`, `FingerlyReactOptions`,
 `FingerlyState`, `FingerlyStore`, `UseIdentifyOptions`, `UseIdentifyReturn`,
 `IdentifyAnswer`, `IdentifyOptions`, `IdentifyResult`, `IncognitoDetection`,
-`ConsentState`, `SuspectLevel`, `SignalReport` and `Confidence`, and the values
+`AgentDetection`, `ConsentState`, `SuspectLevel`, `SignalReport` and `Confidence`, and the values
 `FingerlyProvider`, `FingerlyRequestId`, `useIdentify`, `useFingerly`,
 `createFingerlyStore`, `ConsentError`, `TransportError`, `FingerlyServerError`
 and `REQUEST_ID_FIELD`. `@fingerly/next/server` exports `readRequestId`,

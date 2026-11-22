@@ -248,6 +248,23 @@ describe('FingerlyProvider', () => {
     })
   })
 
+  it('passes agentDetection through from the provider props', async () => {
+    const { latest, element } = probe(() => useIdentify())
+    render(
+      <FingerlyProvider apiKey="pk_observed" consent="granted" agentDetection="interaction">
+        {element}
+      </FingerlyProvider>,
+    )
+
+    await act(() => latest().identify())
+
+    expect(loadMock).toHaveBeenCalledWith({
+      apiKey: 'pk_observed',
+      agentDetection: 'interaction',
+      consent: 'granted',
+    })
+  })
+
   it('keeps no signal report in the store and hands none back, on the first call or a reused one', async () => {
     const { createFingerlyStore } = await import('../src/store.js')
     const store = createFingerlyStore({ apiKey: 'pk_request', consent: 'granted' })

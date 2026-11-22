@@ -11,6 +11,7 @@ export { useIdentify } from './hooks.svelte.js'
 export type { UseIdentifyOptions } from './hooks.svelte.js'
 
 export type {
+  AgentDetection,
   CollectOptions,
   Confidence,
   ConsentState,

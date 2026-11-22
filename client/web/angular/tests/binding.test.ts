@@ -122,6 +122,19 @@ describe('provideFingerly', () => {
     expect(loadMock).toHaveBeenCalledWith({ apiKey: 'fly_pk_development_test', continuity: 'session', consent: 'granted' })
   })
 
+  it('passes agentDetection through to the client', async () => {
+    application({ apiKey: 'fly_pk_development_test', consent: 'granted', agentDetection: 'interaction' })
+    const fingerly = TestBed.runInInjectionContext(() => injectFingerly())
+
+    await fingerly.identify()
+
+    expect(loadMock).toHaveBeenCalledWith({
+      apiKey: 'fly_pk_development_test',
+      agentDetection: 'interaction',
+      consent: 'granted',
+    })
+  })
+
   it('builds the state once for the whole application', async () => {
     application({ apiKey: 'fly_pk_development_test', consent: 'granted' })
 

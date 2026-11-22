@@ -11,6 +11,7 @@ export { injectFingerly, injectIdentify } from './inject.js'
 export type { InjectIdentifyOptions } from './inject.js'
 
 export type {
+  AgentDetection,
   CollectOptions,
   Confidence,
   ConsentState,
