@@ -45,6 +45,7 @@ const FORWARDED_CLIENT_HEADERS = [
  */
 const SIGNATURE_HEADERS = ['signature', 'signature-input', 'signature-agent']
 const MAX_SIGNATURE_HEADER_BYTES = 4096
+const utf8 = new TextEncoder()
 
 /**
  * The response headers relayed to the caller, and nothing else. A blocker can
@@ -202,8 +203,9 @@ export default async function middleware(request: Request): Promise<Response> {
   }
   for (const name of SIGNATURE_HEADERS) {
     const value = request.headers.get(name)
-    // Header values are byte strings: one character per byte.
-    if (value && value.length <= MAX_SIGNATURE_HEADER_BYTES) headers.set(name, value)
+    // Counted in UTF-8 bytes: never fewer than the bytes sent, whether the
+    // runtime reads header bytes as Latin-1 or as UTF-8.
+    if (value && utf8.encode(value).byteLength <= MAX_SIGNATURE_HEADER_BYTES) headers.set(name, value)
   }
 
   // One deadline for the whole exchange, ended early if the visitor goes away.

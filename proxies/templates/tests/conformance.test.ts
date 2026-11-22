@@ -754,6 +754,23 @@ describe('platform specifics', () => {
     expect(alone.status).toBe(500)
   })
 
+  it('vercel: counts a Web Bot Auth header in UTF-8 bytes, so a runtime reading UTF-8 never forwards more than 4096', async () => {
+    vercelTarget.setKey(KEY)
+    // A runtime that reads header bytes as UTF-8 turns 4098 bytes into 1366
+    // characters; Node's Headers cannot hold such a value, so it is read here.
+    const wide = '€'.repeat(1366)
+    expect(new TextEncoder().encode(wide).byteLength).toBe(4098)
+    const request = webRequest({ headers: visitor, ip: TRUSTED_IP }, { 'x-real-ip': TRUSTED_IP })
+    const read = request.headers.get.bind(request.headers)
+    Object.defineProperty(request, 'headers', {
+      value: { get: (name: string) => (name.toLowerCase() === 'signature' ? wide : read(name)) },
+    })
+    expect((await vercel(request)).status).toBe(200)
+    expect(upstreamCalls).toHaveLength(1)
+    expect(upstreamCalls[0]!.headers.get('signature')).toBeNull()
+    expect(upstreamCalls[0]!.headers.get('signature-input')).toBe(visitor['signature-input'])
+  })
+
   it('gcp-cloud-run: takes the second-to-last x-forwarded-for entry and nothing a visitor can forge', async () => {
     cloudRunTarget.setKey(KEY)
     const post = (xff: string) => realFetch(`${cloudRunTarget.base}/k7x2qm4a`, {
