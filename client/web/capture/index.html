@@ -190,12 +190,16 @@
         let termsScrolled = false
 
         function taskState() {
-          const value = (id) => $(id).value.trim()
+          // Lenient on case, spacing and punctuation: this says whether the
+          // task was done, and an autocorrected capital or a missing full stop
+          // is still done. Only the verdict is recorded, never the value.
+          const loose = (text) => text.toLowerCase().replace(/[^a-z0-9@.]+/g, ' ').replace(/[ .]+$/, '').trim()
+          const value = (id) => loose($(id).value)
           return {
-            name_ok: value('full-name') === 'Ada Lovelace',
+            name_ok: value('full-name') === 'ada lovelace',
             email_ok: value('email') === 'ada@example.com',
-            city_ok: value('city') === 'London',
-            message_ok: value('message').replace(/\s+/g, ' ') === 'Please send me the printed brochure.',
+            city_ok: value('city') === 'london',
+            message_ok: value('message') === 'please send me the printed brochure',
             steps_done: stepsDone,
             terms_scrolled: termsScrolled,
           }
