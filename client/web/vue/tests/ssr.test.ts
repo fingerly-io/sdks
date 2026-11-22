@@ -55,6 +55,14 @@ describe('under SSR', () => {
     expect(identifyMock).not.toHaveBeenCalled()
   })
 
+  it('builds no client on the server for agentDetection with consent granted', async () => {
+    const app = createSSRApp(defineComponent({ setup: () => () => h('div', 'page') }))
+    app.use(createFingerly({ apiKey: 'fly_pk_development_test', consent: 'granted', agentDetection: 'interaction' }))
+    expect(await renderToString(app)).toBe('<div>page</div>')
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(loadMock).not.toHaveBeenCalled()
+  })
+
   it('rejects a direct identify() with a message that says what to do', async () => {
     let captured: unknown
     await renderToString(

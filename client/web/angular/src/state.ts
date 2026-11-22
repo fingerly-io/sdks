@@ -181,10 +181,22 @@ export function createFingerly(options: FingerlyOptions): Fingerly {
     return clientPromise
   }
 
+  // A page that opted into agent detection counts from the moment consent is
+  // granted. The client is built lazily, and building it is what starts the
+  // observer, so it is built then rather than at the first identify(), whose
+  // report would otherwise cover nothing the visitor did before it.
+  const observeFrom = (granted: ConsentState): void => {
+    if (granted !== 'granted' || options.agentDetection !== 'interaction') return
+    if (typeof window === 'undefined') return
+    void client().catch(() => undefined)
+  }
+
   const setConsent: Fingerly['setConsent'] = (next) => {
     loaded?.setConsent(next)
     consent.set(next)
+    observeFrom(next)
   }
+  observeFrom(consent())
 
   const identify: Fingerly['identify'] = (identifyOptions = {}) => {
     if (typeof window === 'undefined') return Promise.reject(new FingerlyServerError())

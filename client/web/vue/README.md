@@ -325,7 +325,7 @@ the [server SDK pages](https://docs.fingerly.io/docs/sdks).
 | `consent` | `'pending' \| 'granted' \| 'denied'` | Defaults to `pending`. |
 | `incognitoDetection` | `'standard' \| 'extended'` | Defaults to `standard` (see below). |
 | `continuity` | `'none' \| 'session'` | Defaults to `none`, which keeps nothing in the browser; `session` keeps one signed value in `sessionStorage` for the life of the tab, so an identified private window is carried across its reports. |
-| `agentDetection` | `'interaction'` | Off by default. `'interaction'` counts how the page is operated once consent is `granted` (clicks by pointer type, key presses, input events by kind and the like, never a coordinate, key, field value or page text), for recognising an assistant that drives the visitor's own browser. |
+| `agentDetection` | `'interaction'` | Off by default. `'interaction'` counts how the page is operated once consent is `granted` (clicks by pointer type, key presses, input events by kind and the like, never a coordinate, key, field value or page text), for recognising an assistant that drives the visitor's own browser. The client is built as soon as consent is `granted`, so the counting starts then rather than at the first identification. |
 | `apiVersion` | `string` | API route version. Defaults to `v1`. |
 
 `useIdentify()` options: `immediate`, `tag` and `incognitoDetection` (each of
