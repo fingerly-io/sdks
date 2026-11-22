@@ -27,7 +27,7 @@ SDKs, the server SDKs and the Cloudflare Worker proxy as git submodules, each of
 independently versioned repository.
 
 The browser SDK and its bindings are at `0.5.3`, the mobile SDKs and bridges are at `0.4.0`, every
-server SDK is at `0.4.1`, and the Cloudflare Worker proxy is at `0.3.0`. All of them speak wire
+server SDK is at `0.4.1`, and the Cloudflare Worker proxy is at `0.4.0`. All of them speak wire
 contract `v: 3`.
 
 Pick the SDK for your platform below. Each one has its own README and a page on
@@ -129,7 +129,7 @@ The templates are not published to a registry: copy the files for your platform 
 [template README](proxies/templates/README.md)). The kind is what each template sends as
 `x-fingerly-proxy-version`, which the dashboard shows per proxy.
 
-The Cloudflare Worker (`0.3.0`) forwards the SDK's `POST /api/v1/ingest` submissions byte for
+The Cloudflare Worker (`0.4.0`) forwards the SDK's `POST /api/v1/ingest` submissions byte for
 byte, along with the edge's TLS metadata.
 
 ## Getting started
