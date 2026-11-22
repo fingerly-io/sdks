@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.0
+
+- Uses @fingerly/web-js 0.6.0. `agentDetection: 'interaction'` passes through
+  `<FingerlyProvider agentDetection>`. With it on, the client is built as soon as consent is
+  granted, so the counting starts there rather than at the first
+  identification.
+
 ## 0.5.3
 
 - Uses @fingerly/web-js 0.5.3: standard Brave Shields windows are recognised

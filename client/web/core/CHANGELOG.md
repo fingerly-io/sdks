@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.0
 
 - Adds the `agentDetection` client option (`AgentDetection`, `'interaction'`),
   the `interaction` source id, `InteractionSignal` and `INTERACTION_CAP`. A
