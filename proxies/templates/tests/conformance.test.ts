@@ -476,7 +476,7 @@ describe.each(targets)('$kind template', (target) => {
     expect(sent.get('x-fingerly-proxy-key')).toBe(KEY)
     expect(sent.get('x-fingerly-client-ip')).toBe(TRUSTED_IP)
     expect(sent.get('x-fingerly-origin')).toBe('https://shop.example')
-    expect(sent.get('x-fingerly-proxy-version')).toBe(`${target.kind}/1.0.0`)
+    expect(sent.get('x-fingerly-proxy-version')).toBe(`${target.kind}/1.1.0`)
     expect(sent.get('x-fingerly-sdk-platform')).toBeNull()
     expect(sent.get('x-fingerly-edge-tls-version')).toBeNull()
     expect(sent.get('x-fingerly-other')).toBeNull()
@@ -834,7 +834,7 @@ describe('platform specifics', () => {
     })
     await new Promise<void>((resolve) => server.close(() => resolve()))
     expect(upstreamCalls[0]!.headers.get('x-fingerly-client-ip')).toBe('127.0.0.1')
-    expect(upstreamCalls[0]!.headers.get('x-fingerly-proxy-version')).toBe('container/1.0.0')
+    expect(upstreamCalls[0]!.headers.get('x-fingerly-proxy-version')).toBe('container/1.1.0')
   })
 
   it('aws-cloudfront: rejects multi-valued x-fingerly-sdk-platform when Origin is absent', async () => {

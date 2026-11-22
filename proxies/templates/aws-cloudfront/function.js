@@ -1,4 +1,4 @@
-// Fingerly first-party proxy as a CloudFront Function, version 1.0.0.
+// Fingerly first-party proxy as a CloudFront Function, version 1.1.0.
 // Runtime: cloudfront-js-2.0. Associate it with BOTH the viewer request and the
 // viewer response event of the cache behavior for the path the Fingerly
 // dashboard issued (`/k7x2qm4a` below; the path pattern and PATH must both hold
@@ -8,7 +8,7 @@
 
 // The path the dashboard issued. Keep it equal to the cache behavior's path pattern.
 var PATH = '/k7x2qm4a';
-var VERSION = '1.0.0';
+var VERSION = '1.1.0';
 // Where the origin (api.fingerly.io) receives single-pass browser and native SDK submissions.
 var UPSTREAM_URI = '/api/v1/ingest';
 

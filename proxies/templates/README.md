@@ -8,14 +8,14 @@ forwards single-pass browser and native SDK submissions as raw bytes to
 
 | Template | Kind | Files |
 | --- | --- | --- |
-| [nginx](nginx/README.md) | `nginx/1.0.0` | `fingerly.conf`, `fingerly-proxy-key.conf.example` |
-| [Caddy](caddy/README.md) | `caddy/1.0.0` | `Caddyfile` |
-| [Vercel](vercel/README.md) | `vercel/1.0.0` | `middleware.ts` |
-| [Netlify](netlify/README.md) | `netlify/1.0.0` | `edge-functions/relay.ts`, `netlify.toml` |
-| [AWS CloudFront](aws-cloudfront/README.md) | `aws-cloudfront/1.0.0` | `function.js`, `cloudformation.yaml` |
-| [Google Cloud Run](gcp-cloud-run/README.md) | `gcp-cloud-run/1.0.0` | `server.mjs`, `package.json` |
-| [Container](container/README.md) | `container/1.0.0` | `server.mjs`, `Dockerfile` |
-| [Traefik](traefik/README.md) | `container/1.0.0` (it runs the container) | `docker-compose.yml`, `dynamic.yml`, `kubernetes.yaml` |
+| [nginx](nginx/README.md) | `nginx/1.1.0` | `fingerly.conf`, `fingerly-proxy-key.conf.example` |
+| [Caddy](caddy/README.md) | `caddy/1.1.0` | `Caddyfile` |
+| [Vercel](vercel/README.md) | `vercel/1.1.0` | `middleware.ts` |
+| [Netlify](netlify/README.md) | `netlify/1.1.0` | `edge-functions/relay.ts`, `netlify.toml` |
+| [AWS CloudFront](aws-cloudfront/README.md) | `aws-cloudfront/1.1.0` | `function.js`, `cloudformation.yaml` |
+| [Google Cloud Run](gcp-cloud-run/README.md) | `gcp-cloud-run/1.1.0` | `server.mjs`, `package.json` |
+| [Container](container/README.md) | `container/1.1.0` | `server.mjs`, `Dockerfile` |
+| [Traefik](traefik/README.md) | `container/1.1.0` (it runs the container) | `docker-compose.yml`, `dynamic.yml`, `kubernetes.yaml` |
 
 The kind is what each template sends as `x-fingerly-proxy-version`, which the
 dashboard shows per proxy. The container and Cloud Run templates ship the same

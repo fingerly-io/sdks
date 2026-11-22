@@ -114,7 +114,7 @@ The container sends, to `https://api.fingerly.io/api/v1/ingest` only:
 matched and `Origin` is absent (one channel header goes upstream, never both),
 and the `x-fingerly-*` headers it sets itself (the proxy key, the
 client address, `x-fingerly-origin` only when `Origin` is present,
-`x-fingerly-host`, the user agent and `x-fingerly-proxy-version: container/1.0.0`,
+`x-fingerly-host`, the user agent and `x-fingerly-proxy-version: container/1.1.0`,
 which the dashboard shows per proxy). Requests missing both `Origin` and a
 valid `x-fingerly-sdk-platform` answer `400` (`missing_origin`) without
 synthesizing `x-fingerly-origin`. Cookies, `Authorization` and any

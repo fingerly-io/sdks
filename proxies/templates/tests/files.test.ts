@@ -243,14 +243,14 @@ describe('shipped files', () => {
     }
   })
 
-  it('all report version 1.0.0 under their own kind', () => {
+  it('all report version 1.1.0 under their own kind', () => {
     const version = (path: string) => readFileSync(join(ROOT, path), 'utf8')
-    expect(version('nginx/fingerly.conf')).toContain('"nginx/1.0.0"')
-    expect(version('caddy/Caddyfile')).toContain('caddy/1.0.0')
+    expect(version('nginx/fingerly.conf')).toContain('"nginx/1.1.0"')
+    expect(version('caddy/Caddyfile')).toContain('caddy/1.1.0')
     for (const path of ['vercel/middleware.ts', 'netlify/edge-functions/relay.ts', 'container/server.mjs', 'gcp-cloud-run/server.mjs', 'aws-cloudfront/function.js']) {
-      expect(version(path), path).toMatch(/VERSION = '1\.0\.0'/)
+      expect(version(path), path).toMatch(/VERSION = '1\.1\.0'/)
     }
-    expect(JSON.parse(version('gcp-cloud-run/package.json')).version).toBe('1.0.0')
+    expect(JSON.parse(version('gcp-cloud-run/package.json')).version).toBe('1.1.0')
   })
 
   it('keep the one upstream and enforce missing_origin without synthesizing x-fingerly-origin', () => {

@@ -316,7 +316,7 @@ interface Template {
 const templates: Template[] = [
   {
     kind: 'nginx',
-    version: 'nginx/1.0.0',
+    version: 'nginx/1.1.0',
     keyless: true,
     deploy(stubPort, dir, key) {
       const shipped = readFileSync(join(ROOT, 'nginx/fingerly.conf'), 'utf8')
@@ -353,7 +353,7 @@ const templates: Template[] = [
   },
   {
     kind: 'caddy',
-    version: 'caddy/1.0.0',
+    version: 'caddy/1.1.0',
     keyless: true,
     deploy(stubPort, dir, key) {
       const shipped = readFileSync(join(ROOT, 'caddy/Caddyfile'), 'utf8')
@@ -373,7 +373,7 @@ const templates: Template[] = [
   },
   {
     kind: 'container',
-    version: 'container/1.0.0',
+    version: 'container/1.1.0',
     keyless: true,
     // Reached directly, so the default source, the connection itself.
     deploy: (stubPort, dir, key) => new Stack([{ args: [...relayEnv(dir, key), relayImage(dir, stubPort)] }], 8080, relayReady),
@@ -382,7 +382,7 @@ const templates: Template[] = [
   },
   {
     kind: 'traefik (file provider)',
-    version: 'container/1.0.0',
+    version: 'container/1.1.0',
     keyless: false,
     deploy(stubPort, dir, key) {
       const dynamic = join(dir, `dynamic-${id()}`)
@@ -419,7 +419,7 @@ const templates: Template[] = [
   },
   {
     kind: 'traefik (docker-compose labels)',
-    version: 'container/1.0.0',
+    version: 'container/1.1.0',
     keyless: false,
     deploy(stubPort, dir, key) {
       const project = join(dir, `compose-${id()}`)

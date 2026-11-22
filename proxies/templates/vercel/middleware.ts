@@ -1,5 +1,5 @@
 /**
- * Fingerly first-party proxy as Vercel Routing Middleware, version 1.0.0.
+ * Fingerly first-party proxy as Vercel Routing Middleware, version 1.1.0.
  *
  * Put this file at the root of your project, beside package.json. It answers
  * the one path the Fingerly dashboard issued (`/k7x2qm4a` below; the matcher and
@@ -12,7 +12,7 @@ export const config = { matcher: '/k7x2qm4a' }
 
 /** The path the dashboard issued. Keep it equal to the matcher above. */
 const PATH = '/k7x2qm4a'
-const VERSION = '1.0.0'
+const VERSION = '1.1.0'
 const MAX_BODY_BYTES = 1_048_576
 const UPSTREAM_TIMEOUT_MS = 5_000
 /**

@@ -120,7 +120,7 @@ each, validated lowercase `x-fingerly-sdk-platform` when matched and `Origin` is
 header goes upstream, never both), and the `x-fingerly-*` headers the
 service sets itself (the proxy key, the client address, `x-fingerly-origin`
 only when `Origin` is present, `x-fingerly-host`, the user agent and
-`x-fingerly-proxy-version: gcp-cloud-run/1.0.0`, which the dashboard shows per
+`x-fingerly-proxy-version: gcp-cloud-run/1.1.0`, which the dashboard shows per
 proxy). Requests missing both `Origin` and a valid `x-fingerly-sdk-platform`
 answer `400` (`missing_origin`) without synthesizing `x-fingerly-origin`.
 Cookies, `Authorization` and any `x-fingerly-*` header a visitor forges never

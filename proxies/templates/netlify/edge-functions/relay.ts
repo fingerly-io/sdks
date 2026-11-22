@@ -1,5 +1,5 @@
 /**
- * Fingerly first-party proxy as a Netlify Edge Function, version 1.0.0.
+ * Fingerly first-party proxy as a Netlify Edge Function, version 1.1.0.
  *
  * Save this file as `netlify/edge-functions/relay.ts` and bind it to the one
  * path the Fingerly dashboard issued in netlify.toml (`/k7x2qm4a` below; the
@@ -15,7 +15,7 @@ declare const Netlify: { env: { get(name: string): string | undefined } }
 
 /** The path the dashboard issued. Keep it equal to the path in netlify.toml. */
 const PATH = '/k7x2qm4a'
-const VERSION = '1.0.0'
+const VERSION = '1.1.0'
 const MAX_BODY_BYTES = 1_048_576
 const UPSTREAM_TIMEOUT_MS = 5_000
 /**

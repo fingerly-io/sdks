@@ -1,4 +1,4 @@
-# Fingerly first-party proxy behind Traefik, version 1.0.0: file provider.
+# Fingerly first-party proxy behind Traefik, version 1.1.0: file provider.
 #
 # Dynamic configuration routing exactly `/k7x2qm4a`, the path the Fingerly
 # dashboard issued, to the container template running as `site-relay` on a

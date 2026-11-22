@@ -1,5 +1,5 @@
 /**
- * Fingerly first-party proxy as a small Node service, version 1.0.0.
+ * Fingerly first-party proxy as a small Node service, version 1.1.0.
  *
  * Your front proxy or load balancer routes the one path the Fingerly dashboard
  * issued (such as `/k7x2qm4a`) to this service, which forwards single-pass
@@ -29,7 +29,7 @@ import { pathToFileURL } from 'node:url'
 /** This copy's kind, reported upstream, and its default client address source. */
 const PRESET = { kind: 'container', clientIpSource: 'remote' }
 
-const VERSION = '1.0.0'
+const VERSION = '1.1.0'
 const MAX_BODY_BYTES = 1_048_576
 const UPSTREAM_TIMEOUT_MS = 5_000
 /**

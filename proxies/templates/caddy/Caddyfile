@@ -1,4 +1,4 @@
-# Fingerly first-party proxy for Caddy, version 1.0.0.
+# Fingerly first-party proxy for Caddy, version 1.1.0.
 #
 # Put the `@fingerly` matcher and the `handle` block first in the site block
 # that serves your pages, so SDKs post to your own host.
@@ -144,7 +144,7 @@ www.example.com {
 				# (and trusted_proxies_strict) so this is the visitor, not the load
 				# balancer. See the README.
 				header_up X-Fingerly-Client-Ip {client_ip}
-				header_up X-Fingerly-Proxy-Version caddy/1.0.0
+				header_up X-Fingerly-Proxy-Version caddy/1.1.0
 
 				transport http {
 					dial_timeout 5s

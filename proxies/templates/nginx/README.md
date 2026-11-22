@@ -107,7 +107,7 @@ key, the client address, `x-fingerly-origin` from `Origin` when present,
 `x-fingerly-sdk-platform` when matched by the lowercase `$fingerly_platform`
 map, which keeps it only for a request without `Origin` (one channel header
 goes upstream, never both), `x-fingerly-host`, the user agent and
-`x-fingerly-proxy-version: nginx/1.0.0`, which the dashboard shows per proxy).
+`x-fingerly-proxy-version: nginx/1.1.0`, which the dashboard shows per proxy).
 Requests missing both `Origin` and a valid `X-Fingerly-SDK-Platform` answer
 `400` (`missing_origin`) without synthesizing `x-fingerly-origin`.
 `proxy_pass_request_headers off` makes this an allowlist: cookies,

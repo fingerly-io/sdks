@@ -100,7 +100,7 @@ reach the API. Validated lowercase `x-fingerly-sdk-platform` is restored when
 matched and `Origin` is absent (one channel header goes upstream, never both),
 plus the `x-fingerly-*` headers the function sets (the client
 address, `x-fingerly-origin` only when `Origin` is present, `x-fingerly-host`,
-the user agent and `x-fingerly-proxy-version: aws-cloudfront/1.0.0`, which the
+the user agent and `x-fingerly-proxy-version: aws-cloudfront/1.1.0`, which the
 dashboard shows per proxy) and the proxy key from the origin's custom header.
 CloudFront itself adds its own `X-Forwarded-For`, `Via` and `X-Amz-Cf-Id` to
 every origin request; the API does not read them. Requests missing both

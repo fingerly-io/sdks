@@ -100,7 +100,7 @@ Every other incoming header is removed first, so cookies, `Authorization`,
 (one channel header goes upstream, never both), plus the `x-fingerly-*`
 headers the proxy sets itself (the proxy key, the client address,
 `X-Fingerly-Origin` only when `Origin` was sent, `X-Fingerly-Host`, the user
-agent and `x-fingerly-proxy-version: caddy/1.0.0`, which the dashboard shows
+agent and `x-fingerly-proxy-version: caddy/1.1.0`, which the dashboard shows
 per proxy). Requests missing both `Origin` and a valid
 `X-Fingerly-SDK-Platform` answer `400` (`missing_origin`) without synthesizing
 `X-Fingerly-Origin`. A request whose `X-Api-Key` is missing or is not a
