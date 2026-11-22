@@ -6,7 +6,7 @@
  * scheduling and transport are in the kernel, and scoring is on the server.
  */
 
-import { FingerlyClient, type FingerlyClientOptions } from '@fingerly/core'
+import { FingerlyClient, own, type FingerlyClientOptions } from '@fingerly/core'
 
 import { detectEmbedding } from './embedding.js'
 import { inspectIntegrity } from './lies/index.js'
@@ -33,27 +33,30 @@ export interface FingerlyOptions
  */
 export function load(options: FingerlyOptions): Promise<FingerlyClient> {
   return new Promise((resolve) => {
+    const sources = own(options, 'sources')
     const client = new FingerlyClient({
       ...options,
       platform: 'web',
-      sources: options.sources ?? browserSources,
+      sources: sources ?? browserSources,
       integrity: (report) => inspectIntegrity(report.sources),
       embedding: () => detectEmbedding(),
     })
     // The slow answers are started as soon as collection is permitted, and
     // not before: a page loaded with consent pending reads nothing until it
     // is granted.
-    if (options.sources === undefined) {
+    if (sources === undefined) {
       // The durability probe takes about a second, so a page that opted into
       // extended incognito detection starts it here, once collection is
       // permitted, and identify() reads its answer. The interaction observer
       // of a page that opted into agent detection starts at the same moment,
       // and stops, dropping what it counted, when consent is withdrawn.
-      const observe = options.agentDetection === 'interaction'
+      // Own properties only, as the client reads them (`WEB-09`).
+      const observe = own(options, 'agentDetection') === 'interaction'
+      const extended = own(options, 'incognitoDetection') === 'extended'
       let hold: InteractionHold | undefined
       const warm = () => {
         warmSlowSources()
-        if (options.incognitoDetection === 'extended') startDurabilityProbe()
+        if (extended) startDurabilityProbe()
         if (observe && hold?.current !== true && !detectEmbedding()) {
           hold = startInteractionObserver(client)
         }

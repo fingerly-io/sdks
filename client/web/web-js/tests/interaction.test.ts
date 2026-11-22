@@ -644,6 +644,19 @@ describe('the interaction source in the SDK', () => {
     expect((await fingerly.collect()).sources).not.toHaveProperty(SOURCE.interaction)
   })
 
+  it('reads agentDetection as an own option only', async () => {
+    const added = vi.spyOn(document, 'addEventListener')
+    const { load } = await freshSdk()
+    const polluted = Object.prototype as { agentDetection?: unknown }
+    polluted.agentDetection = 'interaction'
+    try {
+      await load({ apiKey: 'fly_pk_development_test', consent: 'granted', schedule: onlyInteraction })
+    } finally {
+      delete polluted.agentDetection
+    }
+    expect(added.mock.calls.some(([type]) => type === 'pointermove')).toBe(false)
+  })
+
   it('is left out of the report when the caller replaces the sources', async () => {
     const { browserSources, load } = await freshSdk()
     const fingerly = await load({
