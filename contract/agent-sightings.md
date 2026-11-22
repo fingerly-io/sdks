@@ -30,10 +30,13 @@ customer's resource, not about the visitor.
 |---|---|
 | `user_agent` | The `User-Agent` header as received, or `""` when absent. A value over 4096 bytes is not reported at all (the request is answered `unknown`). |
 | `client_ip` | One IPv4 or IPv6 literal from the same trusted client-IP source the SDK's proxy uses (`clientIp` callback or equivalent; never the left-most `X-Forwarded-For`). When it cannot be resolved, the request is not reported. |
-| `host` | The `Host` the request was sent to, as received. |
-| `method` | The request method, as received. |
+| `host` | The `Host` the request was sent to, as received. A value over 4096 bytes is left out; the request is still reported. |
+| `method` | The request method, as received. A value over 4096 bytes is not reported at all. |
 | `signature`, `signature_input`, `signature_agent` | The three Web Bot Auth headers, when present. A header over 4096 bytes is left out. |
-| `count` | How many times this exact request (section 4 key) was seen since it was last reported, this one included. |
+| `count` | How many times this exact request (section 4 key) was seen since it was last reported, this one included, at most 1000000. |
+
+Every limit is measured as the server measures it: the UTF-8 bytes of the JSON string sent, after
+any lossy conversion (an invalid byte becomes U+FFFD, three bytes).
 
 Never sent: the path, the query string, cookies, `Authorization`, other headers, the body, the
 response. The SDK does not log any of these fields.
@@ -86,8 +89,8 @@ constant, and the customer's code must treat it as "serve as usual" (fail open).
 
 | Server answer | SDK behaviour |
 |---|---|
-| `200` | Store every answer with `ttl > 0` in the cache under its key; drop the sent items. |
-| `422 invalid_request` | Drop the batch and log once per minute: it is an SDK bug, not a transient. |
+| `200` | Store every answer with `ttl > 0` in the cache under its key; drop the sent items. An item the server could not use is answered `visitor_kind: "unknown"` with `ttl: 0`, so it is never stored and its request stays unknown; the others are answered as usual. |
+| `422 invalid_request` | No item in the batch was usable. Drop the batch and log once per minute: it is an SDK bug, not a transient. |
 | `429` with `Retry-After` | Keep the batch, stop flushing until `Retry-After` has passed (scope `daily` usually means until the next UTC day), keep counting into the bounded buffer. |
 | `401` / `403` | Drop the batch, stop flushing for 60 seconds, log once: the key is wrong or revoked. |
 | `503`, or a transport error before a response | Keep the batch and retry with exponential backoff from 1 second up to 60 seconds. |
@@ -124,5 +127,7 @@ In every case, requests keep being served, and `lookup` keeps answering from the
 
 Each item of `AgentSightingsOut.items` is `{ttl, visitor_kind, agent?, ai?}`, with `ai` exactly as on
 the event read. SDKs reuse their existing `VisitorKind`, `AIPurpose`, `AIRuntime`,
-`AIVerificationMethod` and `AIVerificationResult` constants. The response carries nothing from the IP
+`AIVerificationMethod` and `AIVerificationResult` constants; `visitor_kind` adds `unknown`, only
+here, for an item the server could not use (named as an SDK constant like the others). A signed item
+always has `ttl: 0`, whether or not the server could check its signature. The response carries nothing from the IP
 database, by design.
