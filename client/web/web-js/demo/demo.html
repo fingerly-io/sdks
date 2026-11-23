@@ -366,6 +366,12 @@
         return { ...defaults, ...stored, ...fromQuery }
       })()
 
+      // `?incognito=extended` turns on the opt-in Chromium storage check, so one
+      // URL compares an ordinary window with an incognito one. Not stored: it is
+      // a property of the visit being tested, not of the playground.
+      const incognitoDetection =
+        new URLSearchParams(location.search).get('incognito') === 'extended' ? 'extended' : 'standard'
+
       function saveSettings() {
         settings.endpoint = $('endpoint').value.trim().replace(/\/+$/, '')
         settings.apiKey = $('apikey').value.trim()
@@ -613,13 +619,17 @@
             // Pressing run on this page is the visitor asking to be identified.
             consent: 'granted',
             ...(settings.endpoint ? { endpoints: settings.endpoint } : {}),
+            incognitoDetection,
           })
 
           // Single-pass v: 3 flow: identify() when an endpoint + key are set,
           // or collect() offline when inspecting signals locally.
           if (submit) {
             const result = await client.identify({ tag: 'playground' })
-            state.report = result.report
+            // The answer carries no report, so the page collects one of its own
+            // to show. It is a second pass over the same browser, not the bytes
+            // that were sent.
+            state.report = await client.collect()
             state.requestId = result.requestId
             state.answer = result
             $('request-id').textContent = result.requestId || 'not submitted'
