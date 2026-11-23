@@ -220,8 +220,16 @@ that this visitor needs none. See section 4 of the
 override it per `identify()` or `collect()` call.
 
 - `'standard'` (the default) detects private browsing without writing anything.
-- `'extended'` also runs an opt-in private-browsing check that writes to
-  storage, inside the same single-pass budget.
+- `'extended'` also runs an opt-in storage timing check on Chromium browsers.
+
+Chrome incognito is detected only with `'extended'`. From Chrome 152 on, the
+storage quota is the same in ordinary and incognito windows, so the standard
+checks cannot tell them apart in Chrome or any other Chromium browser. Firefox
+and Safari private windows are detected with `'standard'`.
+
+The extended check writes a few megabytes to storage once per page and takes
+about a second, so it starts as soon as consent allows collection and is
+usually finished by the time `identify()` reads it.
 
 In any mode the SDK never triggers a browser permission prompt, picker or
 dialog, including in Firefox and Tor Browser with their strictest privacy

@@ -154,7 +154,7 @@ byte, along with the edge's TLS metadata.
    const fingerly = await load({
      apiKey: 'fly_pk_production_…',
      consent: 'granted',
-     incognitoDetection: 'standard', // the default; 'extended' adds a check that writes to storage
+     incognitoDetection: 'standard', // the default; 'extended' is needed for Chrome incognito and writes to storage
    })
    const result = await fingerly.identify({ tag: 'checkout' })
    const { requestId, visitorId, identifiable, suspectScore, suspectLevel } = result

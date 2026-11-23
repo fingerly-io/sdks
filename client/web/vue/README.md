@@ -338,8 +338,12 @@ the last two a value, a ref or a getter). `identify()` takes
 `incognitoDetection` is accepted on `createFingerly()`, `useIdentify()`, and
 `identify()` / `refresh()`, the narrowest one winning. `'standard'` (the
 default) never writes to the visitor's storage; `'extended'` opts into an
-additional storage timing check on Chromium browsers, inside the same
-collection budget.
+additional storage timing check on Chromium browsers. Chrome incognito is
+detected only with `'extended'`: from Chrome 152 on, the standard checks cannot
+tell an incognito window from an ordinary one in any Chromium browser. Firefox
+and Safari private windows are detected with `'standard'`. The extended check
+writes a few megabytes to storage once per page and takes about a second, so it
+starts as soon as consent allows collection.
 
 ### Collect without submitting
 

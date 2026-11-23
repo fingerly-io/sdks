@@ -340,8 +340,13 @@ can resolve its key from its own config service.
 ### Incognito detection
 
 `'standard'`, the default, checks for private browsing without writing anything
-to the visitor's storage. `'extended'` adds a further check on Chromium
-browsers, inside the same collection budget.
+to the visitor's storage. `'extended'` adds a storage timing check on Chromium
+browsers. Chrome incognito is detected only with `'extended'`: from Chrome 152
+on, the standard checks cannot tell an incognito window from an ordinary one in
+any Chromium browser. Firefox and Safari private windows are detected with
+`'standard'`. The extended check writes a few megabytes to storage once per
+page and takes about a second, so it starts as soon as consent allows
+collection.
 
 ### Collect without submitting
 

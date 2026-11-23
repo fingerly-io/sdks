@@ -46,7 +46,8 @@ package for you.
   `granted`, and withdrawing it aborts collection or submission in flight.
 - **Incognito detection.** `incognitoDetection: 'standard'` (the default)
   writes nothing. `'extended'` also runs the opt-in probes that may write to
-  storage.
+  storage. Chrome incognito (Chromium 152 and later) is detected only with
+  `'extended'`.
 - **In-app WebViews.** When the page runs inside an in-app WebView, only
   non-identifying sources run.
 - **Unidentifiable visitors.** Whenever `identifiable` is `false`, `visitorId`
