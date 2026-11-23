@@ -6,7 +6,7 @@ If you are embedding a Fingerly SDK, you are the controller for the data it
 collects about your visitors and we are your processor. That means the notice,
 the legal basis and the consent are yours to get right, and you cannot do any
 of it without knowing exactly what the code reads, stores and sends. This
-document is that list, checked against the `0.4.0` SDKs (`v: 3` wire protocol)
+document is that list, checked against the `0.4.0` SDKs, the Android SDK `0.5.0` and the React Native, Flutter and Lynx bridges `0.5.0` (`v: 3` wire protocol)
 on 2026-11-16.
 
 > **Read §4 before shipping to visitors in the EU or UK.** Every SDK has a
@@ -24,11 +24,15 @@ visits differs by platform:
   single-pass `v: 3` collection (§2). A page running inside an app is never
   fingerprinted (§3.3); the browser SDK is not for apps.
 - **Native apps** (iOS, Android, and the React Native, Flutter and Lynx
-  bridges) are recognised **only** by the random UUIDv4 `install_id` the SDK
-  stores inside the app's own container (§3.1). Hardware, operating system and
-  cryptographic attestation signals are never used to recognise a device or a
-  user in an app; they serve integrity checks and scoring only. A native report
-  without an `install_id` identifies nobody.
+  bridges) are recognised by the random UUIDv4 `install_id` the SDK stores
+  inside the app's own container (§3.1). On iOS that is the only key. On
+  Android the SDK also sends `ssaid_digest`, a domain-separated SHA-256 digest
+  of `ANDROID_ID` keyed by the app's signing certificate (never the raw value),
+  so a device whose report passes hardware attestation keeps its visitor ID
+  after an uninstall and reinstall, until a factory reset (§3.1). Other
+  hardware, operating system and cryptographic attestation signals are never
+  used to recognise a device or a user in an app; they serve integrity checks,
+  scoring and, on Android, deciding whether `ssaid_digest` may be used. A native report without an `install_id` identifies nobody.
 
 The SDKs never trigger any user-visible permission prompt, OS alert, lockscreen
 or biometric prompt, clipboard toast, or privacy indicator (**Rule #1**). They
@@ -45,7 +49,10 @@ session continuity turned on it keeps one value in `sessionStorage` for the
 life of the tab (§2.1). The mobile SDKs
 keep one container-scoped `install_id` and a local hardware attestation signing
 key (§3.1), both of which the app can atomically delete (§3.2) and both of
-which are removed if the user uninstalls the app.
+which are removed if the user uninstalls the app. On Android the server also
+keeps a project-scoped key derived from `ssaid_digest`, which outlives an
+uninstall and is deleted when the customer erases the visitor or the identity
+expires.
 
 ## 2. Browser (`@fingerly/core`, `@fingerly/web-js` `0.4.0` and framework bindings)
 
@@ -166,7 +173,7 @@ or not persistent storage is written (§4). Keeping the session seal is storage
 access under ePrivacy Art. 5(3) as well, and is covered by the same consent the
 SDK already requires before it reads anything.
 
-## 3. Mobile (`ios`, `android` `0.4.0`, and the React Native, Flutter and Lynx bridges)
+## 3. Mobile (`ios` `0.4.0`, `android` `0.5.0`, and the React Native, Flutter and Lynx bridges `0.5.0`)
 
 The native SDKs read operating system and hardware characteristics, app
 installation details, security state and runtime integrity indicators, and sign
@@ -208,7 +215,7 @@ integrity verification and fraud scoring only.
   `UserDefaults`, `UIPasteboard`, battery monitoring, accessibility feature
   states, audio routes, installed font counts, or carrier names.
 
-**Android (`io.fingerly:fingerly` `0.4.0`, 20 sources, pure Kotlin, zero `.so`)**
+**Android (`io.fingerly:fingerly` `0.5.0`, 20 sources, pure Kotlin, zero `.so`)**
 
 - Machine, OS & settings (`system`, `hardware`, `display`, `storage`, `sensors`,
   `audio`, `intl`, `accessibility`, `battery`, `security`): OS version,
@@ -223,7 +230,13 @@ integrity verification and fraud scoring only.
   prompting).
 - App, network & TLS (`app`, `identity`, `network`, `tls`): package name,
   version code, 64-hex signing certificate SHA-256, installing store,
-  `noBackupFilesDir` UUIDv4 `install_id`, active network transports (VPN over
+  `noBackupFilesDir` UUIDv4 `install_id`, `ssaid_digest` (64 lowercase hex,
+  `SHA-256("fingerly:ssaid:v1:" + signing certificate SHA-256 hex + ":" +
+  lowercased ANDROID_ID)`, read with no permission only inside a report
+  collected after consent, never at load, on Android 5.0 to 16; left out when
+  `ANDROID_ID` is missing or a placeholder (empty, non-hex, under 8 or over 64
+  characters, all zeros, `9774d56d682e549c`), when the signing certificate
+  cannot be read, or when the read fails), active network transports (VPN over
   cellular), HTTP proxy state, and the shared `HttpTransport` TLS chain's
   validated trust-anchor SPKI SHA-256 (`root_key_sha256`) and user CA count.
 - Runtime & profile integrity (`root`, `emulator`, `debugger`,
@@ -248,18 +261,18 @@ integrity verification and fraud scoring only.
     when the customer configures a Google Cloud project and the server's
     challenge offers `play_integrity: true`.
 
-The React Native (`@fingerly/react-native` `0.4.0`), Flutter
-(`fingerly_flutter` `0.4.0`) and Lynx (`@fingerly/lynx` `0.4.0`) packages are
-thin bridges over the native iOS and Android `0.4.0` SDKs.
+The React Native (`@fingerly/react-native` `0.5.0`), Flutter
+(`fingerly_flutter` `0.5.0`) and Lynx (`@fingerly/lynx` `0.5.0`) packages are
+thin bridges over the native iOS `0.4.0` and Android `0.5.0` SDKs.
 
 ### 3.1 What the mobile SDKs store and send
 
-| | iOS (`0.4.0`) | Android (`0.4.0`) |
+| | iOS (`0.4.0`) | Android (`0.5.0`) |
 |---|---|---|
 | Identity & key state stored on the device | Files under `Application Support/io.fingerly.sdk/` protected with `FileProtectionType.completeUntilFirstUserAuthentication` and `isExcludedFromBackup = true`, holding the random UUIDv4 `install_id`, launch count, first-seen timestamp, and App Attest key state (`keyId`, `pending`, replacement backoff). **Zero Keychain storage** and **zero `UserDefaults`**: uninstalling the app removes all stored state | One file, `io.fingerly.sdk.install`, under `context.noBackupFilesDir`, holding the random UUIDv4 `install_id`, first-seen time, launch count, signing certificate digest, and 24-hour attestation key lease metadata, plus one hardware-backed EC P-256 signing key in `AndroidKeyStore` (`alias = "io.fingerly.sdk.attest.v3"`). Never backed up, and **removed on uninstall** |
 | Hardware signing key lifecycle | Per-install Secure Enclave App Attest key (`DCAppAttestService`), replaced only on `deleteStoredIdentity()` or server `rekey_required` / `attestation_key_unknown` (with `0d -> 7d -> 14d -> 30d` storm backoff). Never linked to `visitor_id` | **24-hour TEE EC P-256 signing key lease** (`alias = "io.fingerly.sdk.attest.v3"`). Signs the `v: 3` framed preimage locally in ~3–8ms (`SHA256withECDSA`) without per-call key creation/deletion, and rotates every 24 hours (or on OS patch change / `deleteStoredIdentity()`). **Never** linked to `visitor_id`, **never** requests hardware serial/IMEI IDs (`setDevicePropertiesAttestationIncluded` is never called), and **never** prompts for lockscreen/biometrics (`setUserAuthenticationRequired` is never called) |
-| How the server recognises the device | By `install_id` only | By `install_id` only |
-| Platform hardware/vendor IDs sent | **None** (`identifierForVendor` is not read or sent) | **None** (`ANDROID_ID`, IMEI and hardware serials are not read or sent) |
+| How the server recognises the device | By `install_id` only | By `install_id`, and, only for a report whose Android key attestation verified (bound to the package and signer, locked bootloader, verified boot state) with no tampering, device inconsistency or automation signal making the resolution read-only, by a key derived from `ssaid_digest`, so a reinstall on such a device keeps its `visitor_id` while the recorded device model agrees. Every other report (no verified hardware attestation, unlocked or custom systems, most emulators) is identified by `install_id` alone, so a reinstall there gets a new `visitor_id`. The digest is never stored: the server keeps a 16-byte key derived from it and the project ID in `visitor_keys` (EU Postgres), linked to one visitor of that project, at most 4 per visitor, never in events, the archive, webhooks or velocity data, never across projects or organisations. If live devices share one value the key is retired so no further device joins. It is deleted with the visitor (and its cached copy) on erasure, or when the identity expires 180 days after last seen |
+| Platform hardware/vendor IDs sent | **None** (`identifierForVendor` is not read or sent) | Only `ssaid_digest`, a domain-separated SHA-256 of `ANDROID_ID` keyed by the app's signing certificate; the raw `ANDROID_ID` never leaves the device. On Android 8.0+ `ANDROID_ID` is unique per app signing key, user and device and survives uninstall and reinstall with the same signing key (except an app installed before the device's OTA to 8.0 and reinstalled after it, which gets a new value); it may change on a factory reset or a signing key change. Below 8.0 it is per user and the same for every app, but the signer keying makes the digest sent differ per app. Another user or work profile on the phone has its own `ANDROID_ID`, so it is another visitor. IMEI and hardware serials are not read or sent |
 | Calls other than to Fingerly | Apple App Attest (`attestKey` once per key; assertions are local) and optional `DCDevice.generateToken` when `device_check` is offered | Local TrustZone/TEE `AndroidKeyStore` key generation (once per 24h lease); optional Google Play Integrity `StandardIntegrityManager` only when `:fingerly-play-integrity` is installed and offered |
 | TLS inspection | Shared `HttpTransport` inspects the live/pooled HTTPS connection's validated trust-anchor SPKI SHA-256 (`root_key_sha256`, keyed by `(host, port, activeNetworkHandle)`)—no separate `HEAD /` probe | Same shared `HttpTransport` `X509TrustManagerExtensions` SPKI SHA-256 cache—no separate `HEAD /` probe |
 | Permissions | None requested | `INTERNET` and `ACCESS_NETWORK_STATE` only in core `:fingerly` (**zero `<queries>`**). Optional `:fingerly-app-checks` adds the 17 named `<queries>` packages (no `QUERY_ALL_PACKAGES`) |
@@ -309,8 +322,12 @@ bridges.
   consent, makes zero network calls, and is idempotent when no record exists.
   Set `consent` to `'denied'` first if collection must remain off afterwards.
   If the user later grants consent again, the SDK generates a fresh UUIDv4
-  `install_id` and attests a fresh hardware signing key, and the server mints a
-  new `visitor_id` with **zero link** to the erased `visitor_id`. (Server-side
+  `install_id` and attests a fresh hardware signing key. On iOS the server then
+  mints a new `visitor_id` with **zero link** to the erased one. On Android
+  `ANDROID_ID` stays the same on the device, so until the customer erases the
+  visitor server-side (§4) the device's next attested report can lead back to
+  the old `visitor_id` through `ssaid_digest`; after that erasure the next report gets
+  a new, unlinked `visitor_id`. (Server-side
   24-hour Redis `install_id` churn detection triggers only at `>= 3` distinct
   `install_id`s on the same hardware key within 24 hours, so legitimate GDPR
   erasure and re-consent incurs zero risk score.)
@@ -361,6 +378,12 @@ bridges.
   device's settings were changed at some point, and it never raises a score.
   Account for it with the other device data the SDK sends (§3) when you fill
   in the Data safety form.
+- **Google Play Data safety: Device or other IDs.** Declare the random
+  `install_id`, the `ssaid_digest` SHA-256 of `ANDROID_ID` and the attestation
+  certificate chain (plus the Play Integrity token when
+  `:fingerly-play-integrity` is installed), for fraud prevention, security and
+  compliance, not shared. Uninstalling the app does not delete the
+  `ssaid_digest`-derived key Fingerly holds; a server-side visitor erasure does.
 
 ## 4. Consent: what you must do
 
@@ -388,14 +411,16 @@ For visitors in the EU, EEA or UK:
    exemption under ePrivacy Art. 5(3) / UK PECR Schedule A1 paragraph 4(2)(c);
    note that cross-site tracking and advertising fraud are never exempt, and
    each independent site should use its own Fingerly project because
-   `visitor_id` is isolated per project when project scoping is enabled and
-   never shared across organisations).
+   `visitor_id` is always isolated per project (shared only by that project's
+   environments) and never shared across projects or organisations).
 2. **Load the script after consent, or bundle the npm package** so visitors' IP
    addresses and user agents are not sent to a third-party CDN prior to consent.
 3. **Disclose Fingerly as your fraud-prevention processor** in your privacy
    notice along with the retention periods in §7.
 4. **Forward erasure requests to us** (and invoke `deleteStoredIdentity()` on
-   mobile devices per §3.2).
+   mobile devices per §3.2). On Android the server-side erasure is what removes
+   the `ssaid_digest`-derived key that would otherwise link a reinstall back to
+   the visitor.
 
 ## 5. First-party proxies and hosted subdomains
 
@@ -422,7 +447,7 @@ infrastructure with the same data minimization guarantees.
 | Continent, country, region, city, time zone, coarse coordinates | Fingerly's first-party local MMDB IP database | City-level at most; coordinates rounded to 1 decimal place (~11 km) internally and omitted from event API reads |
 | VPN, proxy, Tor, datacenter, relay and mobile tunnel flags; abuse/attack flags; ASN | Same local first-party IP database | **Zero visitor IP addresses are ever sent to third parties**; the MMDB file is read from local disk and refreshed daily |
 | Origin, `Sec-Fetch-*`, user agent, and `tag` | The request | User agent is parsed into browser/app, OS and device class |
-| `visitor_id` | Minted by Fingerly (or `""` when `identifiable == false`) | Opaque 20-char random ID scoped to your organisation/project; never derived from a signal hash, never chosen by the client, and left empty (`""`, zero DB rows) on unidentifiable privacy browsers, genuine embedded WebViews, and unmatched high-risk bot traffic |
+| `visitor_id` | Minted by Fingerly (or `""` when `identifiable == false`) | Opaque 20-char random ID scoped to your project (the same in all of its environments, different in every other project); never derived from a signal hash, never chosen by the client, and left empty (`""`, zero DB rows) on unidentifiable privacy browsers, genuine embedded WebViews, and unmatched high-risk bot traffic |
 | `suspect_score`, `suspect_level`, and `triggers` | Server risk engine | Stored with the exact signal weights, confidences and reason tokens in force when evaluated (supporting GDPR Art. 22 explanations). `triggers` never leave the backend; `HideClientScore` optionally hides `suspect_score` and `suspect_level` from public SDK responses |
 
 ## 7. Retention
@@ -434,7 +459,7 @@ infrastructure with the same data minimization guarantees.
 | Per-visitor daily aggregates (`agg_visitor_day`, filtered to `visitor_id != ''`) | 180 days |
 | Aggregate analytics (`agg_*_15m` / `_hour` hot tiers, `agg_*_day` cold tiers) | 45–100 days (hot), 800 days (daily totals) |
 | Short-term velocity HMAC state (Velocity Redis + ClickHouse 5m rollups) | 10 minutes in Redis, 8 days in ClickHouse |
-| Visitor identity index (`visitor_identities`, `visitor_keys`) | 180 days after `last_seen`, swept hourly |
+| Visitor identity index (`visitor_identities`, `visitor_keys`, including the project-scoped key derived from Android `ssaid_digest`) | 180 days after `last_seen`, swept hourly, or at once on visitor erasure |
 | Mobile hardware attestation key tables (`apple_app_attest_keys`, `android_attestation_keys`) | 24-hour active lease on Android (`expires_at`); rows swept 180 days after `last_seen_at` and purged immediately on organisation/project deletion (never linked to `visitor_id`) |
 | Sealed Apple DeviceCheck tokens (when `device_check_enabled: true`) | At most 1 hour in Redis (`att:dc:hold:*`), never archived |
 | Usage and billing ledger records | ~3 years (1,100 days in `agg_usage_day`) |
@@ -451,8 +476,9 @@ infrastructure with the same data minimization guarantees.
   mobile SDKs store only a container-scoped `install_id` and local attestation
   key state, both wiped on uninstall or `deleteStoredIdentity()` (§3.1, §3.2)
 - No Keychain cross-uninstall persistence, no `UserDefaults`, and no
-  `identifierForVendor` on iOS; no `ANDROID_ID`, IMEI, hardware serials, or core
-  `<queries>` manifest entries on Android
+  `identifierForVendor` on iOS; no raw `ANDROID_ID` (only its domain-separated
+  SHA-256 digest, §3.1), no IMEI, hardware serials, or core `<queries>` manifest
+  entries on Android
 - No linking of hardware attestation keys (`apple_app_attest_keys`,
   `android_attestation_keys`) to `visitor_id`
 - No fingerprinting inside in-app WebViews: device-fingerprinting collectors are

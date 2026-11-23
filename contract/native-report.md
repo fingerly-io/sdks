@@ -58,8 +58,11 @@ the sources of a tier the report claims to have run are required; `fast` is alwa
 **Status words** are `ok`, `unsupported`, `blocked`, `timeout` and `error`. Anything else is not a report a client wrote.
 
 **Cohort safety.** `domain/risk/archive_fields.go` builds the velocity cohort from invariant scalar keys of `hardware`,
-`system` and `app` (`display` pixel fields are excluded because orientation and split-screen mutate them). No new field
-enters native identity, which stays `identity.install_id` only.
+`system` and `app` (`display` pixel fields are excluded because orientation and split-screen mutate them). Native identity uses
+`identity.install_id` on both platforms, supplemented on Android by `identity.ssaid_digest`, a SHA-256 of `ANDROID_ID` keyed by
+the app's signing certificate, for reinstall persistence. The server uses it only for a report whose Android key attestation
+verified on a locked, verified-boot device with no integrity trigger, keeps it only as a project-scoped key (never the digest,
+never archived on event documents) and removes it on visitor erasure and expiry. No other device identifier enters identity.
 
 **Free text.** No names from outside system trees, no other app's name, no raw data directory, no installer
 package, no accessibility service name. Where the raw value is a name it travels as a salted `nameDigest` (section 1.4).
@@ -164,6 +167,7 @@ read move to the server.
 | Field | Type | Bounds | Status |
 |---|---|---|---|
 | `install_id` | string | UUID, 36 | unchanged |
+| `ssaid_digest` | string | 64 lowercase hex, `SHA-256("fingerly:ssaid:v1:" + signer + ":" + android_id)` where `signer` is the lowercase hex SHA-256 of the app's signing certificate (as `app.signature_sha256`) and `android_id` is `Settings.Secure.ANDROID_ID` lowercased; absent when unavailable, a placeholder (empty, non-hex, under 8 or over 64 characters, all zeros, `9774d56d682e549c`), or when the certificate cannot be read. Example: signer `ab` x 32, `android_id` `a1b2c3d4e5f60718` gives `7380b395b7e51d95cbd1c8c592e6c0f9284128d248f430183eff1b2c71cc30e5` | new |
 | `launches` | int | >= 1, once per process | unchanged |
 | `first_seen_at` | int | epoch seconds | unchanged |
 | `install_age_h` | int | may be negative (clock set back) | unchanged |
